@@ -32,7 +32,8 @@ brickmesh(ntuple(j->range(DFloat(0); length=Ne+1, stop=1000), dim),
           (true, ntuple(j->false, dim-1)...),
           part=part, numparts=numparts)
 
-function main()
+function main(;spacemethod=:VanillaEuler, DFloat=Float64, dim=3, backend=Array,
+              N=4, Ne=10, timeend=0.1)
   MPI.Initialized() || MPI.Init()
   MPI.finalize_atexit()
 
@@ -43,117 +44,136 @@ function main()
   # FIXME: query via hostname
   @hascuda device!(mpirank % length(devices()))
 
-  timeinitial = 0.0
-  timeend = 0.1
-  Ne = 10
-  N  = 4
+  runner = AD.Runner(mpicomm,
+                     #Space Discretization and Parameters
+                     spacemethod,
+                     (DFloat = DFloat,
+                      DeviceArray = backend,
+                      meshgenerator = (part, numparts) ->
+                      meshgenerator(part, numparts, Ne, dim,
+                                    DFloat),
+                      dim = dim,
+                      gravity = true,
+                      N = N,
+                     ),
+                     # Time Discretization and Parameters
+                     :LSRK,
+                     (),
+                    )
 
-  for DFloat in (Float64, Float32)
-    for dim in (2,3)
-      for backend in (HAVE_CUDA ? (CuArray, Array) : (Array,))
+  # Set the initial condition with a function
+  AD.initspacestate!(runner, host=true) do (x...)
+    DFloat = eltype(x)
+    γ::DFloat       = gamma_d
+    p0::DFloat      = 100000
+    R_gas::DFloat   = R_d
+    c_p::DFloat     = cp_d
+    c_v::DFloat     = cv_d
+    gravity::DFloat = grav
 
-        runner = AD.Runner(mpicomm,
-                           #Space Discretization and Parameters
-                           :VanillaEuler,
-                           (DFloat = DFloat,
-                            DeviceArray = backend,
-                            meshgenerator = (part, numparts) ->
-                            meshgenerator(part, numparts, Ne, dim,
-                                          DFloat),
-                            dim = dim,
-                            gravity = true,
-                            N = N,
-                           ),
-                           # Time Discretization and Parameters
-                           :LSRK,
-                           (),
-                          )
-
-        # Set the initial condition with a function
-        AD.initspacestate!(runner, host=true) do (x...)
-          DFloat = eltype(x)
-          γ::DFloat       = gamma_d
-          p0::DFloat      = 100000
-          R_gas::DFloat   = R_d
-          c_p::DFloat     = cp_d
-          c_v::DFloat     = cv_d
-          gravity::DFloat = grav
-
-          r = sqrt((x[1] - 500)^2 + (x[dim] - 350)^2)
-          rc::DFloat = 250
-          θ_ref::DFloat = 300
-          θ_c::DFloat = 0.5
-          Δθ::DFloat = 0
-          if r <= rc
-            Δθ = θ_c * (1 + cos(π * r / rc)) / 2
-          end
-          θ_k = θ_ref + Δθ
-          π_k = 1 - gravity / (c_p * θ_k) * x[dim]
-          c = c_v / R_gas
-          ρ_k = p0 / (R_gas * θ_k) * (π_k)^c
-          ρ = ρ_k
-          u = zero(DFloat)
-          v = zero(DFloat)
-          w = zero(DFloat)
-          U = ρ * u
-          V = ρ * v
-          W = ρ * w
-          Θ = ρ * θ_k
-          P = p0 * (R_gas * Θ / p0)^(c_p / c_v)
-          T = P / (ρ * R_gas)
-          E = ρ * (c_v * T + (u^2 + v^2 + w^2) / 2 + gravity * x[dim])
-          ρ, U, V, W, E
-        end
-
-        # Compute a (bad guess) for the time step
-        base_dt = AD.estimatedt(runner, host=true)
-        nsteps = ceil(Int64, timeend / base_dt)
-        dt = timeend / nsteps
-
-        # Set the time step
-        AD.inittimestate!(runner, dt)
-
-        eng0 = AD.L2solutionnorm(runner; host=true)
-        # mpirank == 0 && @show eng0
-
-        # Setup the info callback
-        io = mpirank == 0 ? stdout : open("/dev/null", "w")
-        show(io, "text/plain", runner[:spacerunner])
-        cbinfo = AD.GenericCallbacks.EveryXWallTimeSecondsCallback(10) do
-          println(io, runner[:spacerunner])
-        end
-
-        # Setup the vtk callback
-        mkpath("viz")
-        dump_vtk(step) = AD.writevtk(runner,
-                                     "viz/RTB"*
-                                     "_dim_$(dim)"*
-                                     "_DFloat_$(DFloat)"*
-                                     "_backend_$(backend)"*
-                                     "_mpirank_$(mpirank)"*
-                                     "_step_$(step)")
-        step = 0
-        cbvtk = AD.GenericCallbacks.EveryXSimulationSteps(10) do
-          # TODO: We should add queries back to time stepper for this
-          step += 1
-          dump_vtk(step)
-          nothing
-        end
-
-        dump_vtk(0)
-        AD.run!(runner; numberofsteps=nsteps, callbacks=(cbinfo, cbvtk))
-        dump_vtk(nsteps)
-
-        engf = AD.L2solutionnorm(runner; host=true)
-
-        mpirank == 0 && @show engf
-        mpirank == 0 && @show eng0 - engf
-        mpirank == 0 && @show engf/eng0
-        mpirank == 0 && println()
-      end
+    r = sqrt((x[1] - 500)^2 + (x[dim] - 350)^2)
+    rc::DFloat = 250
+    θ_ref::DFloat = 300
+    θ_c::DFloat = 0.5
+    Δθ::DFloat = 0
+    if r <= rc
+      Δθ = θ_c * (1 + cos(π * r / rc)) / 2
     end
+    θ_k = θ_ref + Δθ
+    π_k = 1 - gravity / (c_p * θ_k) * x[dim]
+    c = c_v / R_gas
+    ρ_k = p0 / (R_gas * θ_k) * (π_k)^c
+    ρ = ρ_k
+    u = zero(DFloat)
+    v = zero(DFloat)
+    w = zero(DFloat)
+    U = ρ * u
+    V = ρ * v
+    W = ρ * w
+    Θ = ρ * θ_k
+    P = p0 * (R_gas * Θ / p0)^(c_p / c_v)
+    T = P / (ρ * R_gas)
+    E = ρ * (c_v * T + (u^2 + v^2 + w^2) / 2 + gravity * x[dim])
+    ρ, U, V, W, E
   end
+
+  # Compute a (bad guess) for the time step
+  base_dt = AD.estimatedt(runner, host=true)
+  nsteps = ceil(Int64, timeend / base_dt)
+  dt = timeend / nsteps
+
+  # Set the time step
+  AD.inittimestate!(runner, dt)
+
+  eng0 = AD.L2solutionnorm(runner; host=true)
+  # mpirank == 0 && @show eng0
+
+  # Setup the info callback
+  io = mpirank == 0 ? stdout : open("/dev/null", "w")
+  show(io, "text/plain", runner[:spacerunner])
+  cbinfo = AD.GenericCallbacks.EveryXWallTimeSecondsCallback(10) do
+    println(io, runner[:spacerunner])
+  end
+
+  # Setup the vtk callback
+  mkpath("viz")
+  dump_vtk(step) = AD.writevtk(runner,
+                               "viz/RTB"*
+                               "_dim_$(dim)"*
+                               "_DFloat_$(DFloat)"*
+                               "_backend_$(backend)"*
+                               "_mpirank_$(mpirank)"*
+                               "_step_$(step)")
+  step = 0
+  cbvtk = AD.GenericCallbacks.EveryXSimulationSteps(10) do
+    # TODO: We should add queries back to time stepper for this
+    step += 1
+    dump_vtk(step)
+    nothing
+  end
+
+  dump_vtk(0)
+  AD.run!(runner; numberofsteps=nsteps, callbacks=(cbinfo, cbvtk))
+  dump_vtk(nsteps)
+
+  engf = AD.L2solutionnorm(runner; host=true)
+
+  mpirank == 0 && @show engf
+  mpirank == 0 && @show eng0 - engf
+  mpirank == 0 && @show engf/eng0
+  mpirank == 0 && println()
   nothing
 end
 
-main()
+let
+  inputs = Dict{Symbol, Any}()
+  inputs[:spacemethod] = :VanillaEuler
+  inputs[:DFloat] = (Float64, Float32)
+  inputs[:dim] = (2, 3)
+  inputs[:backend] = (HAVE_CUDA ? (CuArray, Array) : (Array,))
+  inputs[:N] = 4
+  inputs[:Ne] = 10
+  inputs[:timeend] = 0.1
+
+  foreach(ARGS) do (A)
+    sp = split(A, '='; limit=2)
+    kw = Symbol(sp[1])
+    if kw == :spacemethod
+      inputs[kw] = Symbol(sp[2])
+    else
+      error("Nope")
+    end
+  end
+
+  (DFloats, dims, backends) = (inputs[:DFloat], inputs[:dim], inputs[:backend])
+  for DFloat in DFloats
+    for dim in dims
+      for backend in backends
+        inputs[:DFloat] = DFloat
+        inputs[:dim] = dim
+        inputs[:backend] = backend
+        main(;inputs...)
+      end
+    end
+  end
+end
