@@ -14,6 +14,7 @@ end
 include("types.jl")
 
 include("VanillaEuler.jl")
+include("EntropyStable.jl")
 
 include("LSRK.jl")
 
