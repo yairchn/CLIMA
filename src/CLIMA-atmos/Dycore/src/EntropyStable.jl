@@ -591,6 +591,58 @@ function transferrecvQ!(::Val{dim}, ::Val{N}, device_recvQ::Array,
 end
 # }}}
 
+function aln(L, R)
+  ζ = L /R
+  f = (ζ - 1) / (ζ + 1)
+  u = f * f
+  ϵ = eltype(L)(1e-2)
+  F = (u < ϵ) ?  F = 1 + u / 3 + u^2 / 5 + u^3 / 7 : log(ζ) / (2f)
+  (L + R) / 2F
+end
+
+function flux!(F, UM, VM, WM, ρM, EM, zM, UP, VP, WP, ρP, EP, zP)
+  ρln = aln(ρM, ρP)
+  ρMinv, ρPinv = 1 / ρM, 1/ρP
+  uM, vM, wM = UM * ρMinv, VM * ρMinv, WM * ρMinv
+  uP, vP, wP = UP * ρPinv, VP * ρPinv, WP * ρPinv
+
+  ua  = (uM + uP) / 2
+  va  = (vM + vP) / 2
+  wa  = (wM + wP) / 2
+  ρa  = (ρM + ρP) / 2
+
+  δM = ρM / 2(EM - (UM^2 + VM^2 + WM^2)/(2*ρM) - ρM*grav*zM)
+  δP = ρP / 2(EP - (UP^2 + VP^2 + WP^2)/(2*ρP) - ρP*grav*zP)
+  δa = (δM + δP)/2
+
+  pfac = gdm1 * ρa / 2δa
+
+  δln = aln(δM, δP)
+  u2a = ((uM^2 + vM^2 + wM^2) + (uP^2 + vP^2 + wP^2)) / 2
+  Φa = grav * (zM + zP) / 2
+  Efac = (1/2δln - u2a/2 + Φa)
+
+  F[_ρ, 1] = ρln * ua
+  F[_ρ, 2] = ρln * va
+  F[_ρ, 3] = ρln * wa
+
+  F[_U, 1] = F[_ρ, 1] * uM + pfac
+  F[_V, 1] = F[_ρ, 1] * vM
+  F[_V, 1] = F[_ρ, 1] * wM
+
+  F[_U, 2] = F[_ρ, 2] * uM
+  F[_V, 2] = F[_ρ, 2] * vM + pfac
+  F[_W, 2] = F[_ρ, 2] * wM
+
+  F[_U, 3] = F[_ρ, 3] * uM
+  F[_V, 3] = F[_ρ, 3] * vM
+  F[_W, 3] = F[_ρ, 3] * wM + pfac
+
+  F[_E, 1] = (F[_U, 1] * uM + F[_V, 1] * wM + F[_W, 1] * wM) + Efac * F[_ρ, 1]
+  F[_E, 2] = (F[_U, 2] * uM + F[_V, 2] * wM + F[_W, 2] * wM) + Efac * F[_ρ, 2]
+  F[_E, 3] = (F[_U, 3] * uM + F[_V, 3] * wM + F[_W, 3] * wM) + Efac * F[_ρ, 3]
+end
+
 # {{{ Volume RHS for 2-D
 function volumerhs!(::Val{2}, ::Val{N}, rhs::Array, Q, vgeo, D, elems) where N
   DFloat = eltype(Q)
@@ -769,6 +821,8 @@ function facerhs!(::Val{2}, ::Val{N}, rhs::Array, Q, vgeo, sgeo, elems,
   Nfp = N+1
   nface = 4
 
+  F = similar(Q, (_nstate, 3))
+
   @inbounds for e in elems
     for f = 1:nface
       for n = 1:Nfp
@@ -786,66 +840,35 @@ function facerhs!(::Val{2}, ::Val{N}, rhs::Array, Q, vgeo, sgeo, elems,
         yM = vgeo[vidM, _y, eM]
 
         bc = elemtobndy[f, e]
-        PM = gdm1*(EM - (UM^2 + VM^2)/(2*ρM) - ρM*grav*yM)
         if bc == 0
           ρP = Q[vidP, _ρ, eP]
           UP = Q[vidP, _U, eP]
           VP = Q[vidP, _V, eP]
           EP = Q[vidP, _E, eP]
           yP = vgeo[vidP, _y, eP]
-          PP = gdm1*(EP - (UP^2 + VP^2)/(2*ρP) - ρP*grav*yP)
         elseif bc == 1
           UnM = nxM * UM + nyM * VM
           UP = UM - 2 * UnM * nxM
           VP = VM - 2 * UnM * nyM
           ρP = ρM
           EP = EM
-          PP = PM
+          yP = yM
         else
           error("Invalid boundary conditions $bc on face $f of element $e")
         end
 
-        ρMinv = 1 / ρM
-        fluxρM_x = UM
-        fluxUM_x = ρMinv * UM * UM + PM
-        fluxVM_x = ρMinv * UM * VM
-        fluxEM_x = ρMinv * UM * (EM + PM)
-
-        fluxρM_y = VM
-        fluxUM_y = ρMinv * VM * UM
-        fluxVM_y = ρMinv * VM * VM + PM
-        fluxEM_y = ρMinv * VM * (EM + PM)
-
-        ρPinv = 1 / ρP
-        fluxρP_x = UP
-        fluxUP_x = ρPinv * UP * UP + PP
-        fluxVP_x = ρPinv * UP * VP
-        fluxEP_x = ρPinv * UP * (EP + PP)
-
-        fluxρP_y = VP
-        fluxUP_y = ρPinv * VP * UP
-        fluxVP_y = ρPinv * VP * VP + PP
-        fluxEP_y = ρPinv * VP * (EP + PP)
-
-        λM = ρMinv * abs(nxM * UM + nyM * VM) + sqrt(ρMinv * gamma_d * PM)
-        λP = ρPinv * abs(nxM * UP + nyM * VP) + sqrt(ρPinv * gamma_d * PP)
-        λ  =  max(λM, λP)
+        flux!(F, UM, VM, zero(UM), ρM, EM, yM, UP, VP, zero(UP), ρP, EP, yP)
 
         #Compute Numerical Flux and Update
-        fluxρS = (nxM * (fluxρM_x + fluxρP_x) + nyM * (fluxρM_y + fluxρP_y) +
-                  - λ * (ρP - ρM)) / 2
-        fluxUS = (nxM * (fluxUM_x + fluxUP_x) + nyM * (fluxUM_y + fluxUP_y) +
-                  - λ * (UP - UM)) / 2
-        fluxVS = (nxM * (fluxVM_x + fluxVP_x) + nyM * (fluxVM_y + fluxVP_y) +
-                  - λ * (VP - VM)) / 2
-        fluxES = (nxM * (fluxEM_x + fluxEP_x) + nyM * (fluxEM_y + fluxEP_y) +
-                  - λ * (EP - EM)) / 2
-
+        fluxUS = nxM * F[_U, 1] + nyM * F[_U, 2]
+        fluxVS = nxM * F[_V, 1] + nyM * F[_V, 2]
+        fluxρS = nxM * F[_ρ, 1] + nyM * F[_ρ, 2]
+        fluxES = nxM * F[_E, 1] + nyM * F[_E, 2]
 
         #Update RHS
-        rhs[vidM, _ρ, eM] -= vMJI * sMJ * fluxρS
         rhs[vidM, _U, eM] -= vMJI * sMJ * fluxUS
         rhs[vidM, _V, eM] -= vMJI * sMJ * fluxVS
+        rhs[vidM, _ρ, eM] -= vMJI * sMJ * fluxρS
         rhs[vidM, _E, eM] -= vMJI * sMJ * fluxES
       end
     end
@@ -861,6 +884,8 @@ function facerhs!(::Val{3}, ::Val{N}, rhs::Array, Q, vgeo, sgeo, elems,
   Np = (N+1)^3
   Nfp = (N+1)^2
   nface = 6
+
+  F = similar(Q, (_nstate, 3))
 
   @inbounds for e in elems
     for f = 1:nface
@@ -887,7 +912,6 @@ function facerhs!(::Val{3}, ::Val{N}, rhs::Array, Q, vgeo, sgeo, elems,
           WP = Q[vidP, _W, eP]
           EP = Q[vidP, _E, eP]
           zP = vgeo[vidP, _z, eP]
-          PP = gdm1*(EP - (UP^2 + VP^2 + WP^2)/(2*ρP) - ρP*grav*zP)
         elseif bc == 1
           UnM = nxM * UM + nyM * VM + nzM * WM
           UP = UM - 2 * UnM * nxM
@@ -895,71 +919,25 @@ function facerhs!(::Val{3}, ::Val{N}, rhs::Array, Q, vgeo, sgeo, elems,
           WP = WM - 2 * UnM * nzM
           ρP = ρM
           EP = EM
-          PP = PM
+          zP = zM
         else
           error("Invalid boundary conditions $bc on face $f of element $e")
         end
 
-        ρMinv = 1 / ρM
-        fluxρM_x = UM
-        fluxUM_x = ρMinv * UM * UM + PM
-        fluxVM_x = ρMinv * UM * VM
-        fluxWM_x = ρMinv * UM * WM
-        fluxEM_x = ρMinv * UM * (EM + PM)
-
-        fluxρM_y = VM
-        fluxUM_y = ρMinv * VM * UM
-        fluxVM_y = ρMinv * VM * VM + PM
-        fluxWM_y = ρMinv * VM * WM
-        fluxEM_y = ρMinv * VM * (EM + PM)
-
-        fluxρM_z = WM
-        fluxUM_z = ρMinv * WM * UM
-        fluxVM_z = ρMinv * WM * VM
-        fluxWM_z = ρMinv * WM * WM + PM
-        fluxEM_z = ρMinv * WM * (EM + PM)
-
-        ρPinv = 1 / ρP
-        fluxρP_x = UP
-        fluxUP_x = ρPinv * UP * UP + PP
-        fluxVP_x = ρPinv * UP * VP
-        fluxWP_x = ρPinv * UP * WP
-        fluxEP_x = ρPinv * UP * (EP + PP)
-
-        fluxρP_y = VP
-        fluxUP_y = ρPinv * VP * UP
-        fluxVP_y = ρPinv * VP * VP + PP
-        fluxWP_y = ρPinv * VP * WP
-        fluxEP_y = ρPinv * VP * (EP + PP)
-
-        fluxρP_z = WP
-        fluxUP_z = ρPinv * WP * UP
-        fluxVP_z = ρPinv * WP * VP
-        fluxWP_z = ρPinv * WP * WP + PP
-        fluxEP_z = ρPinv * WP * (EP + PP)
-
-        λM = ρMinv * abs(nxM * UM + nyM * VM + nzM * WM) + sqrt(ρMinv * gamma_d * PM)
-        λP = ρPinv * abs(nxM * UP + nyM * VP + nzM * WP) + sqrt(ρPinv * gamma_d * PP)
-        λ  =  max(λM, λP)
+        flux!(F, UM, VM, WM, ρM, EM, zM, UP, VP, WP, ρP, EP, zP)
 
         #Compute Numerical Flux and Update
-        fluxρS = (nxM * (fluxρM_x + fluxρP_x) + nyM * (fluxρM_y + fluxρP_y) +
-                  nzM * (fluxρM_z + fluxρP_z) - λ * (ρP - ρM)) / 2
-        fluxUS = (nxM * (fluxUM_x + fluxUP_x) + nyM * (fluxUM_y + fluxUP_y) +
-                  nzM * (fluxUM_z + fluxUP_z) - λ * (UP - UM)) / 2
-        fluxVS = (nxM * (fluxVM_x + fluxVP_x) + nyM * (fluxVM_y + fluxVP_y) +
-                  nzM * (fluxVM_z + fluxVP_z) - λ * (VP - VM)) / 2
-        fluxWS = (nxM * (fluxWM_x + fluxWP_x) + nyM * (fluxWM_y + fluxWP_y) +
-                  nzM * (fluxWM_z + fluxWP_z) - λ * (WP - WM)) / 2
-        fluxES = (nxM * (fluxEM_x + fluxEP_x) + nyM * (fluxEM_y + fluxEP_y) +
-                  nzM * (fluxEM_z + fluxEP_z) - λ * (EP - EM)) / 2
-
+        fluxUS = nxM * F[_U, 1] + nyM * F[_U, 2] + nzM * F[_U, 3]
+        fluxVS = nxM * F[_V, 1] + nyM * F[_V, 2] + nzM * F[_V, 3]
+        fluxWS = nxM * F[_W, 1] + nyM * F[_W, 2] + nzM * F[_W, 3]
+        fluxρS = nxM * F[_ρ, 1] + nyM * F[_ρ, 2] + nzM * F[_ρ, 3]
+        fluxES = nxM * F[_E, 1] + nyM * F[_E, 2] + nzM * F[_E, 3]
 
         #Update RHS
-        rhs[vidM, _ρ, eM] -= vMJI * sMJ * fluxρS
         rhs[vidM, _U, eM] -= vMJI * sMJ * fluxUS
         rhs[vidM, _V, eM] -= vMJI * sMJ * fluxVS
         rhs[vidM, _W, eM] -= vMJI * sMJ * fluxWS
+        rhs[vidM, _ρ, eM] -= vMJI * sMJ * fluxρS
         rhs[vidM, _E, eM] -= vMJI * sMJ * fluxES
       end
     end
