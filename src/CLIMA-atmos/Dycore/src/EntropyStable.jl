@@ -996,10 +996,61 @@ function volumerhs!(::Val{3}, ::Val{N}, ::Val{nmoist}, ::Val{ntrace},
   end
 end
 # }}}
+#
+function aln(L, R)
+  ζ = L / R
+  f = (ζ - 1) / (ζ + 1)
+  u = f * f
+  ϵ = eltype(L)(1e-2)
+  F = (u < ϵ) ?  F = 1 + u / 3 + u^2 / 5 + u^3 / 7 : log(ζ) / (2f)
+  (L + R) / 2F
+end
+
+function flux!(F, UM, VM, WM, ρM, EM, zM, UP, VP, WP, ρP, EP, zP, gravity)
+  ρMinv, ρPinv = 1 / ρM, 1/ρP
+  uM, vM, wM = UM * ρMinv, VM * ρMinv, WM * ρMinv
+  uP, vP, wP = UP * ρPinv, VP * ρPinv, WP * ρPinv
+
+  PM = gdm1*(EM - (UM^2 + VM^2 + WM^2)/(2*ρM) - ρM*gravity*zM)
+  PP = gdm1*(EP - (UP^2 + VP^2 + WP^2)/(2*ρP) - ρP*gravity*zP)
+  βM = ρM / 2PM
+  βP = ρP / 2PP
+
+  ua  = (uM + uP) / 2
+  va  = (vM + vP) / 2
+  wa  = (wM + wP) / 2
+  u2a = ((uM^2 + vM^2 + wM^2) + (uP^2 + vP^2 + wP^2)) / 2
+  ρa  = (ρM + ρP) / 2
+  βa = (βM + βP) / 2
+  ρln = aln(ρM, ρP)
+  βln = aln(βM, βP)
+  Φa = gravity * (zM + zP) / 2
+
+  F[_ρ, 1] = ρln * ua
+  F[_ρ, 2] = ρln * va
+  F[_ρ, 3] = ρln * wa
+
+  F[_U, 1] = F[_ρ, 1] * ua + ρa / 2βa
+  F[_V, 1] = F[_ρ, 1] * va
+  F[_W, 1] = F[_ρ, 1] * wa
+
+  F[_U, 2] = F[_ρ, 2] * ua
+  F[_V, 2] = F[_ρ, 2] * va + ρa / 2βa
+  F[_W, 2] = F[_ρ, 2] * wa
+
+  F[_U, 3] = F[_ρ, 3] * ua
+  F[_V, 3] = F[_ρ, 3] * va
+  F[_W, 3] = F[_ρ, 3] * wa + ρa / 2βa
+
+  Efac = 1 / (2*gdm1*βln) - u2a / 2
+  F[_E, 1] = (F[_U, 1] * ua + F[_V, 1] * va + F[_W, 1] * wa) + Efac * F[_ρ, 1]
+  F[_E, 2] = (F[_U, 2] * ua + F[_V, 2] * va + F[_W, 2] * wa) + Efac * F[_ρ, 2]
+  F[_E, 3] = (F[_U, 3] * ua + F[_V, 3] * va + F[_W, 3] * wa) + Efac * F[_ρ, 3]
+end
 
 # {{{ Face RHS (all dimensions)
-function facerhs!(::Val{dim}, ::Val{N}, ::Val{nmoist}, ::Val{ntrace}, rhs::Array,
-                  Q, vgeo, sgeo, gravity, elems, vmapM, vmapP,
+function facerhs!(::Val{dim}, ::Val{N}, ::Val{nmoist}, ::Val{ntrace},
+                  rhs::Array, Q, vgeo, sgeo, gravity, elems, vmapM, vmapP,
                   elemtobndy) where {N, dim, nmoist, ntrace}
   DFloat = eltype(Q)
 
@@ -1016,6 +1067,8 @@ function facerhs!(::Val{dim}, ::Val{N}, ::Val{nmoist}, ::Val{ntrace}, rhs::Array
     Nfp = (N+1) * (N+1)
     nface = 6
   end
+
+  F = similar(Q, (_nstate, 3))
 
   @inbounds for e in elems
     for f = 1:nface
@@ -1050,109 +1103,31 @@ function facerhs!(::Val{dim}, ::Val{N}, ::Val{nmoist}, ::Val{ntrace}, rhs::Array
           WP = WM - 2 * UnM * nzM
           ρP = ρM
           EP = EM
+          yorzP = yorzM
           PP = PM
         else
           error("Invalid boundary conditions $bc on face $f of element $e")
         end
 
-        ρMinv = 1 / ρM
-        fluxρM_x = UM
-        fluxUM_x = ρMinv * UM * UM + PM
-        fluxVM_x = ρMinv * UM * VM
-        fluxWM_x = ρMinv * UM * WM
-        fluxEM_x = ρMinv * UM * (EM + PM)
-
-        fluxρM_y = VM
-        fluxUM_y = ρMinv * VM * UM
-        fluxVM_y = ρMinv * VM * VM + PM
-        fluxWM_y = ρMinv * VM * WM
-        fluxEM_y = ρMinv * VM * (EM + PM)
-
-        fluxρM_z = WM
-        fluxUM_z = ρMinv * WM * UM
-        fluxVM_z = ρMinv * WM * VM
-        fluxWM_z = ρMinv * WM * WM + PM
-        fluxEM_z = ρMinv * WM * (EM + PM)
-
-        ρPinv = 1 / ρP
-        fluxρP_x = UP
-        fluxUP_x = ρPinv * UP * UP + PP
-        fluxVP_x = ρPinv * UP * VP
-        fluxWP_x = ρPinv * UP * WP
-        fluxEP_x = ρPinv * UP * (EP + PP)
-
-        fluxρP_y = VP
-        fluxUP_y = ρPinv * VP * UP
-        fluxVP_y = ρPinv * VP * VP + PP
-        fluxWP_y = ρPinv * VP * WP
-        fluxEP_y = ρPinv * VP * (EP + PP)
-
-        fluxρP_z = WP
-        fluxUP_z = ρPinv * WP * UP
-        fluxVP_z = ρPinv * WP * VP
-        fluxWP_z = ρPinv * WP * WP + PP
-        fluxEP_z = ρPinv * WP * (EP + PP)
-
-        λM = ρMinv * abs(nxM * UM + nyM * VM + nzM * WM) + sqrt(ρMinv * gamma_d * PM)
-        λP = ρPinv * abs(nxM * UP + nyM * VP + nzM * WP) + sqrt(ρPinv * gamma_d * PP)
-        λ  =  max(λM, λP)
+        flux!(F, UM, VM, WM, ρM, EM, yorzM, UP, VP, WP, ρP, EP, yorzP, gravity)
 
         #Compute Numerical Flux and Update
-        fluxρS = (nxM * (fluxρM_x + fluxρP_x) + nyM * (fluxρM_y + fluxρP_y) +
-                  nzM * (fluxρM_z + fluxρP_z) - λ * (ρP - ρM)) / 2
-        fluxUS = (nxM * (fluxUM_x + fluxUP_x) + nyM * (fluxUM_y + fluxUP_y) +
-                  nzM * (fluxUM_z + fluxUP_z) - λ * (UP - UM)) / 2
-        fluxVS = (nxM * (fluxVM_x + fluxVP_x) + nyM * (fluxVM_y + fluxVP_y) +
-                  nzM * (fluxVM_z + fluxVP_z) - λ * (VP - VM)) / 2
-        fluxWS = (nxM * (fluxWM_x + fluxWP_x) + nyM * (fluxWM_y + fluxWP_y) +
-                  nzM * (fluxWM_z + fluxWP_z) - λ * (WP - WM)) / 2
-        fluxES = (nxM * (fluxEM_x + fluxEP_x) + nyM * (fluxEM_y + fluxEP_y) +
-                  nzM * (fluxEM_z + fluxEP_z) - λ * (EP - EM)) / 2
+        fluxUS = nxM * F[_U, 1] + nyM * F[_U, 2] + nzM * F[_U, 3]
+        fluxVS = nxM * F[_V, 1] + nyM * F[_V, 2] + nzM * F[_V, 3]
+        fluxWS = nxM * F[_W, 1] + nyM * F[_W, 2] + nzM * F[_W, 3]
+        fluxρS = nxM * F[_ρ, 1] + nyM * F[_ρ, 2] + nzM * F[_ρ, 3]
+        fluxES = nxM * F[_E, 1] + nyM * F[_E, 2] + nzM * F[_E, 3]
 
         #Update RHS
-        rhs[vidM, _ρ, eM] -= vMJI * sMJ * fluxρS
         rhs[vidM, _U, eM] -= vMJI * sMJ * fluxUS
         rhs[vidM, _V, eM] -= vMJI * sMJ * fluxVS
         rhs[vidM, _W, eM] -= vMJI * sMJ * fluxWS
+        rhs[vidM, _ρ, eM] -= vMJI * sMJ * fluxρS
         rhs[vidM, _E, eM] -= vMJI * sMJ * fluxES
 
-        # Calculate the velocity
-        uM, vM, wM = ρMinv * UM, ρMinv * VM, ρMinv * WM
-        uP, vP, wP = ρPinv * UP, ρPinv * VP, ρPinv * WP
-
-        # FIXME: Will need to be updated for other bcs...
-        vidP = bc == 0 ? vidP : vidM
-
-        # loop over moist variables
-        # FIXME: Currently just passive advection
-        for m = 1:nmoist
-          s = _nstate + m
-          QmoistM, QmoistP = Q[vidM, s, eM], Q[vidP, s, eP]
-
-          fluxM_x, fluxP_x = uM * QmoistM, uP * QmoistP
-          fluxM_y, fluxP_y = vM * QmoistM, vP * QmoistP
-          fluxM_z, fluxP_z = wM * QmoistM, wP * QmoistP
-
-          fluxS = (nxM * (fluxM_x + fluxP_x) + nyM * (fluxM_y + fluxP_y) +
-                   nzM * (fluxM_z + fluxP_z) - λ * (QmoistP - QmoistM)) / 2
-
-          rhs[vidM, s, eM] -= vMJI * sMJ * fluxS
-        end
-
-        # loop over tracer variables
-        for t = 1:ntrace
-          s = _nstate + nmoist + t
-          QtraceM, QtraceP = Q[vidM, s, eM], Q[vidP, s, eP]
-
-          fluxM_x, fluxP_x = uM * QtraceM, uP * QtraceP
-          fluxM_y, fluxP_y = vM * QtraceM, vP * QtraceP
-          fluxM_z, fluxP_z = wM * QtraceM, wP * QtraceP
-
-          fluxS = (nxM * (fluxM_x + fluxP_x) + nyM * (fluxM_y + fluxP_y) +
-                   nzM * (fluxM_z + fluxP_z) - λ * (QtraceP - QtraceM)) / 2
-
-          rhs[vidM, s, eM] -= vMJI * sMJ * fluxS
-        end
+        # Moist and tracers not implemented yet
+        @assert nmoist == 0
+        @assert ntrace == 0
       end
     end
   end
