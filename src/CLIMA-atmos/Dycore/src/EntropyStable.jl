@@ -697,7 +697,7 @@ function flux!(F, UM, VM, WM, ρM, EM, zM, UP, VP, WP, ρP, EP, zP, gravity)
   βa = (βM + βP) / 2
   ρln = aln(ρM, ρP)
   βln = aln(βM, βP)
-  Φa = gravity * (zM + zP) / 2
+  ϕa = gravity * (zM + zP) / 2
 
   F[_ρ, 1] = ρln * ua
   F[_ρ, 2] = ρln * va
@@ -715,7 +715,7 @@ function flux!(F, UM, VM, WM, ρM, EM, zM, UP, VP, WP, ρP, EP, zP, gravity)
   F[_V, 3] = F[_ρ, 3] * va
   F[_W, 3] = F[_ρ, 3] * wa + ρa / 2βa
 
-  Efac = 1 / (2*gdm1*βln) - u2a / 2
+  Efac = 1 / (2*gdm1*βln) - u2a / 2 + ϕa
   F[_E, 1] = (F[_U, 1] * ua + F[_V, 1] * va + F[_W, 1] * wa) + Efac * F[_ρ, 1]
   F[_E, 2] = (F[_U, 2] * ua + F[_V, 2] * va + F[_W, 2] * wa) + Efac * F[_ρ, 2]
   F[_E, 3] = (F[_U, 3] * ua + F[_V, 3] * va + F[_W, 3] * wa) + Efac * F[_ρ, 3]
