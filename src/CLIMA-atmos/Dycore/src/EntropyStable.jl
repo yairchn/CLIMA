@@ -964,7 +964,7 @@ function volumerhs!(::Val{3}, ::Val{N}, ::Val{nmoist}, ::Val{ntrace},
       end
 
       # FIXME: buoyancy term
-      rhs[i, j, _W, e] -= ρijk * gravity
+      rhs[i, j, k, _W, e] -= ρijk * gravity
     end
   end
 end
