@@ -45,7 +45,7 @@ function main()
 
   timeinitial = 0.0
   timeend = 1000
-  Ne = 10
+  Ne = 20
   N  = 4
 
   #=
@@ -136,14 +136,14 @@ function main()
         # Setup the vtk callback
         mkpath("viz")
         dump_vtk(step) = AD.writevtk(runner,
-                                     "viz/RTB"*
+                                     "viz/RTB_ES"*
                                      "_dim_$(dim)"*
                                      "_DFloat_$(DFloat)"*
                                      "_backend_$(backend)"*
                                      "_mpirank_$(mpirank)"*
                                      "_step_$(step)")
         step = 0
-        cbvtk = AD.GenericCallbacks.EveryXSimulationSteps(10) do
+        cbvtk = AD.GenericCallbacks.EveryXSimulationSteps(200) do
           # TODO: We should add queries back to time stepper for this
           step += 1
           dump_vtk(step)
