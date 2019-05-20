@@ -374,8 +374,8 @@ r_v &amp; = \frac{\qt-\ql    - \qi}{1 - \qt} \\
 \SDi{b} &amp; = \SDi{b}^{\dagger} - \sum_j a_j \SDj{b}^{\dagger} \\
 \alpha_i &amp; = \frac{\SDi{\Rm} \SDi{T}}{\pRef} \\
 \end{align}\]</div><p>where additional variable definitions are in:</p><ul><li><p><a href="#Reference-state-profiles-1">Reference state profiles</a> (<span>$\pRef{}$</span>, <span>$\rhoRef{}$</span>, and <span>$\alphaRef{}$</span>).</p></li><li><p><a href="#Phase-partition-1">Phase partition</a> <span>$\PhasePartition, \qt, \qv, \ql, \qi, \qvsat$</span>.</p></li><li><p><a href="#Temperature-1">Temperature</a> (<span>$T$</span> and <span>$\TDry$</span>).</p></li></ul><h2><a class="nav-anchor" id="Buoyancy-gradient-1" href="#Buoyancy-gradient-1">Buoyancy gradient</a></h2><h3><a class="nav-anchor" id="(\\qt,-\\ThetaLiqIce,-\\pRef,-\\rhoRef)-formulation-1" href="#(\\qt,-\\ThetaLiqIce,-\\pRef,-\\rhoRef)-formulation-1">(<span>$\qt, \ThetaLiqIce, \pRef, \rhoRef$</span>)-formulation</a></h3><div>\[\begin{align}\label{eq:BuoyancyGradLong}
-\SDi{\BuoyancyGrad} &amp; = - \PD_z \SDi{\ThetaLiqIce}
-\left[ (1-f_c) \PD_{\ThetaLiqIce} b |_d  + f_c \PD_{\ThetaLiqIce} b |_s \right] -
+\SDi{\BuoyancyGrad} &amp; = \PD_z \SDi{\ThetaLiqIce}
+\left[ (1-f_c) \PD_{\ThetaLiqIce} b |_d  + f_c \PD_{\ThetaLiqIce} b |_s \right] +
 \PD_z \SDi{\qt}      \left[ (1-f_c) \PD_{\qt} b |_d + f_c \PD_{\qt} b |_s \right] \\
 f_c &amp;= 0 \qquad \text{good for simple cases, need to confirm for more complex cases} \\
 \PD_{\ThetaLiqIce} b |_d &amp; = \frac{\grav}{\DM{\ThetaVirt}} \left[ 1 + \left( \frac{\Rv}{\Rd} - 1 \right) \SDi{\qt} \right] \\
@@ -407,18 +407,18 @@ R_g &amp;= \frac{\BuoyancyGrad}{|S|^2} \\
 \end{align}\]</div><p>where additional variable definitions are in:</p><ul><li><p><a href="#Shear-production-1">Shear production</a> (<span>$S$</span>).</p></li><li><p><a href="#Monin-Obhukov-length-1">Monin-Obhukov length</a> (<span>$\MOLen$</span>).</p></li><li><p><a href="#Buoyancy-gradient-1">Buoyancy gradient</a> (<span>$\BuoyancyGrad$</span>).</p></li></ul><h2><a class="nav-anchor" id="Mixing-length-1" href="#Mixing-length-1">Mixing length</a></h2><div class="admonition note"><div class="admonition-title">Note</div><div class="admonition-text"><p>These mixing length have been tested for the environment, not the updrafts</p></div></div><div>\[\begin{align}\label{eq:MixingLength}
 \SDio{{l_{mix}^m,}} &amp;= \frac{\sum_j l_j e^{-l_j}}{\sum_j e^{-l_j}}, \qquad j = 1,2,3 \\
 l_1 &amp;= \frac{\sqrt{c_w\SDe{TKE}}}{\SDe{N}} \\
+c_w &amp;= 0.4 \\
 \SDe{N} &amp;= \frac{\grav \PD_z \SDe{\ThetaVirt}}{\SDe{\ThetaVirt}} , \qquad \text{(buoyancy frequency of environment)} \\
-l_2 &amp;= \frac{\VKConst z}{c_K \kappa^* \phi_m(\xi)} \\
-\xi &amp;= z/\MOLen \\
-\phi_m(\xi) &amp;= \left( 1 + a_l \frac{z}{\MOLen} \right)^{-b_l} \\
-(a_l, b_l) &amp;=
+l_2 &amp;= \frac{\VKConst z}{c_K \kappa^* \phi_m(z/\MOLen)} \\
+\phi_m(\xi) &amp;= \left( 1 + a_l(\MOLen) \xi \right)^{-b_l(\MOLen)} \\
+(a_l(\MOLen), b_l(\MOLen)) &amp;=
 \begin{cases}
   (-100, 0.2) &amp; \MOLen &lt; 0 \\
   (2.7, -1) &amp; \text{otherwise} \\
 \end{cases} \\
 \kappa^* &amp;= \frac{\FrictionVelocity}{\sqrt{\SDe{TKE}}} \\
 l_3 &amp;= \sqrt{\frac{c_{\varepsilon}}{c_K}} \sqrt{\SDe{TKE}}
-\left[ |S|^2 - \frac{1}{Pr(z)} \BuoyancyGrad \right]^{-1/2} \\
+\left[ \max(|S|^2 - \frac{1}{Pr(z)} \BuoyancyGrad, 0) \right]^{-1/2} \\
 \end{align}\]</div><p>where additional variable definitions are in:</p><ul><li><p><a href="#Constants-1">Constants</a>.</p></li><li><p><a href="#Shear-production-1">Shear production</a> (<span>$S$</span>).</p></li><li><p><a href="#Monin-Obhukov-length-1">Monin-Obhukov length</a> (<span>$\MOLen$</span>).</p></li><li><p><a href="#Friction-velocity-1">Friction velocity</a> (<span>$\FrictionVelocity$</span>).</p></li><li><p><a href="#Buoyancy-gradient-1">Buoyancy gradient</a> (<span>$\BuoyancyGrad$</span>).</p></li><li><p><a href="#Potential-temperatures-1">Potential temperatures</a> (<span>$\ThetaDry$</span>, <span>$\ThetaVirt$</span>).</p></li><li><p><a href="#Prandtl-number-1">Prandtl number</a> (<span>$Pr$</span>).</p></li></ul><p>Smoothing function is provided in python file. The Prandtl number was used from Eq. 75 in Dan Li 2019 &quot;Turbulent Prandtl number in the atmospheric BL - where are we now&quot;.</p><h2><a class="nav-anchor" id="Eddy-diffusivity-1" href="#Eddy-diffusivity-1">Eddy diffusivity</a></h2><div>\[\begin{align}\label{eq:EddyDiffusivity}
 \SDi{\Km} &amp; = \begin{cases}
 c_K \SDio{{l_{mix},}} \sqrt{\SDi{TKE}} &amp; i = \iEnv \\
