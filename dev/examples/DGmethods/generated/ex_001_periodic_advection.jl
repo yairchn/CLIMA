@@ -6,6 +6,7 @@ using CLIMA.MPIStateArrays
 using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
+using CLIMA.Vtk
 using LinearAlgebra
 using Logging
 using Dates
@@ -98,7 +99,7 @@ let
   Q = MPIStateArray(spatialdiscretization, initialcondition!)
 
   filename = @sprintf("initialcondition_mpirank%04d", MPI.Comm_rank(mpicomm))
-  DGBalanceLawDiscretizations.writevtk(filename, Q, spatialdiscretization,
+  writevtk(filename, Q, spatialdiscretization,
                                        ("q",))
 
   h = 1 / Ne                           # element size
@@ -112,7 +113,7 @@ let
   solve!(Q, lsrk; timeend = finaltime)
 
   filename = @sprintf("finalsolution_mpirank%04d", MPI.Comm_rank(mpicomm))
-  DGBalanceLawDiscretizations.writevtk(filename, Q, spatialdiscretization,
+  writevtk(filename, Q, spatialdiscretization,
                                        ("q",))
 
   Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z
@@ -140,7 +141,7 @@ let
   spatialdiscretization = setupDG(mpicomm, dim, Ne, polynomialorder)
   Q = MPIStateArray(spatialdiscretization, initialcondition!)
   filename = @sprintf("initialcondition_mpirank%04d", MPI.Comm_rank(mpicomm))
-  DGBalanceLawDiscretizations.writevtk(filename, Q, spatialdiscretization,
+  writevtk(filename, Q, spatialdiscretization,
                                        ("q",))
   h = 1 / Ne
   CFL = h / maximum(abs.(uvec[1:dim]))
@@ -162,7 +163,7 @@ let
     vtk_step += 1
     filename = @sprintf("vtk/advection_mpirank%04d_step%04d",
                          MPI.Comm_rank(mpicomm), vtk_step)
-    DGBalanceLawDiscretizations.writevtk(filename, Q, spatialdiscretization,
+    writevtk(filename, Q, spatialdiscretization,
                                          ("q",))
     nothing
   end
@@ -189,7 +190,7 @@ let
          callbacks = (cb_store_norm, cb_vtk, cb_info))
 
   filename = @sprintf("finalsolution_mpirank%04d", MPI.Comm_rank(mpicomm))
-  DGBalanceLawDiscretizations.writevtk(filename, Q, spatialdiscretization,
+  writevtk(filename, Q, spatialdiscretization,
                                        ("q",))
 
   Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z
