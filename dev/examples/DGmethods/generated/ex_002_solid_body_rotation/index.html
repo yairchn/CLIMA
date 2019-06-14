@@ -94,7 +94,7 @@ end</code></pre><h3><a class="nav-anchor" id="Initializing-and-run-the-DG-method
 
   h = 1 / Ne</code></pre><p>Since we are on the <span>$[-1, 1]^d$</span> domain, the maximum velocity will by <span>$2\pi$</span>, thus this defines the CFL restriction</p><pre><code class="language-julia">  CFL = h / (2π)
   dt = CFL / polynomialorder^2
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
   finaltime = 1.0</code></pre><p>For simplicity we only include the vtk callback</p><pre><code class="language-julia">  vtk_step = 0
   mkpath(&quot;vtk&quot;)
   cb_vtk = GenericCallbacks.EveryXSimulationSteps(20) do
@@ -153,7 +153,7 @@ end</code></pre><pre><code class="language-none">┌ Info: Run with
     h = 1 / Ne
     CFL = h / (2π)
     dt = CFL / polynomialorder^2
-    lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+    lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
     solve!(Q, lsrk; timeend = finaltime)
 
@@ -309,7 +309,7 @@ let
 
   CFL = h / (2π)
   dt = CFL / polynomialorder^2
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
   finaltime = 1.0
 
   vtk_step = 0
@@ -370,7 +370,7 @@ let
     h = 1 / Ne
     CFL = h / (2π)
     dt = CFL / polynomialorder^2
-    lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+    lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
     solve!(Q, lsrk; timeend = finaltime)
 

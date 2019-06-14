@@ -66,7 +66,7 @@ end</code></pre><p>The input argument <code>dim</code> is the &quot;real&quot; d
   dt = CFL / polynomialorder^2         # DG time step scaling (for this
                                        # particular RK scheme could go with a
                                        # factor of ~2 larger time step)
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)</code></pre><p>Here we run the ODE solver until the final time <code>timeend</code> using <code>Q</code> as the initial condition <code>Q</code>. The solution will be updated in place so that the final solution will also be stored in <code>Q</code>.</p><pre><code class="language-julia">  finaltime = 1.0
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)</code></pre><p>Here we run the ODE solver until the final time <code>timeend</code> using <code>Q</code> as the initial condition <code>Q</code>. The solution will be updated in place so that the final solution will also be stored in <code>Q</code>.</p><pre><code class="language-julia">  finaltime = 1.0
   solve!(Q, lsrk; timeend = finaltime)</code></pre><p>The final solution can be visualized in a similar manner to the initial condition</p><pre><code class="language-julia">  filename = @sprintf(&quot;finalsolution_mpirank%04d&quot;, MPI.Comm_rank(mpicomm))
   writevtk(filename, Q, spatialdiscretization,
                                        (&quot;q&quot;,))</code></pre><p>Using the <code>finaltime</code> and <code>exactsolution!</code> we can calculate the exact solution</p><pre><code class="language-julia">  Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z
@@ -97,7 +97,7 @@ end</code></pre><pre><code class="language-none">┌ Info: Run with
   h = 1 / Ne
   CFL = h / maximum(abs.(uvec[1:dim]))
   dt = CFL / polynomialorder^2
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
   finaltime = 1.0</code></pre><p>The ODE solver callback functions are called both before the ODE solver begins and then after each time step.</p><p>For instance if a user wanted to store the norm of the solution every time step the following callback could be used</p><pre><code class="language-julia">  store_norm_index = 0
   normQ = Array{Float64}(undef, ceil(Int, finaltime / dt))
   function cb_store_norm()
@@ -147,17 +147,17 @@ end</code></pre><pre><code class="language-none">┌ Info: Run with
                    &quot;&quot;&quot;, dim, Ne, polynomialorder, error)
   end
 end</code></pre><pre><code class="language-none">┌ Info: Update
-│ simtime = 2.9843750000000002e-01
+│ simtime = 2.4062499999999939e-01
 │ runtime = 00:00:00
-└ norm(Q) = 2.2795853020070558e+00
+└ norm(Q) = 2.2795853020715544e+00
 ┌ Info: Update
-│ simtime = 6.4843750000000500e-01
+│ simtime = 5.2343750000000322e-01
 │ runtime = 00:00:01
-└ norm(Q) = 2.2795853016171885e+00
+└ norm(Q) = 2.2795853017564967e+00
 ┌ Info: Update
-│ simtime = 9.9843750000000997e-01
+│ simtime = 8.0937500000000728e-01
 │ runtime = 00:00:02
-└ norm(Q) = 2.2795853012272898e+00
+└ norm(Q) = 2.2795853014379239e+00
 ┌ Info: Run with
 │ dim              = 2
 │ Ne               = 20
@@ -188,7 +188,7 @@ end</code></pre><pre><code class="language-none">┌ Info: Update
     h = 1 / Ne
     CFL = h / maximum(abs.(uvec[1:dim]))
     dt = CFL / polynomialorder^2
-    lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+    lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
     solve!(Q, lsrk; timeend = finaltime)
 
@@ -335,7 +335,7 @@ let
   dt = CFL / polynomialorder^2         # DG time step scaling (for this
                                        # particular RK scheme could go with a
                                        # factor of ~2 larger time step)
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
   finaltime = 1.0
   solve!(Q, lsrk; timeend = finaltime)
@@ -374,7 +374,7 @@ let
   h = 1 / Ne
   CFL = h / maximum(abs.(uvec[1:dim]))
   dt = CFL / polynomialorder^2
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
   finaltime = 1.0
 
   store_norm_index = 0
@@ -461,7 +461,7 @@ let
     h = 1 / Ne
     CFL = h / maximum(abs.(uvec[1:dim]))
     dt = CFL / polynomialorder^2
-    lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+    lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
     solve!(Q, lsrk; timeend = finaltime)
 

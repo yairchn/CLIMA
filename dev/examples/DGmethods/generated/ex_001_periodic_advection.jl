@@ -107,7 +107,7 @@ let
   dt = CFL / polynomialorder^2         # DG time step scaling (for this
                                        # particular RK scheme could go with a
                                        # factor of ~2 larger time step)
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
   finaltime = 1.0
   solve!(Q, lsrk; timeend = finaltime)
@@ -146,7 +146,7 @@ let
   h = 1 / Ne
   CFL = h / maximum(abs.(uvec[1:dim]))
   dt = CFL / polynomialorder^2
-  lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
   finaltime = 1.0
 
   store_norm_index = 0
@@ -233,7 +233,7 @@ let
     h = 1 / Ne
     CFL = h / maximum(abs.(uvec[1:dim]))
     dt = CFL / polynomialorder^2
-    lsrk = LowStorageRungeKutta(spatialdiscretization, Q; dt = dt, t0 = 0)
+    lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
     solve!(Q, lsrk; timeend = finaltime)
 
