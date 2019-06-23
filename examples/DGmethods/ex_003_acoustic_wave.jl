@@ -444,6 +444,8 @@ let
 
   lsrk = LSRK54CarpenterKennedy(spatialdiscretization, Q; dt = dt, t0 = 0)
 
+  filter = Grids.CutoffFilter(spatialdiscretization.grid)
+
   ## Uncomment line below to extend simulation time and output less frequently
   #=
   finaltime = 33 * 60 * 60
@@ -500,6 +502,14 @@ let
     nothing
   end
 
+  cb_filter = GenericCallbacks.EveryXSimulationSteps(1) do
+    DGBalanceLawDiscretizations.apply!(Q, 1:_nstate, spatialdiscretization,
+                                       filter;
+                                       horizontal=false,
+                                       vertical=true)
+    nothing
+  end
+
   ## Setup a callback to display simulation runtime information
   starttime = Ref(now())
   cb_info = GenericCallbacks.EveryXWallTimeSeconds(60, mpicomm) do (init=false)
@@ -518,7 +528,8 @@ let
     end
   end
 
-  solve!(Q, lsrk; timeend = finaltime, callbacks = (cb_vtk, cb_info))
+  solve!(Q, lsrk; timeend = finaltime,
+         callbacks = (cb_vtk, cb_filter, cb_info))
 
 end
 #md nothing # hide
