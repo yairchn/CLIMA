@@ -16,6 +16,7 @@
 #}
 
 using MPI
+using CLIMA
 using CLIMA.Topologies
 using CLIMA.Grids
 using CLIMA.DGBalanceLawDiscretizations
@@ -34,13 +35,14 @@ using CLIMA.PlanetParameters
 using CLIMA.MoistThermodynamics
 using CLIMA.Microphysics
 
-@static if Base.find_package("CuArrays") !== nothing
+@static if haspkg("CuArrays")
   using CUDAdrv
   using CUDAnative
   using CuArrays
-  const ArrayTypes = VERSION >= v"1.2-pre.25" ? (Array, CuArray) : (Array,)
+  CuArrays.allowscalar(false)
+  const DeviceArrayType = CuArray
 else
-  const ArrayTypes = (Array, )
+  const DeviceArrayType = Array
 end
 
 const _nstate = 7
@@ -53,10 +55,10 @@ const _nauxcstate = 3
 const _c_z, _c_x, _c_p = 1:_nauxcstate
 
 const _nviscstate = 1
-const _v_ρ_q_rai = 1
+const _v_ρq_rai, = 1:_nviscstate
 
 const _ngradstate = 1
-const _states_for_gradient_transform = _ρq_rai
+const _states_for_gradient_transform = (_ρq_rai,)
 
 # preflux computation
 @inline function preflux(Q, _...)
@@ -78,6 +80,8 @@ const _states_for_gradient_transform = _ρq_rai
     else
       rain_w = DF(0)
     end
+
+    @show(ρ, q_rai, q_tot)
 
     return (u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot)
   end
@@ -103,6 +107,7 @@ end
     QP[_ρq_rai] = DF(0)
 
     auxM .= auxP
+    VFP .= DF(0)
 
     # Required return from this function is either nothing
     # or preflux with plus state as arguments
@@ -189,26 +194,37 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
 end
 
 # viscous flux
-gradient_vars!(grad_list, Q, aux, t, _...) = gradient_vars!(grad_list, Q, aux,
-                                                            t, preflux(Q)...)
-@inline function gradient_vars!(grad_list, Q, aux, t, u, w, rain_w, ρ,
+gradient_transform!(grad_list, Q, aux, t, _...) =
+  gradient_transform!(grad_list, Q, aux, t, preflux(Q)...)
+@inline function gradient_transform!(grad_list, Q, aux, t, u, w, rain_w, ρ,
                                 q_tot, q_liq, q_rai, e_tot)
     @inbounds begin
-        grad_list[_v_ρ_q_rai] = q_rai
+        grad_list[_v_ρq_rai] = q_rai
+        @show(grad_list[_v_ρq_rai], _v_ρq_rai, sizeof(grad_list), q_rai, q_tot, ρ)
+        @show("  ")
     end
 end
-@inline function compute_stresses!(QV, grad_vel, _...)
+
+@inline function compute_stresses!(QV, grad_rain, _...)
     @inbounds begin
         # compute gradients of ρq_rai
-        dz_id = 2
-        QV[_v_ρ_q_rai] = grad_vel[dz_id, _v_ρ_q_rai]
+        dz_id = 1
+        QV[_v_ρq_rai] = grad_rain[dz_id, _v_ρq_rai]
     end
 end
+
 @inline function stresses_boundary_penalty!(QV, _...)
   QV .= 0
 end
-@inline function stresses_penalty!(QV, _...)
-  QV .= 0
+
+@inline function viscous_penalty!(QV, nM, grad_listM, QM, aM,
+                                          grad_listP, QP, aP, t)
+  grad_rain = similar(QV, Size(1, 1))
+  grad_rain[1, 1] = nM[1] * (grad_listP[1] - grad_listM[1]) / 2
+
+  @show(grad_rain[1, 1] , sizeof(grad_listP))
+
+  compute_stresses!(QV, grad_rain)
 end
 
 # physical flux function
@@ -234,7 +250,9 @@ eulerflux!(F, Q, QV, aux, t) = eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
     F[2, _ρq_rai] = (w + rain_w) *  ρ * q_rai
     F[2, _ρe_tot] =  w           * (ρ * e_tot + p)
 
-    #F[2, _ρq_rai] -= QV[_v_ρ_q_rai] * DF(13)
+    @show(QV[_v_ρq_rai])
+
+    F[2, _ρq_rai] -= QV[_v_ρq_rai] * DF(13)
   end
 end
 
@@ -319,9 +337,9 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
                            states_for_gradient_transform =
                              _states_for_gradient_transform,
                            number_viscous_states = _nviscstate,
-                           gradient_transform! = gradient_vars!,
+                           gradient_transform! = gradient_transform!,
                            viscous_transform! = compute_stresses!,
-                           viscous_penalty! = stresses_penalty!,
+                           viscous_penalty! = viscous_penalty!,
                            viscous_boundary_penalty! =
                              stresses_boundary_penalty!
                            )
@@ -427,8 +445,7 @@ end
 
 function run(dim, Ne, N, timeend, DFloat)
 
-  #ArrayType = CuArray
-  ArrayType = Array
+  ArrayType = DeviceArrayType
 
   MPI.Initialized() || MPI.Init()
   Sys.iswindows() || (isinteractive() && MPI.finalize_atexit())
