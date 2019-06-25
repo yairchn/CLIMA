@@ -16,6 +16,7 @@
 #}
 
 using MPI
+using CLIMA
 using CLIMA.Topologies
 using CLIMA.Grids
 using CLIMA.DGBalanceLawDiscretizations
@@ -34,13 +35,14 @@ using CLIMA.PlanetParameters
 using CLIMA.MoistThermodynamics
 using CLIMA.Microphysics
 
-@static if Base.find_package("CuArrays") !== nothing
+@static if haspkg("CuArrays")
   using CUDAdrv
   using CUDAnative
   using CuArrays
-  const ArrayTypes = VERSION >= v"1.2-pre.25" ? (Array, CuArray) : (Array,)
+  CuArrays.allowscalar(false)
+  const DeviceArrayType = CuArray
 else
-  const ArrayTypes = (Array, )
+  const DeviceArrayType = Array
 end
 
 const _nstate = 7
@@ -153,10 +155,6 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
     x = aux[_c_x]
     z = aux[_c_z]
     p = aux[_c_p]
-
-    if ρ < DF(1)
-      @show(ρ, x, z)
-    end
 
     S .= 0
     if(q_tot >= DF(0) && q_liq >= DF(0) && q_rai >= DF(0))
@@ -302,8 +300,8 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
   writevtk("initial_condition", Q, spacedisc, statenames)
 
   lsrk = LSRK54CarpenterKennedy(spacedisc, Q; dt = dt, t0 = 0)
-  @show(minimum(diff(collect(lsrk.RKC))) * dt )
-  @show(maximum(diff(collect(lsrk.RKC))) * dt )
+  #@show(minimum(diff(collect(lsrk.RKC))) * dt )
+  #@show(maximum(diff(collect(lsrk.RKC))) * dt )
 
   io = MPI.Comm_rank(mpicomm) == 0 ? stdout : devnull
   eng0 = norm(Q)
@@ -388,8 +386,7 @@ end
 
 function run(dim, Ne, N, timeend, DFloat)
 
-  #ArrayType = CuArray
-  ArrayType = Array
+  ArrayType = DeviceArrayType
 
   MPI.Initialized() || MPI.Init()
   Sys.iswindows() || (isinteractive() && MPI.finalize_atexit())
