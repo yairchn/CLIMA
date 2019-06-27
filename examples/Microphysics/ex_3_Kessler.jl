@@ -57,8 +57,8 @@ const _c_z, _c_x, _c_p = 1:_nauxcstate
 const _nviscstate = 1
 const _v_ρq_rai, = 1:_nviscstate
 
-const _ngradstate = 1
-const _states_for_gradient_transform = (_ρq_rai,)
+const _ngradstate = 2
+const _states_for_gradient_transform = (_ρ, _ρq_rai,)
 
 # preflux computation
 @inline function preflux(Q, _...)
@@ -71,8 +71,12 @@ const _states_for_gradient_transform = (_ρq_rai,)
     u, w, q_tot, q_liq, q_rai, e_tot = ρu / ρ, ρw / ρ,
                                        ρq_tot / ρ, ρq_liq / ρ,
                                        ρq_rai / ρ, ρe_tot / ρ
-
     DF = eltype(ρ)
+
+    ρq_tot = max(DF(0), ρq_tot)
+    ρq_rai = max(DF(0), ρq_rai)
+    ρq_liq = max(DF(0), ρq_liq)
+
     if(q_rai >= DF(0))
       # compute rain fall speed
       #rain_w = terminal_velocity(q_rai, ρ)# TODO - tmp
@@ -81,7 +85,7 @@ const _states_for_gradient_transform = (_ρq_rai,)
       rain_w = DF(0)
     end
 
-    @show(ρ, q_rai, q_tot)
+    #@show(ρ, q_rai, q_tot)
 
     return (u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot)
   end
@@ -164,9 +168,9 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
     z = aux[_c_z]
     p = aux[_c_p]
 
-    if ρ < DF(1)
-      @show(ρ, x, z)
-    end
+    #if ρ < DF(1)
+    #  @show(ρ, x, z)
+    #end
 
     S .= 0
     if(q_tot >= DF(0) && q_liq >= DF(0) && q_rai >= DF(0))
@@ -194,14 +198,12 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
 end
 
 # viscous flux
-gradient_transform!(grad_list, Q, aux, t, _...) =
-  gradient_transform!(grad_list, Q, aux, t, preflux(Q)...)
-@inline function gradient_transform!(grad_list, Q, aux, t, u, w, rain_w, ρ,
-                                q_tot, q_liq, q_rai, e_tot)
+@inline function gradient_transform!(grad_list, Q, aux, t)
     @inbounds begin
+        DF = eltype(Q)
+        ρ, ρq_rai = Q[1], max(Q[2], DF(0))
+        q_rai = ρq_rai / ρ
         grad_list[_v_ρq_rai] = q_rai
-        @show(grad_list[_v_ρq_rai], _v_ρq_rai, sizeof(grad_list), q_rai, q_tot, ρ)
-        @show("  ")
     end
 end
 
@@ -221,8 +223,6 @@ end
                                           grad_listP, QP, aP, t)
   grad_rain = similar(QV, Size(1, 1))
   grad_rain[1, 1] = nM[1] * (grad_listP[1] - grad_listM[1]) / 2
-
-  @show(grad_rain[1, 1] , sizeof(grad_listP))
 
   compute_stresses!(QV, grad_rain)
 end
@@ -250,9 +250,7 @@ eulerflux!(F, Q, QV, aux, t) = eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
     F[2, _ρq_rai] = (w + rain_w) *  ρ * q_rai
     F[2, _ρe_tot] =  w           * (ρ * e_tot + p)
 
-    @show(QV[_v_ρq_rai])
-
-    F[2, _ρq_rai] -= QV[_v_ρq_rai] * DF(13)
+    F[2, _ρq_rai] -= QV[_v_ρq_rai] * DF(0.1)
   end
 end
 
@@ -387,7 +385,7 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
   step = [0]
   mkpath("vtk")
 
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(60) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
 
     DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc,
                                                Q) do R, Q, QV, aux
@@ -423,7 +421,7 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
       end
     end
 
-    outprefix = @sprintf("vtk/ex_2_microphysics_Kessler_%dD_mpirank%04d_step%04d",
+    outprefix = @sprintf("vtk/ex_3_microphysics_Kessler_%dD_mpirank%04d_step%04d",
                          dim, MPI.Comm_rank(mpicomm), step[1])
     @printf(io, "----\n")
     @printf(io, "doing VTK output =  %s\n", outprefix)
@@ -455,7 +453,7 @@ function run(dim, Ne, N, timeend, DFloat)
   brickrange = ntuple(j->range(DFloat(0); length=Ne[j]+1, stop=Z_max), 2)
 
   topl = BrickTopology(mpicomm, brickrange, periodicity=(true, false))
-  dt = 1
+  dt = 0.5
 
   main(mpicomm, DFloat, topl, N, timeend, ArrayType, dt)
 
