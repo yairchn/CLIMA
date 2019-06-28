@@ -54,11 +54,12 @@ const statenames = ("ρ", "ρu", "ρw", "ρe_tot", "ρq_tot", "ρq_liq", "ρq_ra
 const _nauxcstate = 3
 const _c_z, _c_x, _c_p = 1:_nauxcstate
 
-#const _nviscstate = 1
-#const _v_ρq_rai, = 1:_nviscstate
-#
-#const _ngradstate = 2
-#const _states_for_gradient_transform = (_ρ, _ρq_rai,)
+const _nviscstate = 1
+const _v_ρq_rai, = 1:_nviscstate
+
+const _ngradstate = 2
+const _g_ρ, _g_ρq_rai = 1:_ngradstate
+const _states_for_gradient_transform = (_ρ, _ρq_rai,)
 
 # preflux computation
 @inline function preflux(Q, _...)
@@ -72,20 +73,12 @@ const _c_z, _c_x, _c_p = 1:_nauxcstate
                                        ρq_tot / ρ, ρq_liq / ρ,
                                        ρq_rai / ρ, ρe_tot / ρ
     DF = eltype(ρ)
-
-    ρq_tot = max(DF(0), ρq_tot)
-    ρq_rai = max(DF(0), ρq_rai)
-    ρq_liq = max(DF(0), ρq_liq)
-
     if(q_rai >= DF(0))
       # compute rain fall speed
-      rain_w = terminal_velocity(q_rai, ρ)# TODO - tmp
-      #rain_w = DF(0)
+      rain_w = terminal_velocity(q_rai, ρ)# TODO - ensure positive definite
     else
       rain_w = DF(0)
     end
-
-    #@show(ρ, q_rai, q_tot)
 
     return (u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot)
   end
@@ -108,7 +101,7 @@ end
     QP[_ρe_tot], QP[_ρq_tot], QP[_ρq_liq] = ρe_tot_M, ρq_tot_M, ρq_liq_M
 
     DF = eltype(ρ)
-    QP[_ρq_rai] = DF(0) #TODO <- should be this
+    QP[_ρq_rai] = DF(0)
     #QP[_ρq_rai] = ρq_rai_M
 
     auxM .= auxP
@@ -125,7 +118,7 @@ end
 @inline function wavespeed(n, Q, aux, t, u, w, rain_w,
                            ρ, q_tot, q_liq, q_rai, e_tot)
   @inbounds begin
-    abs(n[1] * u + n[2] * max(w, rain_w, w-rain_w))
+    abs(n[1] * u + n[2] * max(w, rain_w, w - rain_w))
   end
 end
 
@@ -169,7 +162,7 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
     z = aux[_c_z]
     p = aux[_c_p]
 
-    S .= 0
+    S .= DF(0)
 
     # current state
     e_int = e_tot - 1//2 * (u^2 + w^2) - grav * z
@@ -182,6 +175,7 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
     S[_ρq_liq]  = ρ * src_q_liq
 
     # compute tendencies
+    # TODO - ensure positive definite
     if(q_tot >= DF(0) && q_liq >= DF(0) && q_rai >= DF(0))
       src_q_rai_acnv = conv_q_liq_to_q_rai_acnv(q.liq)
       src_q_rai_accr = conv_q_liq_to_q_rai_accr(q.liq, q_rai, ρ)
@@ -197,35 +191,33 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
   end
 end
 
-## viscous flux
-#@inline function gradient_transform!(grad_list, Q, aux, t)
-#    @inbounds begin
-#        DF = eltype(Q)
-#        ρ, ρq_rai = Q[1], max(Q[2], DF(0))
-#        q_rai = ρq_rai / ρ
-#        grad_list[_v_ρq_rai] = q_rai
-#    end
-#end
-#
-#@inline function compute_stresses!(QV, grad_rain, _...)
-#    @inbounds begin
-#        # compute gradients of ρq_rai
-#        dz_id = 1
-#        QV[_v_ρq_rai] = grad_rain[dz_id, _v_ρq_rai]
-#    end
-#end
-#
-#@inline function stresses_boundary_penalty!(QV, _...)
-#  QV .= 0
-#end
-#
-#@inline function viscous_penalty!(QV, nM, grad_listM, QM, aM,
-#                                          grad_listP, QP, aP, t)
-#  grad_rain = similar(QV, Size(1, 1))
-#  grad_rain[1, 1] = nM[1] * (grad_listP[1] - grad_listM[1]) / 2
-#
-#  compute_stresses!(QV, grad_rain)
-#end
+# viscous flux
+@inline function gradient_transform!(grad_list, Q, aux, t)
+    @inbounds begin
+        q_rai = Q[_g_ρq_rai] / Q[_g_ρ]
+        grad_list[_v_ρq_rai] = q_rai
+    end
+end
+
+@inline function compute_stresses!(QV, grad_rain, _...)
+    @inbounds begin
+        # compute gradients of ρq_rai
+        dz_id = 1
+        QV[_v_ρq_rai] = grad_rain[dz_id, _v_ρq_rai]
+    end
+end
+
+@inline function stresses_boundary_penalty!(QV, _...)
+  QV .= 0
+end
+
+@inline function viscous_penalty!(QV, nM, grad_listM, QM, aM,
+                                          grad_listP, QP, aP, t)
+  grad_rain = similar(QV, Size(1, 1))
+  grad_rain[1, 1] = nM[1] * (grad_listP[1] - grad_listM[1]) / 2
+
+  compute_stresses!(QV, grad_rain)
+end
 
 # physical flux function
 eulerflux!(F, Q, QV, aux, t) = eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
@@ -250,7 +242,7 @@ eulerflux!(F, Q, QV, aux, t) = eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
     F[2, _ρq_rai] = (w - rain_w) *  ρ * q_rai
     F[2, _ρe_tot] =  w           * (ρ * e_tot + p)
 
-    #F[2, _ρq_rai] -= QV[_v_ρq_rai] * DF(2)
+    F[2, _ρq_rai] -= QV[_v_ρq_rai] * DF(1)
   end
 end
 
@@ -330,16 +322,16 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
                            auxiliary_state_length = _nauxcstate,
                            auxiliary_state_initialization! =
                              constant_auxiliary_init!,
-                           source! = source!
-                           #number_gradient_states = _ngradstate,
-                           #states_for_gradient_transform =
-                           #  _states_for_gradient_transform,
-                           #number_viscous_states = _nviscstate,
-                           #gradient_transform! = gradient_transform!,
-                           #viscous_transform! = compute_stresses!,
-                           #viscous_penalty! = viscous_penalty!,
-                           #viscous_boundary_penalty! =
-                           #  stresses_boundary_penalty!
+                           source! = source!,
+                           number_gradient_states = _ngradstate,
+                           states_for_gradient_transform =
+                             _states_for_gradient_transform,
+                           number_viscous_states = _nviscstate,
+                           gradient_transform! = gradient_transform!,
+                           viscous_transform! = compute_stresses!,
+                           viscous_penalty! = viscous_penalty!,
+                           viscous_boundary_penalty! =
+                             stresses_boundary_penalty!
                            )
 
   # This is a actual state/function that lives on the grid
@@ -386,7 +378,7 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
   mkpath("vtk")
 
   # set output frequency
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(120) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(240) do (init=false)
 
     DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc,
                                                Q) do R, Q, QV, aux
@@ -422,7 +414,7 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
       end
     end
 
-    outprefix = @sprintf("vtk/ex_3_nothing_%dD_mpirank%04d_step%04d",
+    outprefix = @sprintf("vtk/ex_3_visc_%dD_mpirank%04d_step%04d",
                          dim, MPI.Comm_rank(mpicomm), step[1])
     @printf(io, "----\n")
     @printf(io, "doing VTK output =  %s\n", outprefix)
@@ -430,17 +422,6 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
     step[1] += 1
     nothing
   end
-
-  #filter = Grids.CutoffFilter(spacedisc.grid)
-  #filter = Grids.ExponentialFilter(grid, 0, 32)
-
-  #cb_filter = GenericCallbacks.EveryXSimulationSteps(1) do
-  #  DGBalanceLawDiscretizations.apply!(Q, 1:_nstate, spatialdiscretization,
-  #                                     filter;
-  #                                     horizontal=true,
-  #                                     vertical=true)
-  #  nothing
-  #end
 
   solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk))
 
@@ -465,7 +446,7 @@ function run(dim, Ne, N, timeend, DFloat)
   brickrange = ntuple(j->range(DFloat(0); length=Ne[j]+1, stop=Z_max), 2)
 
   topl = BrickTopology(mpicomm, brickrange, periodicity=(true, false))
-  dt = 0.5
+  dt = 0.25
 
   main(mpicomm, DFloat, topl, N, timeend, ArrayType, dt)
 
