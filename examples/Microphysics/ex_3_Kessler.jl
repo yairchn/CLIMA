@@ -79,8 +79,8 @@ const _c_z, _c_x, _c_p = 1:_nauxcstate
 
     if(q_rai >= DF(0))
       # compute rain fall speed
-      #rain_w = terminal_velocity(q_rai, ρ)# TODO - tmp
-      rain_w = DF(0)
+      rain_w = terminal_velocity(q_rai, ρ)# TODO - tmp
+      #rain_w = DF(0)
     else
       rain_w = DF(0)
     end
@@ -108,7 +108,8 @@ end
     QP[_ρe_tot], QP[_ρq_tot], QP[_ρq_liq] = ρe_tot_M, ρq_tot_M, ρq_liq_M
 
     DF = eltype(ρ)
-    QP[_ρq_rai] = DF(0)
+    #QP[_ρq_rai] = DF(0) #TODO <- should be this
+    QP[_ρq_rai] = ρq_rai_M
 
     auxM .= auxP
     VFP .= DF(0)
@@ -124,7 +125,7 @@ end
 @inline function wavespeed(n, Q, aux, t, u, w, rain_w,
                            ρ, q_tot, q_liq, q_rai, e_tot)
   @inbounds begin
-    abs(n[1] * u + n[2] * max(w, rain_w, w+rain_w))
+    abs(n[1] * u + n[2] * max(w, rain_w, w-rain_w))
   end
 end
 
@@ -246,7 +247,7 @@ eulerflux!(F, Q, QV, aux, t) = eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
 
     F[2, _ρq_tot] =  w           *  ρ * q_tot
     F[2, _ρq_liq] =  w           *  ρ * q_liq
-    F[2, _ρq_rai] = (w + rain_w) *  ρ * q_rai
+    F[2, _ρq_rai] = (w - rain_w) *  ρ * q_rai
     F[2, _ρe_tot] =  w           * (ρ * e_tot + p)
 
     #F[2, _ρq_rai] -= QV[_v_ρq_rai] * DF(2)
@@ -329,16 +330,16 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
                            auxiliary_state_length = _nauxcstate,
                            auxiliary_state_initialization! =
                              constant_auxiliary_init!,
-                           source! = source!,
-                           number_gradient_states = _ngradstate,
-                           states_for_gradient_transform =
-                             _states_for_gradient_transform,
-                           number_viscous_states = _nviscstate,
-                           gradient_transform! = gradient_transform!,
-                           viscous_transform! = compute_stresses!,
-                           viscous_penalty! = viscous_penalty!,
-                           viscous_boundary_penalty! =
-                             stresses_boundary_penalty!
+                           source! = source!
+                           #number_gradient_states = _ngradstate,
+                           #states_for_gradient_transform =
+                           #  _states_for_gradient_transform,
+                           #number_viscous_states = _nviscstate,
+                           #gradient_transform! = gradient_transform!,
+                           #viscous_transform! = compute_stresses!,
+                           #viscous_penalty! = viscous_penalty!,
+                           #viscous_boundary_penalty! =
+                           #  stresses_boundary_penalty!
                            )
 
   # This is a actual state/function that lives on the grid
@@ -358,8 +359,6 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
   lsrk = LSRK54CarpenterKennedy(spacedisc, Q; dt = dt, t0 = 0)
   @show(minimum(diff(collect(lsrk.RKC))) * dt )
   @show(maximum(diff(collect(lsrk.RKC))) * dt )
-
-  filter = Grids.CutoffFilter(spatialdiscretization.grid)
 
   io = MPI.Comm_rank(mpicomm) == 0 ? stdout : devnull
   eng0 = norm(Q)
@@ -432,13 +431,16 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
     nothing
   end
 
-  cb_filter = GenericCallbacks.EveryXSimulationSteps(1) do
-    DGBalanceLawDiscretizations.apply!(Q, 7:_nstate, spatialdiscretization,
-                                       filter;
-                                       horizontal=false,
-                                       vertical=true)
-    nothing
-  end
+  #filter = Grids.CutoffFilter(spacedisc.grid)
+  #filter = Grids.ExponentialFilter(grid, 0, 2)
+
+  #cb_filter = GenericCallbacks.EveryXSimulationSteps(1) do
+  #  DGBalanceLawDiscretizations.apply!(Q, 1:_nstate, spatialdiscretization,
+  #                                     filter;
+  #                                     horizontal=true,
+  #                                     vertical=true)
+  #  nothing
+  #end
 
   solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk))
 
@@ -463,7 +465,7 @@ function run(dim, Ne, N, timeend, DFloat)
   brickrange = ntuple(j->range(DFloat(0); length=Ne[j]+1, stop=Z_max), 2)
 
   topl = BrickTopology(mpicomm, brickrange, periodicity=(true, false))
-  dt = 0.5
+  dt = 1
 
   main(mpicomm, DFloat, topl, N, timeend, ArrayType, dt)
 
