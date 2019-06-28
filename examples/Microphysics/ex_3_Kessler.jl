@@ -108,8 +108,8 @@ end
     QP[_ρe_tot], QP[_ρq_tot], QP[_ρq_liq] = ρe_tot_M, ρq_tot_M, ρq_liq_M
 
     DF = eltype(ρ)
-    #QP[_ρq_rai] = DF(0) #TODO <- should be this
-    QP[_ρq_rai] = ρq_rai_M
+    QP[_ρq_rai] = DF(0) #TODO <- should be this
+    #QP[_ρq_rai] = ρq_rai_M
 
     auxM .= auxP
     VFP .= DF(0)
@@ -386,7 +386,7 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
   mkpath("vtk")
 
   # set output frequency
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(120) do (init=false)
 
     DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc,
                                                Q) do R, Q, QV, aux
@@ -422,7 +422,7 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
       end
     end
 
-    outprefix = @sprintf("vtk/ex_3_microphysics_Kessler_%dD_mpirank%04d_step%04d",
+    outprefix = @sprintf("vtk/ex_3_nothing_%dD_mpirank%04d_step%04d",
                          dim, MPI.Comm_rank(mpicomm), step[1])
     @printf(io, "----\n")
     @printf(io, "doing VTK output =  %s\n", outprefix)
@@ -432,7 +432,7 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
   end
 
   #filter = Grids.CutoffFilter(spacedisc.grid)
-  #filter = Grids.ExponentialFilter(grid, 0, 2)
+  #filter = Grids.ExponentialFilter(grid, 0, 32)
 
   #cb_filter = GenericCallbacks.EveryXSimulationSteps(1) do
   #  DGBalanceLawDiscretizations.apply!(Q, 1:_nstate, spatialdiscretization,
@@ -465,7 +465,7 @@ function run(dim, Ne, N, timeend, DFloat)
   brickrange = ntuple(j->range(DFloat(0); length=Ne[j]+1, stop=Z_max), 2)
 
   topl = BrickTopology(mpicomm, brickrange, periodicity=(true, false))
-  dt = 1
+  dt = 0.5
 
   main(mpicomm, DFloat, topl, N, timeend, ArrayType, dt)
 
@@ -473,7 +473,7 @@ end
 
 using Test
 let
-  timeend = 4 * 60 #TODO - 30 * 60
+  timeend = 30 * 60 #TODO - 30 * 60
   numelem = (75, 75)
   lvls = 3
   dim = 2
