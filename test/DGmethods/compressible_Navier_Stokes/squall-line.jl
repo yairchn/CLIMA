@@ -898,7 +898,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                 @info @sprintf("""Update
                                simtime = %.16e
                                runtime = %s""",
-                               ODESolvers.gettime(lsrk),
+                               Dates.format(ODESolvers.gettime(lsrk), Dates.dateformat"HH:MM:SS"),
                                Dates.format(convert(Dates.DateTime,
                                                     Dates.now()-starttime[]),
                                             Dates.dateformat"HH:MM:SS")) #, energy )#, globmean)
