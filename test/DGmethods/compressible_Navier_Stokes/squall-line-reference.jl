@@ -32,25 +32,33 @@ end
 # and consider the dry equation set to be the same as the moist equations but
 # with total specific humidity = 0. 
 using CLIMA.MoistThermodynamics
-using CLIMA.PlanetParameters: R_d, cp_d, grav, cv_d, MSLP, T_0, Omega
+using CLIMA.PlanetParameters
+using CLIMA.Microphysics
 
 # State labels 
-const _nstate = 6
-const _ρ, _U, _V, _W, _E, _QT = 1:_nstate
-const stateid = (ρid = _ρ, Uid = _U, Vid = _V, Wid = _W, Eid = _E, QTid = _QT)
-const statenames = ("RHO", "U", "V", "W", "E", "QT")
+const _nstate = 8
+const _ρ, _U, _V, _W, _E, _QT, _QL, _QR = 1:_nstate
+const stateid = (ρid = _ρ, Uid = _U, Vid = _V, Wid = _W, Eid = _E, QTid = _QT, QLid = _QL, QRid = _QR)
+const statenames = ("RHO", "U", "V", "W", "E", "QT", "QL", "QR")
 
 # Viscous state labels
-const _nviscstates = 16
-const _τ11, _τ22, _τ33, _τ12, _τ13, _τ23, _qx, _qy, _qz, _Tx, _Ty, _Tz, _θx, _θy, _θz, _SijSij = 1:_nviscstates
+const _nviscstates = 22
+const _τ11, _τ22, _τ33, _τ12, _τ13, _τ23,
+_qtx, _qty, _qtz,
+_qlx, _qly, _qlz,
+_qrx, _qry, _qrz,
+_Tx, _Ty, _Tz,
+_θx, _θy, _θz,
+_SijSij = 1:_nviscstates
+
 
 # Gradient state labels
-const _ngradstates = 6
-const _states_for_gradient_transform = (_ρ, _U, _V, _W, _E, _QT)
+const _ngradstates = 8
+const _states_for_gradient_transform = (_ρ, _U, _V, _W, _E, _QT, _QL, _QR)
 
 
-const _nauxstate = 7
-const _a_x, _a_y, _a_z, _a_sponge, _a_02z, _a_z2inf, _a_rad = 1:_nauxstate
+const _nauxstate = 5
+const _a_x, _a_y, _a_z, _a_sponge, _a_soundspeed_air = 1:_nauxstate
 
 
 if !@isdefined integration_testing
@@ -83,9 +91,9 @@ const Npoly = 4
 #
 # Define grid size 
 #
-Δx    = 35
-Δy    = 35
-Δz    = 10
+Δx    = 250
+Δy    = 1000
+Δz    = 200
 #
 # OR:
 #
@@ -94,9 +102,9 @@ const Npoly = 4
 (Nex, Ney, Nez) = (10, 10, 1)
 
 # Physical domain extents 
-const (xmin, xmax) = (0, 840)
-const (ymin, ymax) = (0, 840)
-const (zmin, zmax) = (0, 1500)
+const (xmin, xmax) = (-30000, 30000)
+const (ymin, ymax) = (     0,  5000)
+const (zmin, zmax) = (     0, 24000)
 
 #Get Nex, Ney from resolution
 const Lx = xmax - xmin
@@ -225,14 +233,11 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
         F[1, _QT], F[2, _QT], F[3, _QT] = u * QT  , v * QT     , w * QT 
 
         #Derivative of T and Q:
-        vqx, vqy, vqz = VF[_qx], VF[_qy], VF[_qz]        
+        vqx, vqy, vqz = VF[_qtx], VF[_qty], VF[_qtz]        
         vTx, vTy, vTz = VF[_Tx], VF[_Ty], VF[_Tz]
         vθy = VF[_θy]
       
-        # Radiation contribution 
-        F_rad = ρ * radiation(aux)  
-        aux[_a_rad] = F_rad
-       
+        
         SijSij = VF[_SijSij]
         f_R = 1.0# buoyancy_correction_smag(SijSij, θ, dθdy)
 
@@ -256,9 +261,6 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
         F[2, _E] -= u * τ21 + v * τ22 + w * τ23 + cp_over_prandtl * vTy * ν_e
         F[3, _E] -= u * τ31 + v * τ32 + w * τ33 + cp_over_prandtl * vTz * ν_e
         
-        F[1, _E] -= 0
-        F[2, _E] -= 0
-        F[3, _E] -= F_rad
         # Viscous contributions to mass flux terms
         F[1, _QT] -=  vqx * D_e
         F[2, _QT] -=  vqy * D_e
@@ -284,25 +286,6 @@ gradient_vars!(vel, Q, aux, t, _...) = gradient_vars!(vel, Q, aux, t, preflux(Q,
   end
 end
 
-@inline function radiation(aux)
-  zero_to_z = aux[_a_02z]
-  z_to_inf = aux[_a_z2inf]
-  z = aux[_a_z]
-  z_i = 840  # Start with constant inversion height of 840 meters then build in check based on q_tot
-  (z - z_i) >=0 ? Δz_i = (z - z_i) : Δz_i = 0 
-  # Constants 
-  F_0 = 70 
-  F_1 = 22
-  α_z = 1
-  ρ_i = 1.22
-  D_subsidence = 3.75e-6
-  term1 = F_0 * exp(-z_to_inf) 
-  term2 = F_1 * exp(-zero_to_z)
-  term3 = ρ_i * cp_d * D_subsidence * α_z * (0.25 * (cbrt(Δz_i))^4 + z_i * cbrt(Δz_i))
-  F_rad = term1 + term2 + term3  
-  return F_rad
-end
-
 # -------------------------------------------------------------------------
 #md ### Viscous fluxes. 
 #md # The viscous flux function compute_stresses computes the components of 
@@ -316,7 +299,7 @@ end
     dvdx, dvdy, dvdz = grad_vel[1, 2], grad_vel[2, 2], grad_vel[3, 2]
     dwdx, dwdy, dwdz = grad_vel[1, 3], grad_vel[2, 3], grad_vel[3, 3]
     # compute gradients of moist vars and temperature
-    dqdx, dqdy, dqdz = grad_vel[1, 5], grad_vel[2, 5], grad_vel[3, 5]
+    dqtdx, dqtdy, dqtdz = grad_vel[1, 5], grad_vel[2, 5], grad_vel[3, 5]
     dTdx, dTdy, dTdz = grad_vel[1, 6], grad_vel[2, 6], grad_vel[3, 6]
     dθdx, dθdy, dθdz = grad_vel[1, 7], grad_vel[2, 7], grad_vel[3, 7]
     # virtual potential temperature gradient: for richardson calculation
@@ -351,7 +334,7 @@ end
     VF[_τ23] = 2 * S23
     
     # TODO: Viscous stresse come from SubgridScaleTurbulence module
-    VF[_qx], VF[_qy], VF[_qz] = dqdx, dqdy, dqdz
+    VF[_qtx], VF[_qty], VF[_qtz] = dqtdx, dqtdy, dqtdz
     VF[_Tx], VF[_Ty], VF[_Tz] = dTdx, dTdy, dTdz
     VF[_θx], VF[_θy], VF[_θz] = dθdx, dθdy, dθdz
     VF[_SijSij] = SijSij
@@ -539,30 +522,6 @@ end
     end
 end
 
-# Test integral exactly according to the isentropic vortex example
-@inline function integral_knl(val, Q, aux)
-  κ = 85.0
-  @inbounds begin
-    @inbounds ρ, U, V, W, E, QT = Q[_ρ], Q[_U], Q[_V], Q[_W], Q[_E], Q[_QT]
-    ρinv = 1 / ρ
-    x,y,z = aux[_a_x], aux[_a_y], aux[_a_z]
-    u, v, w = ρinv * U, ρinv * V, ρinv * W
-    e_int = (E - (U^2 + V^2+ W^2)/(2*ρ) - ρ * grav * z) / ρ
-    q_tot = QT / ρ
-    # Establish the current thermodynamic state using the prognostic variables
-    TS = PhaseEquil(e_int, q_tot, ρ)
-    q_liq = PhasePartition(TS).liq
-    val[1] = ρ * κ * q_liq 
-  end
-end
-
-function integral_computation(disc, Q, t)
-  DGBalanceLawDiscretizations.indefinite_stack_integral!(disc, integral_knl, Q,
-                                                         (_a_02z))
-  DGBalanceLawDiscretizations.reverse_indefinite_stack_integral!(disc,
-                                                                 _a_z2inf,
-                                                                 _a_02z)
-end
 
 # ------------------------------------------------------------------
 # -------------END DEF SOURCES-------------------------------------# 
@@ -574,7 +533,7 @@ end
     for the dycoms driver. 
     """
 #function dycoms!(dim, Q, t, x, y, z, _...)
-function dycoms!(dim, Q, t, spl_tinit, spl_qinit, spl_uinit, spl_vinit,
+function squall_line!(dim, Q, t, spl_tinit, spl_qinit, spl_uinit, spl_vinit,
                  spl_pinit, x, y, z, _...)
     
     DFloat         = eltype(Q)
@@ -684,8 +643,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                              auxiliary_state_length = _nauxstate,
                              auxiliary_state_initialization! = (x...) ->
                              auxiliary_state_initialization!(x...),
-                             source! = source!,
-                             preodefun! = integral_computation)
+                             source! = source!)
 
      # This is a actual state/function that lives on the grid
     # ----------------------------------------------------
@@ -708,7 +666,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
     spl_vinit    = Spline1D(zinit, vinit; k=1)
     spl_pinit    = Spline1D(zinit, pinit; k=1)
 
-    initialcondition(Q, x...) = dycoms!(Val(dim), Q, DFloat(0), spl_tinit,
+    initialcondition(Q, x...) = squall_line!(Val(dim), Q, DFloat(0), spl_tinit,
                                         spl_qinit, spl_uinit, spl_vinit,
                                         spl_pinit, x...)
     Q = MPIStateArray(spacedisc, initialcondition)     
@@ -740,23 +698,22 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
         end
     end
 
-    npoststates = 11
-    _int1, _int2, _betaout, _P, _u, _v, _w, _ρinv, _q_liq, _T, _θ = 1:npoststates
-    postnames = ("INT1", "INT2", "BETA", "P", "u", "v", "w", "rhoinv", "_q_liq", "T", "THETA")
+    npoststates = 9
+    _P, _u, _v, _w, _ρinv, _q_tot, _q_liq, _q_rai, _θ = 1:npoststates
+    postnames = ("P", "u", "v", "w", "rhoinv", "_q_tot", "_q_liq", "_q_rai", "THETA")
     postprocessarray = MPIStateArray(spacedisc; nstate=npoststates)
 
     step = [0]
-    mkpath("./CLIMA-output-scratch/dycoms-today/")
+    mkpath("./CLIMA-output-scratch/sq-today/")
     cbvtk = GenericCallbacks.EveryXSimulationSteps(1000) do (init=false)
         DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc,
                                                    Q) do R, Q, QV, aux
                                                        @inbounds let
-                                                          F_rad_out = radiation(aux)
-                                                           (R[_int1], R[_int2], R[_betaout], R[_P], R[_u], R[_v], R[_w], R[_ρinv], R[_q_liq], R[_T], R[_θ]) = (aux[_a_02z], aux[_a_z2inf], F_rad_out, preflux(Q, QV, aux)...)
+                                                           (R[_P], R[_u], R[_v], R[_w], R[_ρinv], R[_q_tot], R[_q_liq], R[_q_rai], R[_θ]) = (preflux(Q, QV, aux))
                                                        end
                                                    end
 
-        outprefix = @sprintf("./CLIMA-output-scratch/dycoms-today/dyc_%dD_mpirank%04d_step%04d", dim,
+        outprefix = @sprintf("./CLIMA-output-scratch/sq-today/dyc_%dD_mpirank%04d_step%04d", dim,
                              MPI.Comm_rank(mpicomm), step[1])
         @debug "doing VTK output" outprefix
         writevtk(outprefix, Q, spacedisc, statenames,
@@ -774,7 +731,6 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
     end
 
     # Initialise the integration computation. Kernels calculate this at every timestep?? 
-    integral_computation(spacedisc, Q, 0) 
     solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk))
 
 
@@ -826,9 +782,9 @@ let
     # User defined timestep estimate
     # User defined simulation end time
     # User defined polynomial order 
-    numelem = (Nex,Ney,Nez)
-    dt = 0.005
-    timeend = 100 #14000
+    numelem = (Nex, Ney, Nez)
+    dt = 0.025
+    timeend = 9000
     polynomialorder = Npoly
     DFloat = Float64
     dim = numdims
@@ -842,10 +798,10 @@ let
         @info @sprintf """  | _____|______|_____|_|   |_|_|  |_|                 """
         @info @sprintf """                                                       """
         @info @sprintf """ ------------------------------------------------------"""
-        @info @sprintf """ Dycoms                                                """
+        @info @sprintf """ Squall line                                           """
         @info @sprintf """   Resolution:                                         """ 
         @info @sprintf """     (Δx, Δy, Δz)   = (%.2e, %.2e, %.2e)               """ Δx Δy Δz
-        @info @sprintf """     (Nex, Ney, Nez) = (%d, %d, %d)                    """ Nex Ney Nez
+        @info @sprintf """     (Nex, Ney, Nez), Netot = (%d, %d, %d), %d         """ Nex Ney Nez Nex*Ney*Nez
         @info @sprintf """     DoF = %d                                          """ DoF
         @info @sprintf """     Minimum necessary memory to run this test: %g GBs """ (DoFstorage * sizeof(DFloat))/1000^3
         @info @sprintf """     Time step dt: %.2e                                """ dt
