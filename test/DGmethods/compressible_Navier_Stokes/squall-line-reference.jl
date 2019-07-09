@@ -172,11 +172,11 @@ const Δsqr = Δ * Δ
 
         # unpack model variables
         ρ, ρu, ρv, ρw, ρq_tot, ρq_liq, ρq_ice, ρq_rai, ρe_tot =
-            Q[_ρ], Q[_ρu], Q[_ρv], Q[_ρw], Q[_ρq_tot], Q[_ρq_liq], Q[_ρq_ice],
-        Q[_ρq_rai], Q[_ρe_tot]
+          Q[_ρ], Q[_ρu], Q[_ρv], Q[_ρw], Q[_ρq_tot], Q[_ρq_liq], Q[_ρq_ice],
+          Q[_ρq_rai], Q[_ρe_tot]
         u, v, w, q_tot, q_liq, q_ice, q_rai, e_tot =
-            ρu / ρ, ρv / ρ, ρw / ρ, ρq_tot / ρ, ρq_liq / ρ, ρq_ice / ρ, ρq_rai / ρ,
-        ρe_tot / ρ
+          ρu / ρ, ρv / ρ, ρw / ρ, ρq_tot / ρ, ρq_liq / ρ, ρq_ice / ρ, ρq_rai / ρ,
+          ρe_tot / ρ
 
         # compute rain fall speed
         DF = eltype(ρ)
@@ -570,8 +570,8 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q, ~, aux)...)
 
     # Typically these sources are imported from modules
     @inbounds begin
-       # source_microphysics!(S, Q, aux, t, u, v, w, rain_w, ρ,
-       #                      q_tot, q_liq, q_ice, q_rai, e_tot)
+        source_microphysics!(S, Q, aux, t, u, v, w, rain_w, ρ,
+                             q_tot, q_liq, q_ice, q_rai, e_tot)
         source_geopot!(S, Q, aux, t)
         source_sponge!(S, Q, aux, t)
         source_geostrophic!(S, Q, aux, t)
@@ -695,13 +695,13 @@ function preodefun!(disc, Q, t)
             q     = PhasePartition(q_tot, q_liq, q_ice)
             T     = air_temperature(e_int, q)
             p     = air_pressure(T, ρ, q)
-            
-            
+
+
             R[_a_T] = T
             R[_a_p] = p
             R[_a_soundspeed_air] = soundspeed_air(T, q)
             #u_wavespeed = (abs(u) + soundspeed) / dx
-            #v_wavespeed = (abs(v) + soundspeed) / dy 
+            #v_wavespeed = (abs(v) + soundspeed) / dy
             #w_wavespeed = (abs(w) + soundspeed) / dz
             #R[_a_timescale] = max(u_wavespeed,v_wavespeed,w_wavespeed)
         end
@@ -886,9 +886,9 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
     end
 
     @timeit to "Time stepping init" begin
-        
+
         lsrk = LSRK54CarpenterKennedy(spacedisc, Q; dt = dt, t0 = 0)
-        
+
         #=eng0 = norm(Q)
         @info @sprintf """Starting
         norm(Q₀) = %.16e""" eng0
@@ -917,7 +917,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
         postprocessarray = MPIStateArray(spacedisc; nstate=npoststates)
 
         step = [0]
-        mkpath("./CLIMA-output-scratch/sq-today")
+        mkpath("./vtk")
         cbvtk = GenericCallbacks.EveryXSimulationSteps(3600) do (init=false) #every 1 min = (0.025) * 40 * 60 * 1min
             DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc, Q) do R, Q, QV, aux
                 @inbounds let
@@ -964,7 +964,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                 end
             end
 
-            outprefix = @sprintf("./CLIMA-output-scratch/sq-today/squall_%dD_mpirank%04d_step%04d", dim,
+            outprefix = @sprintf("./vtk/squall_reference_%dD_mpirank%04d_step%04d", dim,
                                  MPI.Comm_rank(mpicomm), step[1])
             @debug "doing VTK output" outprefix
             writevtk(outprefix, Q, spacedisc, statenames,
@@ -1027,7 +1027,7 @@ let
     @static if haspkg("CUDAnative")
         device!(MPI.Comm_rank(mpicomm) % length(devices()))
     end
-    
+
     # User defined number of elements
     # User defined timestep estimate
     # User defined simulation end time
@@ -1069,5 +1069,3 @@ end
 isinteractive() || MPI.Finalize()
 
 nothing
-
-end
