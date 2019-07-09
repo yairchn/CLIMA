@@ -418,9 +418,9 @@ end
         DFloat = eltype(aux)
         aux[_a_z] = z
 
-        aux[_a_dx] = dx
-        aux[_a_dy] = dy
-        aux[_a_dz] = dz
+        #aux[_a_dx] = dx
+        #aux[_a_dy] = dy
+        #aux[_a_dz] = dz
 
         #Sponge
         csleft  = 0.0
