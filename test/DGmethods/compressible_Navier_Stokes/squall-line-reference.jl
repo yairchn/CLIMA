@@ -2,8 +2,8 @@
 # Load Modules
 using MPI
 using CLIMA
-using CLIMA.Topologies
-using CLIMA.Grids
+using CLIMA.Mesh.Topologies
+using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.DGBalanceLawDiscretizations.NumericalFluxes
 using CLIMA.MPIStateArrays
@@ -142,9 +142,9 @@ end
 DoF = (Nex*Ney*Nez)*(Npoly+1)^numdims*(_nstate)
 DoFstorage = (Nex*Ney*Nez) *
     (Npoly+1)^numdims *
-    (_nstate + _nviscstates + _nauxstate + CLIMA.Grids._nvgeo) +
+    (_nstate + _nviscstates + _nauxstate + CLIMA.Mesh.Grids._nvgeo) +
     (Nex*Ney*Nez) * (Npoly+1)^(numdims-1) *
-    2^numdims*(CLIMA.Grids._nsgeo)
+    2^numdims*(CLIMA.Mesh.Grids._nsgeo)
 
 
 # Smagorinsky model requirements : TODO move to SubgridScaleTurbulence module
