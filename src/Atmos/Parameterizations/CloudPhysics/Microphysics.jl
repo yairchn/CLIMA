@@ -76,14 +76,17 @@ constant timescale.
 """
 function conv_q_vap_to_q_liq(q_sat::PhasePartition{DT},
                              q::PhasePartition{DT}) where {DT<:Real}
-
-  if q_sat.ice != DT(0)
-    error("1-moment bulk microphysics is not defined for snow/ice")
+    
+  #=if q_sat.ice != DT(0)
+    error("1-moment bulk microphysics is not defined for snow/ice") # THIS wouldnt' work on GPU 
     #This should be the q_ice tendency due to sublimation/resublimation.
     #src_q_ice = (q_sat.ice - q.ice) / τ_subl_resubl
   end
+  =#
 
-  return (q_sat.liq - q.liq) / τ_cond_evap
+    #return (q_sat.liq - q.liq) / τ_cond_evap
+    return (max(q_sat.liq, q_sat.ice) - q.liq) / τ_cond_evap # TODO - tmp
+    
 end
 
 

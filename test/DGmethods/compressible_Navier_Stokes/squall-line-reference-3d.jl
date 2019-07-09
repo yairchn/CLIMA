@@ -570,8 +570,8 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q, ~, aux)...)
 
     # Typically these sources are imported from modules
     @inbounds begin
-        source_microphysics!(S, Q, aux, t, u, v, w, rain_w, ρ,
-                             q_tot, q_liq, q_ice, q_rai, e_tot)
+       # source_microphysics!(S, Q, aux, t, u, v, w, rain_w, ρ,
+       #                      q_tot, q_liq, q_ice, q_rai, e_tot)
         source_geopot!(S, Q, aux, t)
         source_sponge!(S, Q, aux, t)
         source_geostrophic!(S, Q, aux, t)
