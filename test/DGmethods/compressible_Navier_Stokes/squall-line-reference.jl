@@ -865,7 +865,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
         postprocessarray = MPIStateArray(spacedisc; nstate=npoststates)
         step = [0]
         mkpath("./CLIMA-output-scratch/vtk-sq-working")
-        cbvtk = GenericCallbacks.EveryXSimulationSteps(1) do (init=false) #every 1 min = (0.025) * 40 * 60 * 1min
+        cbvtk = GenericCallbacks.EveryXSimulationSteps(500) do (init=false) #every 1 min = (0.025) * 40 * 60 * 1min
             
             DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc, Q) do R, Q, QV, aux
                 @inbounds let
