@@ -953,7 +953,17 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
             writevtk(outprefix, Q, spacedisc, statenames,
                      postprocessarray, postnames)
 
-            
+            #=
+            #PVTU
+            pvtuprefix = @sprintf("./CLIMA-output-scratch/vtk-sq-working/sql_%dD_step%04d", dim, step[1])
+            prefixes = ntuple(i->
+                              @sprintf("./CLIMA-output-scratch/vtk-sq-working/sql_%dD_mpirank%04d_step%04d",
+                                       dim, i-1, step[1]),
+                              MPI.Comm_size(mpicomm))
+            writepvtu(pvtuprefix, prefixes, postnames)
+            #END PVTU
+            =#
+                
             step[1] += 1
             nothing
         end 
@@ -1017,7 +1027,7 @@ let
     # User defined timestep estimate
     # User defined simulation end time
     # User defined polynomial order
-    numelem = (Nex, Ney, Nez)
+    numelem = (Nex,Ney,Nez)
     dt = 0.025
     timeend = 9000 # 2h 30 min
     polynomialorder = Npoly
