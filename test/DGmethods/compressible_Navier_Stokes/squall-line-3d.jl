@@ -2,8 +2,8 @@
 # Load Modules
 using MPI
 using CLIMA
-using CLIMA.Mesh.Topologies
-using CLIMA.Mesh.Grids
+using CLIMA.Topologies
+using CLIMA.Grids
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.DGBalanceLawDiscretizations.NumericalFluxes
 using CLIMA.MPIStateArrays
@@ -34,11 +34,11 @@ else
 end
 
 
-# Global max mean functions
+# Global max mean functions 
 function global_max(A::MPIStateArray, states=1:size(A, 2))
   host_array = Array ∈ typeof(A).parameters
   h_A = host_array ? A : Array(A)
-  locmax = maximum(view(h_A, :, states, A.realelems))
+  locmax = maximum(view(h_A, :, states, A.realelems)) 
   MPI.Allreduce([locmax], MPI.MAX, A.mpicomm)[1]
 end
 
@@ -108,7 +108,7 @@ const Npoly = 4
 # Define grid size
 #
 Δx    =  250
-Δy    = 1000
+Δy    =  250
 Δz    =  200
 
 #
@@ -119,9 +119,9 @@ const Npoly = 4
 (Nex, Ney, Nez) = (5, 5, 5)
 
 # Physical domain extents
-const (xmin, xmax) = (-30000,30000)
-const (ymin, ymax) = (0,  5000)
-const (zmin, zmax) = (0, 24000)
+const (xmin, xmax) = (-30000, 30000)
+const (ymin, ymax) = (     0, 30000)
+const (zmin, zmax) = (     0, 24000)
 
 #Get Nex, Ney from resolution
 const Lx = xmax - xmin
@@ -152,9 +152,9 @@ end
 DoF = (Nex*Ney*Nez)*(Npoly+1)^numdims*(_nstate)
 DoFstorage = (Nex*Ney*Nez) *
              (Npoly+1)^numdims *
-             (_nstate + _nviscstates + _nauxstate + CLIMA.Mesh.Grids._nvgeo) +
+             (_nstate + _nviscstates + _nauxstate + CLIMA.Grids._nvgeo) +
              (Nex*Ney*Nez) * (Npoly+1)^(numdims-1) *
-             2^numdims*(CLIMA.Mesh.Grids._nsgeo)
+             2^numdims*(CLIMA.Grids._nsgeo)
 
 
 # Smagorinsky model requirements : TODO move to SubgridScaleTurbulence module
@@ -277,13 +277,13 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
         vTx, vTy, vTz = VF[_Tx], VF[_Ty], VF[_Tz]
 
         # Radiation contribution
-        F_rad = ρ * radiation(aux)
+        #F_rad = ρ * radiation(aux)
 
         SijSij = VF[_SijSij]
 
         #Dynamic eddy viscosity from Smagorinsky:
         ν_e = sqrt(2SijSij) * C_smag^2 * DFloat(Δsqr)
-        D_e = 200.0 # ν_e / Prandtl_t
+        D_e = 300.0 # ν_e / Prandtl_t
 
         # Multiply stress tensor by viscosity coefficient:
         τ11, τ22, τ33 = VF[_τ11] * ν_e, VF[_τ22]* ν_e, VF[_τ33] * ν_e
@@ -705,13 +705,13 @@ function preodefun!(disc, Q, t)
             q     = PhasePartition(q_tot, q_liq, q_ice)
             T     = air_temperature(e_int, q)
             p     = air_pressure(T, ρ, q)
-
-
+            
+            
             R[_a_T] = T
             R[_a_p] = p
             R[_a_soundspeed_air] = soundspeed_air(T, q)
             #u_wavespeed = (abs(u) + soundspeed) / dx
-            #v_wavespeed = (abs(v) + soundspeed) / dy
+            #v_wavespeed = (abs(v) + soundspeed) / dy 
             #w_wavespeed = (abs(w) + soundspeed) / dz
             #R[_a_timescale] = max(u_wavespeed,v_wavespeed,w_wavespeed)
         end
@@ -817,7 +817,7 @@ function grid_stretching(DFloat,
 
     zstretch_coe = 0.0
     if zstretch_flg == 1
-        zstretch_coe = 2.5
+        zstretch_coe = 2.0
         z_range_stretched = (zmax - zmin).*(exp.(zstretch_coe * zeta) .- 1.0)./(exp(zstretch_coe) - 1.0)
     end
 
@@ -896,9 +896,9 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
     end
 
     @timeit to "Time stepping init" begin
-
+        
         lsrk = LSRK54CarpenterKennedy(spacedisc, Q; dt = dt, t0 = 0)
-
+        
         #=eng0 = norm(Q)
         @info @sprintf """Starting
         norm(Q₀) = %.16e""" eng0
@@ -912,17 +912,17 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                 qt_max = global_max(Q, _ρq_tot)
                 ql_max = global_max(Q, _ρq_liq)
                 @info @sprintf("""Update
-                                       simtime = %.16e
-                                       runtime = %s
-                                       max(Qtot) = %.16e
-                                       max(Qliq) = %.16e""",
+                                   simtime = %.16e
+                                   runtime = %s
+                                   max(Qtot) = %.16e
+                                   max(Qliq) = %.16e""",
                                ODESolvers.gettime(lsrk),
                                Dates.format(convert(Dates.DateTime,
                                                     Dates.now()-starttime[]),
                                             Dates.dateformat"HH:MM:SS"),
                                qt_max, ql_max)
-
-                #@info @sprintf """dt = %25.16e""" dt
+                
+              #@info @sprintf """dt = %25.16e""" dt                
             end
         end
 
@@ -951,16 +951,16 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                     tht = liquid_ice_pottemp(T, p, q)
 
                     R[out_tht] = tht
-
+                    
                     R[out_u] = u
                     R[out_v] = v
                     R[out_w] = w
-
+                    
                     R[out_q_tot] = q_tot
                     R[out_q_liq] = q_liq
                     R[out_q_ice] = q_ice
                     R[out_q_rai] = q_rai
-
+                    
                 end
             end
 
@@ -986,7 +986,7 @@ cbdt = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
                                                Q) do R, Q, QV, aux
                                                    @inbounds let
                                                        Npoly2 = Npoly*Npoly
-
+                                                       
                                                        dx, dy, dz = aux[_a_dx], aux[_a_dy], aux[_a_dz]
                                                        z = aux[_a_z]
                                                        ρ, U, V, W, E, QT = Q[_ρ], Q[_ρu], Q[_ρv], Q[_ρw], Q[_ρe_tot], Q[_ρq_tot]
@@ -996,8 +996,8 @@ cbdt = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
                                                        TS = PhaseEquil(e_int, q_tot, ρ)
                                                        soundspeed  = soundspeed_air(TS)
                                                        u_timescale = (abs(u) + soundspeed) * Npoly2/ dx
-                                                       v_timescale = (abs(v) + soundspeed) * Npoly2/ dy
-                                                       w_timescale = (abs(w) + soundspeed) * Npoly2/ dz
+                                                       v_timescale = (abs(v) + soundspeed) * Npoly2/ dy 
+                                                       w_timescale = (abs(w) + soundspeed) * Npoly2/ dz 
                                                        R[_a_timescale] = max(u_timescale, v_timescale, w_timescale)
                                                    end
                                                end
@@ -1066,7 +1066,7 @@ let
     @static if haspkg("CUDAnative")
         device!(MPI.Comm_rank(mpicomm) % length(devices()))
     end
-
+    
     # User defined number of elements
     # User defined timestep estimate
     # User defined simulation end time
@@ -1091,7 +1091,7 @@ let
         @info @sprintf """ Squall line                                           """
         @info @sprintf """   Resolution:                                         """
         @info @sprintf """     (Δx, Δy, Δz)   = (%.2e, %.2e, %.2e)               """ Δx Δy Δz
-        @info @sprintf """     (Nex, Ney, Nez), Netoto = (%d, %d, %d), %d        """ Nex Ney Nez Nex*Ney*Nez
+        @info @sprintf """     (Nex, Ney, Nez), Netoto = (%d, %d, %d), %d        """ Nex Ney Nez Nex*Ney*Nez 
         @info @sprintf """     DoF = %d                                          """ DoF
         @info @sprintf """     Minimum necessary memory to run this test: %g GBs """ (DoFstorage * sizeof(DFloat))/1000^3
         @info @sprintf """     Time step dt: %.2e                                """ dt
