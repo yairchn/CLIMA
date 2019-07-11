@@ -1,6 +1,6 @@
 using MPI
-using CLIMA.Topologies
-using CLIMA.Grids
+using CLIMA.Mesh.Topologies
+using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.MPIStateArrays
 using CLIMA.LowStorageRungeKuttaMethod
@@ -37,11 +37,11 @@ function upwindflux!(fs, nM, stateM, viscM, auxM, stateP, viscP, auxP, t)
   end
 end
 
-function initialcondition!(Q, x_1, x_2, x_3)
+function initialcondition!(Q, x_1, x_2, x_3, _...)
   @inbounds Q[1] = exp(sin(2π * x_1)) * exp(sin(2π * x_2)) * exp(sin(2π * x_3))
 end
 
-function exactsolution!(dim, Q, t, x_1, x_2, x_3)
+function exactsolution!(dim, Q, t, x_1, x_2, x_3, _...)
   @inbounds begin
     DFloat = eltype(Q)
 
@@ -116,7 +116,7 @@ let
   writevtk(filename, Q, spatialdiscretization,
                                        ("q",))
 
-  Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z
+  Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z, aux
     exactsolution!(dim, Qin, finaltime, x, y, z)
   end
 
@@ -193,7 +193,7 @@ let
   writevtk(filename, Q, spatialdiscretization,
                                        ("q",))
 
-  Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z
+  Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z, aux
     exactsolution!(dim, Qin, finaltime, x, y, z)
   end
   error = euclidean_distance(Q, Qe)
@@ -237,7 +237,7 @@ let
 
     solve!(Q, lsrk; timeend = finaltime)
 
-    Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z
+    Qe = MPIStateArray(spatialdiscretization) do Qin, x, y, z, aux
       exactsolution!(dim, Qin, finaltime, x, y, z)
     end
 

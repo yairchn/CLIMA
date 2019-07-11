@@ -1,6 +1,6 @@
 using MPI
-using CLIMA.Topologies
-using CLIMA.Grids
+using CLIMA.Mesh.Topologies
+using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.MPIStateArrays
 using CLIMA.LowStorageRungeKuttaMethod
