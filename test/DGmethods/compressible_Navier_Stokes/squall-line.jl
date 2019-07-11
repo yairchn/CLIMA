@@ -17,7 +17,6 @@ using Logging, Printf, Dates
 using CLIMA.Vtk
 using DelimitedFiles
 using Dierckx
-using Random
 using TimerOutputs
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
@@ -34,14 +33,6 @@ else
 end
 
 const to = TimerOutput()
-
-# Global max mean functions
-function global_max(A::MPIStateArray, states=1:size(A, 2))
-  host_array = Array ∈ typeof(A).parameters
-  h_A = host_array ? A : Array(A)
-  locmax = maximum(view(h_A, :, states, A.realelems))
-  MPI.Allreduce([locmax], MPI.MAX, A.mpicomm)[1]
-end
 
 # State labels
 const _nstate = 9
@@ -78,9 +69,6 @@ end
 # Problem constants (TODO: parameters module (?))
 @parameter Prandtl_t 1//3 "Prandtl_t"
 @parameter cp_over_prandtl cp_d / Prandtl_t "cp_over_prandtl"
-
-# Random number seed
-const seed = MersenneTwister(0)
 
 # Problem description
 # --------------------
@@ -221,7 +209,8 @@ end
 # -------------------------------------------------------------------------
 function read_sounding()
     #read in the original squal sounding
-    fsounding  = open(joinpath(@__DIR__, "../soundings/sounding_gabersek.dat"))
+    #fsounding  = open(joinpath(@__DIR__, "../soundings/sounding_gabersek.dat"))
+    fsounding  = open(joinpath(@__DIR__, "../soundings/sounding_gabersek_3deg_warmer.dat"))
     sounding = readdlm(fsounding)
     close(fsounding)
     (nzmax, ncols) = size(sounding)
@@ -749,7 +738,7 @@ function squall_line!(dim, Q, t, spl_tinit, spl_qinit, spl_uinit, spl_vinit,
         dataq = 0.0
     end
 
-    θ_c =     5.0
+    θ_c =     3.0
     rx  = 10000.0
     ry  =  1500.0
     rz  =  1500.0
@@ -895,10 +884,6 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
 
         lsrk = LSRK54CarpenterKennedy(spacedisc, Q; dt = dt, t0 = 0)
 
-        #=eng0 = norm(Q)
-        @info @sprintf """Starting
-        norm(Q₀) = %.16e""" eng0
-        =#
         # Set up the information callback
         starttime = Ref(now())
         cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
@@ -907,16 +892,20 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
             else
                 ρq_tot_max = global_max(Q, _ρq_tot)
                 ρq_liq_max = global_max(Q, _ρq_liq)
+                ρq_rai_max = global_max(Q, _ρq_rai)
                 @info @sprintf("""Update
-                                       simtime = %.16e
-                                       runtime = %s
-                                       max(ρq_tot) = %.16e
-                                       max(ρq_liq) = %.16e""",
+                               simtime = %.16e
+                               runtime = %s
+                               max_ρq_tot = %.16e
+                               max_ρq_liq = %.16e
+                               max_ρq_rai = %.16e""",
                                ODESolvers.gettime(lsrk),
                                Dates.format(convert(Dates.DateTime,
                                                     Dates.now()-starttime[]),
                                             Dates.dateformat"HH:MM:SS"),
-                               ρq_tot_max, ρq_liq_max)
+                               ρq_tot_max, ρq_liq_max, ρq_rai_max)
+
+                @info @sprintf """dt = %25.16e""" dt
             end
         end
 
@@ -978,6 +967,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
             @debug "doing VTK output" outprefix
             writevtk(outprefix, Q, spacedisc, statenames,
                      postprocessarray, postnames)
+            @info @sprintf(""" Write VTK at current time. """)
 
             step[1] += 1
             nothing
@@ -985,11 +975,48 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
     end
 
 @info @sprintf """Starting...
-                norm(Q) = %25.16e""" norm(Q)
+            norm(Q) = %25.16e""" norm(Q)
+
+#
+# Dynamic dt
+#
+cbdt = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
+    DGBalanceLawDiscretizations.dof_iteration!(spacedisc.auxstate, spacedisc,
+                                               Q) do R, Q, QV, aux
+                                                   @inbounds let
+                                                       Npoly2 = (2*Npoly + 1)
+
+                                                       dx, dy, dz = aux[_a_dx], aux[_a_dy], aux[_a_dz]
+                                                       z = aux[_a_z]
+                                                       ρ, U, V, W, E, QT = Q[_ρ], Q[_ρu], Q[_ρv], Q[_ρw], Q[_ρe_tot], Q[_ρq_tot]
+                                                       e_int = (E - (U^2 + V^2+ W^2)/(2*ρ) - ρ * grav * z) / ρ
+                                                       q_tot = QT / ρ
+                                                       u, v, w = U/ρ, V/ρ, W/ρ
+                                                       TS = PhaseEquil(e_int, q_tot, ρ)
+                                                       soundspeed  = soundspeed_air(TS)
+                                                       u_timescale = (abs(u) + soundspeed) * Npoly2/ dx
+                                                       v_timescale = (abs(v) + soundspeed) * Npoly2/ dy
+                                                       w_timescale = (abs(w) + soundspeed) * Npoly2/ dz
+                                                       R[_a_timescale] = max(u_timescale, v_timescale, w_timescale)
+                                                   end
+                                               end
+    cfl_safety_factor = 0.8
+    Courant_max = dt * global_max(spacedisc.auxstate, _a_timescale)
+    if (Courant_max >= 1)
+        dt = dt / Courant_max * cfl_safety_factor
+    else
+        dt = cfl_safety_factor / Courant_max * dt
+    end
+    ODESolvers.updatedt!(lsrk, dt)
+    nothing
+end
+#
+# END Dynamic dt
+#
 
 # Initialise the integration computation. Kernels calculate this at every timestep??
 @timeit to "initial integral" integral_computation(spacedisc, Q, 0)
-@timeit to "solve" solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk))
+@timeit to "solve" solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk, cbdt))
 
 
 @info @sprintf """Finished...
