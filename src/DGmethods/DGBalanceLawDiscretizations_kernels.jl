@@ -18,7 +18,8 @@ const _sM, _vMI = Grids._sM, Grids._vMI
 """
     volumerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
                ::Val{nauxstate}, flux!, source!, rhs, Q, Qvisc, auxstate,
-               vgeo, t, D, elems) where {dim, N, nstate, nviscstate,
+               vgeo, t, ω, D, elems, increment) where {dim, N, nstate,
+                                                       nviscstate, nauxstate}
 
 Computational kernel: Evaluate the volume integrals on right-hand side of a
 `DGBalanceLaw` semi-discretization.
