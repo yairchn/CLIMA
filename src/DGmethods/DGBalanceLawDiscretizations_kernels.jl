@@ -17,22 +17,20 @@ const _sM, _vMI = Grids._sM, Grids._vMI
 
 """
     volumerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
-               ::Val{nauxstate}, flux!, source!, rhs, Q, Qvisc, auxstate,
-               vgeo, t, ω, D, elems, increment) where {dim, N, nstate,
-                                                       nviscstate, nauxstate}
+               ::Val{nauxstate}, ::Val{increment}, flux!, source!, rhs, Q,
+               Qvisc, auxstate, vgeo, t, ω, D,
+               elems) where {dim, N, nstate, nviscstate, nauxstate, increment}
 
 Computational kernel: Evaluate the volume integrals on right-hand side of a
 `DGBalanceLaw` semi-discretization.
 
 See [`odefun!`](@ref) for usage.
 """
-function volumerhs!(::Val{dim}, ::Val{N},
-                    ::Val{nstate}, ::Val{nviscstate},
-                    ::Val{nauxstate},
-                    flux!, source!,
-                    rhs, Q, Qvisc, auxstate, vgeo, t,
-                    ω, D, elems, increment) where {dim, N, nstate, nviscstate,
-                                     nauxstate}
+function volumerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
+                    ::Val{nauxstate}, ::Val{increment}, flux!, source!, rhs, Q,
+                    Qvisc, auxstate, vgeo, t, ω, D,
+                    elems) where {dim, N, nstate, nviscstate, nauxstate,
+                                  increment}
   DFloat = eltype(Q)
 
   Nq = N + 1
@@ -86,7 +84,7 @@ function volumerhs!(::Val{dim}, ::Val{N},
           l_ζz[i, j, k] = vgeo[ijk, _ζz, e]
 
           @unroll for s = 1:nstate
-            l_rhs[s, i, j, k] = increment ? rhs[ijk, s, e] : zero(DFloat)
+            l_rhs[s, i, j, k] = increment ? rhs[ijk, s, e] : -zero(DFloat)
           end
 
           @unroll for s = 1:nstate

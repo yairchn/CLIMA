@@ -613,9 +613,9 @@ function SpaceMethods.odefun!(disc::DGBalanceLaw, dQ::MPIStateArray,
 
   @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
           volumerhs!(Val(dim), Val(N), Val(nstate), Val(nviscstate),
-                     Val(nauxstate), disc.flux!, disc.source!, dQ.Q, Q.Q,
-                     Qvisc.Q, auxstate.Q, vgeo, t, lgl_weights_vec, Dmat,
-                     topology.realelems, increment))
+                     Val(nauxstate), Val(increment), disc.flux!, disc.source!,
+                     dQ.Q, Q.Q, Qvisc.Q, auxstate.Q, vgeo, t, lgl_weights_vec,
+                     Dmat, topology.realelems))
 
   MPIStateArrays.finish_ghost_recv!(nviscstate > 0 ? Qvisc : Q)
 
