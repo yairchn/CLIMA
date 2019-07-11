@@ -893,17 +893,23 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                 ρq_tot_max = global_max(Q, _ρq_tot)
                 ρq_liq_max = global_max(Q, _ρq_liq)
                 ρq_rai_max = global_max(Q, _ρq_rai)
+
+                ρq_tot_min = global_min(Q, _ρq_tot)
+                ρq_liq_min = global_min(Q, _ρq_liq)
+                ρq_rai_min = global_min(Q, _ρq_rai)
                 @info @sprintf("""Update
                                simtime = %.16e
                                runtime = %s
-                               max_ρq_tot = %.16e
-                               max_ρq_liq = %.16e
-                               max_ρq_rai = %.16e""",
+                               min_ρq_tot = %.16e, max_ρq_tot = %.16e
+                               min_ρq_liq = %.16e, max_ρq_liq = %.16e
+                               min_ρq_rai = %.16e, max_ρq_rai = %.16e""",
                                ODESolvers.gettime(lsrk),
                                Dates.format(convert(Dates.DateTime,
                                                     Dates.now()-starttime[]),
                                             Dates.dateformat"HH:MM:SS"),
-                               ρq_tot_max, ρq_liq_max, ρq_rai_max)
+                               ρq_tot_min, ρq_tot_max,
+                               ρq_liq_min, ρq_liq_max,
+                               ρq_rai_min, ρq_rai_max)
 
                 @info @sprintf """dt = %25.16e""" dt
             end
