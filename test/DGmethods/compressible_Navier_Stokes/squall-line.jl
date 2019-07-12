@@ -534,20 +534,19 @@ end
         QP[_ρu] = ρu_M - 2 * nM[1] * ρu_nM
         QP[_ρv] = ρv_M - 2 * nM[2] * ρu_nM
         QP[_ρw] = ρw_M - 2 * nM[3] * ρu_nM
-        VFP .= 0
         nothing
     end
 end
 
 # -------------------------------------------------------------------------
-@inline function stresses_boundary_penalty!(VF, _...)
-    #VF .= 0
-    compute_stresses!(VF, 0) #
+@inline function stresses_boundary_penalty!(VF, nM, gradient_listM, QM, aM, gradient_listP, QP, aP, bctype, t)
+  QP .= 0
+  stresses_penalty!(VF, nM, gradient_listM, QM, aM, gradient_listP, QP, aP, t)
 end
 
 @inline function stresses_penalty!(VF, nM, velM, QM, aM, velP, QP, aP, t)
     @inbounds begin
-        n_Δvel = similar(VF, Size(3, 3))
+        n_Δvel = similar(VF, Size(3, _ngradstates))
         for j = 1:_ngradstates, i = 1:3
             n_Δvel[i, j] = nM[i] * (velP[j] - velM[j]) / 2
         end
