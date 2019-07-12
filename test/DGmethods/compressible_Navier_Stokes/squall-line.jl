@@ -651,8 +651,8 @@ end
     @inbounds begin
         ρu, ρv, ρw  = Q[_ρu], Q[_ρv], Q[_ρw]
         beta     = aux[_a_sponge]
-        S[_ρu] -= beta * ρu
-        S[_ρv] -= beta * ρv
+        #S[_ρu] -= beta * ρu
+        #S[_ρv] -= beta * ρv
         S[_ρw] -= beta * ρw
     end
 end
