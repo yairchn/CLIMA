@@ -759,7 +759,8 @@ function squall_line!(dim, Q, t, spl_tinit, spl_qinit, spl_uinit, spl_vinit,
     ρ     = air_density(T, p)
 
     # energy definitions
-    u, v, w     = datau, datav, zero(DFloat) #geostrophic. TO BE BUILT PROPERLY if Coriolis is considered
+    #u, v, w     = datau, datav, zero(DFloat) #geostrophic. TO BE BUILT PROPERLY if Coriolis is considered
+    u, v, w     = datau, zero(DFloat), zero(DFloat) #geostrophic. TO BE BUILT PROPERLY if Coriolis is considered
     ρu          = ρ * u
     ρv          = ρ * v
     ρw          = ρ * w
@@ -922,7 +923,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
 
         step = [0]
         mkpath("./vtk")
-        cbvtk = GenericCallbacks.EveryXSimulationSteps(12000) do (init=false) #every 5 min = (0.025) * 40 * 60 * 5min
+        cbvtk = GenericCallbacks.EveryXSimulationSteps(2400) do (init=false) #every 1 min = (0.025) * 40 * 60 * 1min
             DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc, Q) do R, Q, QV, aux
                 @inbounds let
                     DF = eltype(Q)
