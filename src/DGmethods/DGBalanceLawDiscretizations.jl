@@ -626,7 +626,7 @@ function SpaceMethods.odefun!(disc::DGBalanceLaw, dQ::MPIStateArray,
 
   @launch(device, threads=Nfp, blocks=nrealelem,
           facerhs!(Val(dim), Val(N), Val(nstate), Val(nviscstate),
-                   Val(nauxstate), disc.numerical_flux!,
+                   Val(nauxstate), Val(true), disc.numerical_flux!,
                    disc.numerical_boundary_flux!, dQ.Q, Q.Q, Qvisc.Q,
                    auxstate.Q, vgeo, sgeo, t, vmapM, vmapP, elemtobndy,
                    topology.realelems))

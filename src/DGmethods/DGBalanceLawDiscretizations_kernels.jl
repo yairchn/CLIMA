@@ -225,10 +225,11 @@ Computational kernel: Evaluate the surface integrals on right-hand side of a
 See [`odefun!`](@ref) for usage.
 """
 function facerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
-                  ::Val{nauxstate}, numerical_flux!, numerical_boundary_flux!,
-                  rhs, Q, Qvisc, auxstate, vgeo, sgeo, t, vmapM, vmapP,
-                  elemtobndy, elems) where {dim, N, nstate, nviscstate,
-                                            nauxstate}
+                  ::Val{nauxstate}, ::Val{full_flow}, numerical_flux!,
+                  numerical_boundary_flux!, rhs, Q, Qvisc, auxstate, vgeo, sgeo,
+                  t, vmapM, vmapP, elemtobndy,
+                  elems) where {dim, N, nstate, nviscstate, nauxstate,
+                                full_flow}
 
   DFloat = eltype(Q)
 
@@ -304,8 +305,10 @@ function facerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
 
         #Update RHS
         @unroll for s = 1:nstate
-          # FIXME: Should we pretch these?
-          rhs[vidM, s, eM] -= vMI * sM * l_F[s]
+          if full_flow || l_F[s] > 0
+            # FIXME: Should we pretch these?
+            rhs[vidM, s, eM] -= vMI * sM * l_F[s]
+          end
         end
       end
       # Need to wait after even faces to avoid race conditions
