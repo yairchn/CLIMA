@@ -108,7 +108,7 @@ function volumerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
           end
 
           if source! !== nothing
-            source!(l_S, l_Q, l_aux, t)
+            source!(l_S, l_S, l_Q, l_aux, t)
 
             @unroll for s = 1:nstate
               l_rhs[s, i, j, k] += l_S[s]
@@ -313,6 +313,67 @@ function facerhs!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nviscstate},
       end
       # Need to wait after even faces to avoid race conditions
       f % 2 == 0 && @synchronize
+    end
+  end
+  nothing
+end
+
+"""
+    outflowsource!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nauxstate},
+                   ::Val{increment}, source!, rhs, Q, auxstate, t,
+                   elems) where {dim, N, nstate, nauxstate,
+                                 increment}
+
+Computational kernel: Evaluate the outflow source contributions to integrals on
+right-hand side of a `DGBalanceLaw` semi-discretization.
+
+See [`odefun!`](@ref) for usage.
+"""
+function outflowsource!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{nauxstate},
+                        ::Val{increment}, source!, rhs, Q, auxstate, t,
+                        elems) where {dim, N, nstate, nauxstate, increment}
+  source! !== nothing && return
+
+  DFloat = eltype(Q)
+
+  Nq = N + 1
+
+  Nqk = dim == 2 ? 1 : Nq
+
+  l_rhs = @scratch DFloat (nstate, Nq, Nq, Nqk) 3
+
+  l_Sin  = MArray{Tuple{nstate}, DFloat}(undef)
+  l_Sout = MArray{Tuple{nstate}, DFloat}(undef)
+  l_Q = MArray{Tuple{nstate}, DFloat}(undef)
+  l_aux = MArray{Tuple{nauxstate}, DFloat}(undef)
+
+  @inbounds @loop for e in (elems; blockIdx().x)
+    @loop for k in (1:Nqk; threadIdx().z)
+      @loop for j in (1:Nq; threadIdx().y)
+        @loop for i in (1:Nq; threadIdx().x)
+          ijk = i + Nq * ((j-1) + Nq * (k-1))
+
+          @unroll for s = 1:nstate
+            l_rhs[s, i, j, k] = increment ? rhs[ijk, s, e] : -zero(DFloat)
+          end
+
+          @unroll for s = 1:nstate
+            l_Q[s] = Q[ijk, s, e]
+          end
+
+          @unroll for s = 1:nauxstate
+            l_aux[s] = auxstate[ijk, s, e]
+          end
+
+          source!(l_Sin, l_Sout, l_Q, l_aux, t)
+
+          @unroll for s = 1:nstate
+            l_rhs[s, i, j, k] += l_Sout[s]
+          end
+
+          rhs[ijk, s, e] = l_rhs[s, i, j, k]
+        end
+      end
     end
   end
   nothing

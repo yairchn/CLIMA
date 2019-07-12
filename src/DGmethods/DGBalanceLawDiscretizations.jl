@@ -214,11 +214,13 @@ should be avoided.
 
 If present the source function is called with data from a DOF as
 ```
-source!(S, Q, aux, t)
+source!(Sin, Sout, Q, aux, t)
 ```
-where `S` is an `MVector` of length `length_state_vector` to be filled; other
-arguments are the same as `flux!` and the same warning concerning `Q` and `aux`
-applies.
+where `Sin` and `Sout` are an `MVector`s of length `length_state_vector` to be
+filled; other arguments are the same as `flux!` and the same warning concerning
+`Q` and `aux` applies. `Sin` is the sum of the sources into the state and `Sout`
+is the sum of the sources out. The user can ignore `Sout` and just fill `Sin` is
+outflow tracking is not required; see [`compute_outflow_rate!`](@ref).
 
 When `auxiliary_state_initialization! !== nothing` then this is called on the
 auxiliary state (assuming `auxiliary_state_length > 0`) as
@@ -822,6 +824,63 @@ function dof_iteration!(dof_fun!::Function, R::MPIStateArray, disc::DGBalanceLaw
           knl_dof_iteration!(Val(dim), Val(N), Val(nRstate), Val(nstate),
                              Val(nviscstate), Val(nauxstate), dof_fun!, R.Q,
                              Q.Q, Qvisc.Q, auxstate.Q, topology.realelems))
+end
+
+"""
+    compute_outflow_rate!(dQout, disc::DGBalanceLaw, Q, t)
+
+Computes the outflow rate of change for each state at each degree of freedom
+with a given discretization `disc`, state `Q`, and time `t`. Result is written
+into `dQout`.
+"""
+function compute_outflow_rate!(dQout, disc::DGBalanceLaw, Q, t)
+  device = typeof(Q.Q) <: Array ? CPU() : CUDA()
+
+  grid = disc.grid
+  topology = grid.topology
+
+  dim = dimensionality(grid)
+  N = polynomialorder(grid)
+  Nq = N + 1
+  Nqk = dim == 2 ? 1 : Nq
+  Nfp = Nq * Nqk
+  nrealelem = length(topology.realelems)
+
+  Qvisc = disc.Qvisc
+  auxstate = disc.auxstate
+
+  nstate = disc.nstate
+  nviscstate = disc.number_viscous_states
+  nauxstate = size(auxstate, 2)
+
+  vgeo = grid.vgeo
+  sgeo = grid.sgeo
+  vmapM = grid.vmapM
+  vmapP = grid.vmapP
+  elemtobndy = grid.elemtobndy
+
+  MPIStateArrays.start_ghost_exchange!(Q)
+
+  ###################
+  # RHS Computation #
+  ###################
+
+  # Need to rethink this case
+  @assert nviscstate == 0
+
+  @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
+          outflowsource!(Val(dim), Val(N), Val(nstate), Val(nauxstate),
+                         Val(false), disc.source!, dQout.Q, Q.Q, auxstate.Q, t,
+                         topology.realelems))
+
+  MPIStateArrays.finish_ghost_recv!(Q)
+
+  @launch(device, threads=Nfp, blocks=nrealelem,
+          facerhs!(Val(dim), Val(N), Val(nstate), Val(nviscstate),
+                   Val(nauxstate), Val(false), disc.numerical_flux!,
+                   disc.numerical_boundary_flux!, dQout.Q, Q.Q, Qvisc.Q,
+                   auxstate.Q, vgeo, sgeo, t, vmapM, vmapP, elemtobndy,
+                   topology.realelems))
 end
 
 end
