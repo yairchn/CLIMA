@@ -306,7 +306,11 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
 
   # this has to done here so the dQout gets in via closure...
   function preodefun!(disc, Q, t)
+    Filters.apply!(Q, (_ρq_tot, _ρq_liq, _ρq_rai), disc.grid, TMARFilter())
+
     DGBalanceLawDiscretizations.compute_outflow_rate!(dQout, disc, Q, t)
+
+    # TODO: Compute for each field
   end
 
   # spacedisc = data needed for evaluating the right-hand side function
