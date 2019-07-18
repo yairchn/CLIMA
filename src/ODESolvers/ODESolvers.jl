@@ -68,6 +68,7 @@ function solve!(Q, solver::AbstractODESolver; timeend::Real=Inf,
     step += 1
 
     time = dostep!(Q, solver, timeend, adjustfinalstep)
+    Q[7] = max(0., Q[7]) #TODO - Anna was here
 
     # FIXME: Determine better way to handle postcallback behavior
     # Current behavior:
