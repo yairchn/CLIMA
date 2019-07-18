@@ -17,8 +17,8 @@
 
 using MPI
 using CLIMA
-using CLIMA.Topologies
-using CLIMA.Grids
+using CLIMA.Mesh.Topologies
+using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.DGBalanceLawDiscretizations.NumericalFluxes
 using CLIMA.MPIStateArrays
@@ -55,7 +55,7 @@ const _nauxcstate = 3
 const _c_z, _c_x, _c_p = 1:_nauxcstate
 
 # preflux computation
-@inline function preflux(Q, _...)
+@inline function preflux(Q)
   DFloat = eltype(Q)
   @inbounds begin
     # unpack all the state variables
@@ -79,8 +79,7 @@ end
 
 
 # boundary condition
-@inline function bcstate!(QP, VFP, auxP, nM, QM, VFM, auxM, bctype, t,
-                          u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot)
+@inline function bcstate!(QP, VFP, auxP, nM, QM, VFM, auxM, bctype, t)
   @inbounds begin
 
     ρu_M, ρw_M, ρe_tot_M, ρq_tot_M, ρq_liq_M, ρq_rai_M =
@@ -93,7 +92,7 @@ end
 
     QP[_ρe_tot], QP[_ρq_tot], QP[_ρq_liq] = ρe_tot_M, ρq_tot_M, ρq_liq_M
 
-    DF = eltype(ρ)
+    DF = eltype(QP)
     QP[_ρq_rai] = DF(0) #TODO <- should be this
     #QP[_ρq_rai] = ρq_rai_M
 
@@ -108,9 +107,9 @@ end
 
 
 # max eigenvalue
-@inline function wavespeed(n, Q, aux, t, u, w, rain_w,
-                           ρ, q_tot, q_liq, q_rai, e_tot)
+@inline function wavespeed(n, Q, aux, t)
   @inbounds begin
+    u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot = preflux(Q)
     abs(n[1] * u + n[2] * max(w, rain_w, w-rain_w))
   end
 end
@@ -145,11 +144,11 @@ end
 
 
 # time tendencies
-source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
-@inline function source!(S, Q, aux, t, u, w, rain_w, ρ,
-                         q_tot, q_liq, q_rai, e_tot)
+@inline function source!(S, Q, aux, t)
   @inbounds begin
     DF = eltype(Q)
+
+    u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot = preflux(Q)
 
     x = aux[_c_x]
     z = aux[_c_z]
@@ -184,11 +183,11 @@ source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
 end
 
 # physical flux function
-eulerflux!(F, Q, QV, aux, t) = eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
-@inline function eulerflux!(F, Q, QV, aux, t, u, w, rain_w, ρ,
-                            q_tot, q_liq, q_rai, e_tot)
+@inline function eulerflux!(F, Q, QV, aux, t)
   @inbounds begin
     p = aux[_c_p]
+
+    u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot = preflux(Q)
 
     DF = eltype(Q)
     F .= DF(0)
@@ -265,14 +264,12 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
                                          )
   numflux!(x...) = NumericalFluxes.rusanov!(x...,
                                             eulerflux!,
-                                            wavespeed,
-                                            preflux
+                                            wavespeed
                                            )
   numbcflux!(x...) = NumericalFluxes.rusanov_boundary_flux!(x...,
                                                             eulerflux!,
                                                             bcstate!,
-                                                            wavespeed,
-                                                            preflux
+                                                            wavespeed
                                                            )
 
   # spacedisc = data needed for evaluating the right-hand side function

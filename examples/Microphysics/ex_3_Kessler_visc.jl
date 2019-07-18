@@ -17,8 +17,8 @@
 
 using MPI
 using CLIMA
-using CLIMA.Topologies
-using CLIMA.Grids
+using CLIMA.Mesh.Topologies
+using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.DGBalanceLawDiscretizations.NumericalFluxes
 using CLIMA.MPIStateArrays
@@ -59,10 +59,9 @@ const _v_ρq_rai, = 1:_nviscstate
 
 const _ngradstate = 2
 const _g_ρ, _g_ρq_rai = 1:_ngradstate
-const _states_for_gradient_transform = (_ρ, _ρq_rai,)
 
 # preflux computation
-@inline function preflux(Q, _...)
+@inline function preflux(Q)
   DFloat = eltype(Q)
   @inbounds begin
     # unpack all the state variables
@@ -86,8 +85,7 @@ end
 
 
 # boundary condition
-@inline function bcstate!(QP, VFP, auxP, nM, QM, VFM, auxM, bctype, t,
-                          u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot)
+@inline function bcstate!(QP, VFP, auxP, nM, QM, VFM, auxM, bctype, t)
   @inbounds begin
 
     ρu_M, ρw_M, ρe_tot_M, ρq_tot_M, ρq_liq_M, ρq_rai_M =
@@ -100,24 +98,21 @@ end
 
     QP[_ρe_tot], QP[_ρq_tot], QP[_ρq_liq] = ρe_tot_M, ρq_tot_M, ρq_liq_M
 
-    DF = eltype(ρ)
+    DF = eltype(QP)
     QP[_ρq_rai] = DF(0)
     #QP[_ρq_rai] = ρq_rai_M
 
     auxM .= auxP
     VFP .= DF(0)
-
-    # Required return from this function is either nothing
-    # or preflux with plus state as arguments
-    return preflux(QP)
+    nothing
   end
 end
 
 
 # max eigenvalue
-@inline function wavespeed(n, Q, aux, t, u, w, rain_w,
-                           ρ, q_tot, q_liq, q_rai, e_tot)
+@inline function wavespeed(n, Q, aux, t)
   @inbounds begin
+    u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot = preflux(Q)
     abs(n[1] * u + n[2] * max(w, rain_w, w - rain_w))
   end
 end
@@ -152,11 +147,11 @@ end
 
 
 # time tendencies
-source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q)...)
-@inline function source!(S, Q, aux, t, u, w, rain_w, ρ,
-                         q_tot, q_liq, q_rai, e_tot)
+@inline function source!(S, Q, aux, t)
   @inbounds begin
     DF = eltype(Q)
+
+    u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot = preflux(Q)
 
     x = aux[_c_x]
     z = aux[_c_z]
@@ -220,11 +215,11 @@ end
 end
 
 # physical flux function
-eulerflux!(F, Q, QV, aux, t) = eulerflux!(F, Q, QV, aux, t, preflux(Q)...)
-@inline function eulerflux!(F, Q, QV, aux, t, u, w, rain_w, ρ,
-                            q_tot, q_liq, q_rai, e_tot)
+@inline function eulerflux!(F, Q, QV, aux, t)
   @inbounds begin
     p = aux[_c_p]
+
+    u, w, rain_w, ρ, q_tot, q_liq, q_rai, e_tot = preflux(Q)
 
     DF = eltype(Q)
     F .= DF(0)
@@ -303,14 +298,12 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
                                          )
   numflux!(x...) = NumericalFluxes.rusanov!(x...,
                                             eulerflux!,
-                                            wavespeed,
-                                            preflux
+                                            wavespeed
                                            )
   numbcflux!(x...) = NumericalFluxes.rusanov_boundary_flux!(x...,
                                                             eulerflux!,
                                                             bcstate!,
-                                                            wavespeed,
-                                                            preflux
+                                                            wavespeed
                                                            )
 
   # spacedisc = data needed for evaluating the right-hand side function
@@ -324,8 +317,6 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
                              constant_auxiliary_init!,
                            source! = source!,
                            number_gradient_states = _ngradstate,
-                           states_for_gradient_transform =
-                             _states_for_gradient_transform,
                            number_viscous_states = _nviscstate,
                            gradient_transform! = gradient_transform!,
                            viscous_transform! = compute_stresses!,
