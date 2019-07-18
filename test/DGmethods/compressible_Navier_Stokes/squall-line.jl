@@ -1,6 +1,13 @@
 
 # Load Modules
 using MPI
+using LinearAlgebra
+using StaticArrays
+using Logging, Printf, Dates
+using DelimitedFiles
+using Dierckx
+using TimerOutputs
+
 using CLIMA
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
@@ -11,13 +18,7 @@ using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
 using CLIMA.ParametersType
-using LinearAlgebra
-using StaticArrays
-using Logging, Printf, Dates
 using CLIMA.Vtk
-using DelimitedFiles
-using Dierckx
-using TimerOutputs
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
 using CLIMA.Microphysics
@@ -70,34 +71,14 @@ end
 @parameter Prandtl_t 1//3 "Prandtl_t"
 @parameter cp_over_prandtl cp_d / Prandtl_t "cp_over_prandtl"
 
-# Problem description
-# --------------------
-# 2D thermal perturbation (cold bubble) in a neutrally stratified atmosphere
-# No wall-shear, lateral periodic boundaries with no-flux walls at the domain
-# top and bottom.
-# Inviscid, Constant viscosity, StandardSmagorinsky, MinimumDissipation
-# filters are tested against this benchmark problem
-# TODO: link to module SubGridScaleTurbulence
-
-#
 # User Input
-#
 const numdims = 3
 const Npoly = 4
 
-#
 # Define grid size
-#
 Δx    =  250
 Δy    = 1000
 Δz    =  200
-
-#
-# OR:
-#
-# Set Δx < 0 and define  Nex, Ney, Nez:
-#
-(Nex, Ney, Nez) = (5, 5, 5)
 
 # Physical domain extents
 const (xmin, xmax) = (-30000,30000)
@@ -110,9 +91,7 @@ const Ly = ymax - ymin
 const Lz = zmax - ymin
 
 if ( Δx > 0)
-    #
     # User defines the grid size:
-    #
     ratiox = (Lx/Δx - 1)/Npoly
     ratioy = (Ly/Δy - 1)/Npoly
     ratioz = (Lz/Δz - 1)/Npoly
@@ -121,9 +100,7 @@ if ( Δx > 0)
     Nez = ceil(Int64, ratioz)
 
 else
-    #
     # User defines the number of elements:
-    #
     Δx = Lx / ((Nex * Npoly) + 1)
     Δy = Ly / ((Ney * Npoly) + 1)
     Δz = Lz / ((Nez * Npoly) + 1)
@@ -209,8 +186,8 @@ end
 # -------------------------------------------------------------------------
 function read_sounding()
     #read in the original squal sounding
-    #fsounding  = open(joinpath(@__DIR__, "../soundings/sounding_gabersek.dat"))
-    fsounding  = open(joinpath(@__DIR__, "../soundings/sounding_gabersek_3deg_warmer.dat"))
+    fsounding  = open(joinpath(@__DIR__, "../soundings/sounding_gabersek.dat"))
+    #fsounding  = open(joinpath(@__DIR__, "../soundings/sounding_gabersek_3deg_warmer.dat"))
     sounding = readdlm(fsounding)
     close(fsounding)
     (nzmax, ncols) = size(sounding)
@@ -260,9 +237,6 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
         vq_rai_x, vq_rai_y, vq_rai_z = VF[_q_rai_x], VF[_q_rai_y], VF[_q_rai_z]
         vTx, vTy, vTz = VF[_Tx], VF[_Ty], VF[_Tz]
 
-        # Radiation contribution
-        F_rad = ρ * radiation(aux)
-
         SijSij = VF[_SijSij]
 
         #Dynamic eddy viscosity from Smagorinsky:
@@ -285,8 +259,6 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
         F[1, _ρe_tot] -= u * τ11 + v * τ12 + w * τ13 + cp_over_prandtl * vTx * ν_e
         F[2, _ρe_tot] -= u * τ21 + v * τ22 + w * τ23 + cp_over_prandtl * vTy * ν_e
         F[3, _ρe_tot] -= u * τ31 + v * τ32 + w * τ33 + cp_over_prandtl * vTz * ν_e
-
-        F[3, _ρe_tot] -= F_rad
 
         # Viscous contributions to mass flux terms
         F[1, _ρq_tot] -= vq_tot_x * D_e; F[2, _ρq_tot] -= vq_tot_y * D_e; F[3, _ρq_tot] -= vq_tot_z * D_e
@@ -317,27 +289,6 @@ gradient_vars!(vel, Q, aux, t, _...) = gradient_vars!(vel, Q, aux, t, preflux(Q,
         vel[1], vel[2], vel[3] = u, v, w
 
         vel[4], vel[5], vel[6], vel[7], vel[8], vel[9]  = e_tot, q_tot, q_liq, q_ice, q_rai, T
-    end
-end
-
-@inline function radiation(aux)
-    @inbounds begin
-        DFloat = eltype(aux)
-        zero_to_z = aux[_a_02z]
-        z_to_inf = aux[_a_z2inf]
-        z = aux[_a_z]
-        z_i = 840  # Start with constant inversion height of 840 meters then build in check based on q_tot
-        Δz_i = max(z - z_i, zero(DFloat))
-        # Constants
-        F_0 = 70
-        F_1 = 22
-        α_z = 1
-        ρ_i = DFloat(1.22)
-        D_subsidence = DFloat(3.75e-6)
-        term1 = F_0 * exp(-z_to_inf)
-        term2 = F_1 * exp(-zero_to_z)
-        term3 = ρ_i * cp_d * D_subsidence * α_z * (DFloat(0.25) * (cbrt(Δz_i))^4 + z_i * cbrt(Δz_i))
-        F_rad = term1 + term2 + term3
     end
 end
 
@@ -527,13 +478,23 @@ end
 @inline function bcstate!(QP, VFP, auxP, nM, QM, VFM, auxM, bctype, t,
                           u, v, w, rain_wM, ρ, q_tot, q_liq, q_ice, q_rai, e_tot)
     @inbounds begin
+
+        ρe_tot_M, ρq_tot_M, ρq_liq_M, ρq_rai_M =
+          QM[_ρe_tot], QM[_ρq_tot], QM[_ρq_liq], QM[_ρq_rai]
         ρu_M, ρv_M, ρw_M = QM[_ρu], QM[_ρv], QM[_ρw]
+
         # No flux boundary conditions
         # No shear on walls (free-slip condition)
         ρu_nM = nM[1] * ρu_M + nM[2] * ρv_M + nM[3] * ρw_M
         QP[_ρu] = ρu_M - 2 * nM[1] * ρu_nM
         QP[_ρv] = ρv_M - 2 * nM[2] * ρu_nM
         QP[_ρw] = ρw_M - 2 * nM[3] * ρu_nM
+
+        QP[_ρe_tot], QP[_ρq_tot], QP[_ρq_liq] = ρe_tot_M, ρq_tot_M, ρq_liq_M#, ρq_rai_M
+
+        DF = eltype(QM)
+        QP[_ρq_rai] = DF(0)
+
         nothing
     end
 end
@@ -581,7 +542,7 @@ end
         z = aux[_a_z]
         p = aux[_a_p]
 
-        #TODO - tmp
+        # TODO - ensure positive definite
         q_tot = max(DF(0), q_tot)
         q_liq = max(DF(0), q_liq)
         q_ice = max(DF(0), q_ice)
@@ -594,39 +555,34 @@ end
         # equilibrium state at current T
         q_eq = PhasePartition_equil(T, ρ, q_tot)
 
-        # cloud water condensation/evaporation
+        # tendency from cloud water condensation/evaporation
+        # TODO - temporary handling ice as cloud water
         src_q_liq = conv_q_vap_to_q_liq(q_eq, q)
-        #src_q_ice = conv_q_vap_to_q_ice(q_eq, q)
-        S[_ρq_liq] += ρ * src_q_liq
-        #S[_ρq_ice] += ρ * src_q_ice
+        src_q_ice = DF(0)
 
         # tendencies from rain
-        # TODO - ensure positive definite
-        # TODO - temporary handling ice
-        #if(q_tot >= DF(0) && q_liq >= DF(0) && q_rai >= DF(0))
+        if (q_tot >= DF(0) && q_liq >= DF(0) && q_rai >= DF(0))
 
-        src_q_rai_evap = conv_q_rai_to_q_vap(q_rai, q, T , p, ρ)
+          src_q_rai_evap = conv_q_rai_to_q_vap(q_rai, q, T , p, ρ)
 
-        src_q_rai_acnv_liq = conv_q_liq_to_q_rai_acnv(q.liq)
-        src_q_rai_accr_liq = conv_q_liq_to_q_rai_accr(q.liq, q_rai, ρ)
+          src_q_rai_acnv_liq = conv_q_liq_to_q_rai_acnv(q.liq)
+          src_q_rai_accr_liq = conv_q_liq_to_q_rai_accr(q.liq, q_rai, ρ)
 
-        #src_q_rai_acnv_ice = conv_q_liq_to_q_rai_acnv(q.ice)
-        #src_q_rai_accr_ice = conv_q_liq_to_q_rai_accr(q.ice, q_rai, ρ)
+          src_q_rai_tot = src_q_rai_acnv_liq + src_q_rai_accr_liq + src_q_rai_evap
 
-        src_q_rai_tot = src_q_rai_acnv_liq + src_q_rai_accr_liq + src_q_rai_evap# + src_q_rai_acnv_ice + src_q_rai_accr_ice
+          S[_ρq_liq] += ρ * (src_q_liq - src_q_rai_acnv_liq + src_q_rai_accr_liq)
+          S[_ρq_rai] += ρ * src_q_rai_tot
+          S[_ρq_tot] -= ρ * src_q_rai_tot
 
-        S[_ρq_liq] -= ρ * (src_q_rai_acnv_liq + src_q_rai_accr_liq)
-        #S[_ρq_ice] -= ρ * (src_q_rai_acnv_ice + src_q_rai_accr_ice)
+          #S[_ρe_tot] += ρ * (src_q_liq     * ((DF(cv_l) - DF(cv_v)) * (T - DF(T_0)) - DF(e_int_v0)) +
+          #                   src_q_ice     * ((DF(cv_i) - DF(cv_v)) * (T - DF(T_0)) - DF(e_int_v0) - DF(e_int_i0)) -
+          #                   src_q_rai_tot * ((DF(cv_v) - DF(cv_d)) * (T - DF(T_0)) + DF(e_int_v0)))
 
-        S[_ρq_rai] += ρ * src_q_rai_tot
-        S[_ρq_tot] -= ρ * src_q_rai_tot
-
-        S[_ρe_tot] -= (
-            src_q_rai_evap * (DF(cv_v) * (T - DF(T_0)) + e_int_v0) -
-            (src_q_rai_acnv_liq + src_q_rai_accr_liq) * DF(cv_l) * (T - DF(T_0))# -
-            #(src_q_rai_acnv_ice + src_q_rai_accr_ice) * DF(cv_i) * (T - DF(T_0))
-        ) * ρ
-        #end
+          S[_ρe_tot] -= (
+              src_q_rai_evap * (DF(cv_v) * (T - DF(T_0)) + e_int_v0) -
+              (src_q_rai_acnv_liq + src_q_rai_accr_liq) * DF(cv_l) * (T - DF(T_0))
+          ) * ρ
+        end
     end
 end
 """
@@ -758,8 +714,7 @@ function squall_line!(dim, Q, t, spl_tinit, spl_qinit, spl_uinit, spl_vinit,
     ρ     = air_density(T, p)
 
     # energy definitions
-    #u, v, w     = datau, datav, zero(DFloat) #geostrophic. TO BE BUILT PROPERLY if Coriolis is considered
-    u, v, w     = datau, zero(DFloat), zero(DFloat) #geostrophic. TO BE BUILT PROPERLY if Coriolis is considered
+    u, v, w     = datau, datav, zero(DFloat) #geostrophic. TO BE BUILT PROPERLY if Coriolis is considered
     ρu          = ρ * u
     ρv          = ρ * v
     ρw          = ρ * w
@@ -941,7 +896,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
 
                     R[out_z] = aux[_a_z]
                     R[out_p] = p
-                    R[out_beta] = radiation(aux)
+                    R[out_beta] = aux[_a_sponge]
                     R[out_T] = T
                     R[out_tht] = tht
 
@@ -968,7 +923,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                 end
             end
 
-            outprefix = @sprintf("./vtk/squall_line_%dD_mpirank%04d_step%04d", dim,
+            outprefix = @sprintf("./vtk/squall_line_new_energy_src_%dD_mpirank%04d_step%04d", dim,
                                  MPI.Comm_rank(mpicomm), step[1])
             @debug "doing VTK output" outprefix
             writevtk(outprefix, Q, spacedisc, statenames,
@@ -1022,7 +977,7 @@ end
 
 # Initialise the integration computation. Kernels calculate this at every timestep??
 @timeit to "initial integral" integral_computation(spacedisc, Q, 0)
-@timeit to "solve" solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk, cbdt))
+@timeit to "solve" solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk))
 
 
 @info @sprintf """Finished...
