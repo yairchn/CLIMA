@@ -147,25 +147,25 @@ end</code></pre><pre><code class="language-none">┌ Info: Run with
                    &quot;&quot;&quot;, dim, Ne, polynomialorder, error)
   end
 end</code></pre><pre><code class="language-none">┌ Info: Update
-│ simtime = 1.6249999999999967e-01
+│ simtime = 1.4374999999999974e-01
 │ runtime = 00:00:00
-└ norm(Q) = 2.2795853021586381e+00
+└ norm(Q) = 2.2795853021794059e+00
 ┌ Info: Update
-│ simtime = 3.4687500000000071e-01
+│ simtime = 3.1718750000000029e-01
 │ runtime = 00:00:01
-└ norm(Q) = 2.2795853019531238e+00
+└ norm(Q) = 2.2795853019863026e+00
 ┌ Info: Update
-│ simtime = 5.3125000000000333e-01
+│ simtime = 4.9375000000000280e-01
 │ runtime = 00:00:02
-└ norm(Q) = 2.2795853017478094e+00
+└ norm(Q) = 2.2795853017895409e+00
 ┌ Info: Update
-│ simtime = 7.1875000000000600e-01
+│ simtime = 6.6718750000000526e-01
 │ runtime = 00:00:03
-└ norm(Q) = 2.2795853015389276e+00
+└ norm(Q) = 2.2795853015963647e+00
 ┌ Info: Update
-│ simtime = 9.0625000000000866e-01
+│ simtime = 8.4218750000000775e-01
 │ runtime = 00:00:04
-└ norm(Q) = 2.2795853013300174e+00
+└ norm(Q) = 2.2795853014013994e+00
 ┌ Info: Run with
 │ dim              = 2
 │ Ne               = 20
@@ -233,10 +233,7 @@ end</code></pre><pre><code class="language-none">┌ Info: Running with
 ┌ Info: Level      = 4
 │ Ne               = 40
 │ error            = 1.0168e-07
-└ convergence rate = 4.9846e+00</code></pre><h3><a class="nav-anchor" id="Finalizing-MPI-(if-necessary)-1" href="#Finalizing-MPI-(if-necessary)-1">Finalizing MPI (if necessary)</a></h3><p>If we are running interactively we do not want to finalize MPI now but at exit; this does not work for windows hence the check. Otherwise we can finalize MPI now.</p><pre><code class="language-julia">Sys.iswindows() || MPI.finalize_atexit()
-Sys.iswindows() &amp;&amp; !isinteractive() &amp;&amp; MPI.Finalize()</code></pre><pre><code class="language-none">┌ Warning: `finalize_atexit()` is deprecated, use `true` instead.
-│   caller = top-level scope at none:0
-└ @ Core none:0</code></pre><h2><a class="nav-anchor" id="ex_001_periodic_advection-plain-program-1" href="#ex_001_periodic_advection-plain-program-1">Plain Program</a></h2><p>Below follows a version of the program without any comments. The file is also available here: <a href="ex_001_periodic_advection.jl">ex_001_periodic_advection.jl</a></p><pre><code class="language-julia">using MPI
+└ convergence rate = 4.9846e+00</code></pre><h2><a class="nav-anchor" id="ex_001_periodic_advection-plain-program-1" href="#ex_001_periodic_advection-plain-program-1">Plain Program</a></h2><p>Below follows a version of the program without any comments. The file is also available here: <a href="ex_001_periodic_advection.jl">ex_001_periodic_advection.jl</a></p><pre><code class="language-julia">using MPI
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
@@ -492,8 +489,5 @@ let
     end
   end
 end
-
-Sys.iswindows() || MPI.finalize_atexit()
-Sys.iswindows() &amp;&amp; !isinteractive() &amp;&amp; MPI.Finalize()
 
 # This file was generated using Literate.jl, https://github.com/fredrikekre/Literate.jl</code></pre><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p><footer><hr/><a class="previous" href="../../../BalanceLawOverview.html"><span class="direction">Previous</span><span class="title">DG Balance Law Method</span></a><a class="next" href="ex_002_solid_body_rotation.html"><span class="direction">Next</span><span class="title">Example 002: Solid Body Rotation</span></a></footer></article></body></html>

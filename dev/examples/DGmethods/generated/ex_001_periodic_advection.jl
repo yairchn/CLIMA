@@ -255,8 +255,5 @@ let
   end
 end
 
-Sys.iswindows() || MPI.finalize_atexit()
-Sys.iswindows() && !isinteractive() && MPI.Finalize()
-
 # This file was generated using Literate.jl, https://github.com/fredrikekre/Literate.jl
 

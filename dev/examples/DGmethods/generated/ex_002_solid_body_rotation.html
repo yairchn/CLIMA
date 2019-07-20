@@ -190,10 +190,7 @@ end</code></pre><pre><code class="language-none">┌ Info: Running with
 ┌ Info: Level      = 4
 │ Ne               = 40
 │ error            = 3.3760e-06
-└ convergence rate = 5.5460e+00</code></pre><h3><a class="nav-anchor" id="Finalizing-MPI-(if-necessary)-1" href="#Finalizing-MPI-(if-necessary)-1">Finalizing MPI (if necessary)</a></h3><pre><code class="language-julia">Sys.iswindows() || MPI.finalize_atexit()
-Sys.iswindows() &amp;&amp; !isinteractive() &amp;&amp; MPI.Finalize()</code></pre><pre><code class="language-none">┌ Warning: `finalize_atexit()` is deprecated, use `true` instead.
-│   caller = top-level scope at none:0
-└ @ Core none:0</code></pre><h2><a class="nav-anchor" id="ex_002_solid_body_rotation-plain-program-1" href="#ex_002_solid_body_rotation-plain-program-1">Plain Program</a></h2><p>Below follows a version of the program without any comments. The file is also available here: <a href="ex_002_solid_body_rotation.jl">ex_002_solid_body_rotation_periodic_advection.jl</a></p><pre><code class="language-julia">using MPI
+└ convergence rate = 5.5460e+00</code></pre><h2><a class="nav-anchor" id="ex_002_solid_body_rotation-plain-program-1" href="#ex_002_solid_body_rotation-plain-program-1">Plain Program</a></h2><p>Below follows a version of the program without any comments. The file is also available here: <a href="ex_002_solid_body_rotation.jl">ex_002_solid_body_rotation_periodic_advection.jl</a></p><pre><code class="language-julia">using MPI
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
@@ -393,8 +390,5 @@ let
     end
   end
 end
-
-Sys.iswindows() || MPI.finalize_atexit()
-Sys.iswindows() &amp;&amp; !isinteractive() &amp;&amp; MPI.Finalize()
 
 # This file was generated using Literate.jl, https://github.com/fredrikekre/Literate.jl</code></pre><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p><footer><hr/><a class="previous" href="ex_001_periodic_advection.html"><span class="direction">Previous</span><span class="title">Example 001: Periodic Advection</span></a></footer></article></body></html>
