@@ -581,7 +581,7 @@ end
         z = aux[_a_z]
         p = aux[_a_p]
 
-        #TODO - tmp
+        # TODO - ensure positive definite
         q_tot = max(DF(0), q_tot)
         q_liq = max(DF(0), q_liq)
         q_ice = max(DF(0), q_ice)
@@ -594,39 +594,21 @@ end
         # equilibrium state at current T
         q_eq = PhasePartition_equil(T, ρ, q_tot)
 
-        # cloud water condensation/evaporation
-        src_q_liq = conv_q_vap_to_q_liq(q_eq, q)
-        #src_q_ice = conv_q_vap_to_q_ice(q_eq, q)
-        S[_ρq_liq] += ρ * src_q_liq
-        #S[_ρq_ice] += ρ * src_q_ice
+        # tendency from cloud water condensation/evaporation
+        src_q_liq = conv_q_vap_to_q_liq(q_eq, q)# TODO - temporary handling ice
 
         # tendencies from rain
-        # TODO - ensure positive definite
-        # TODO - temporary handling ice
-        #if(q_tot >= DF(0) && q_liq >= DF(0) && q_rai >= DF(0))
-
         src_q_rai_evap = conv_q_rai_to_q_vap(q_rai, q, T , p, ρ)
+        src_q_rai_acnv = conv_q_liq_to_q_rai_acnv(q.liq)
+        src_q_rai_accr = conv_q_liq_to_q_rai_accr(q.liq, q_rai, ρ)
 
-        src_q_rai_acnv_liq = conv_q_liq_to_q_rai_acnv(q.liq)
-        src_q_rai_accr_liq = conv_q_liq_to_q_rai_accr(q.liq, q_rai, ρ)
+        src_q_rai_tot = src_q_rai_acnv + src_q_rai_accr + src_q_rai_evap
 
-        #src_q_rai_acnv_ice = conv_q_liq_to_q_rai_acnv(q.ice)
-        #src_q_rai_accr_ice = conv_q_liq_to_q_rai_accr(q.ice, q_rai, ρ)
-
-        src_q_rai_tot = src_q_rai_acnv_liq + src_q_rai_accr_liq + src_q_rai_evap# + src_q_rai_acnv_ice + src_q_rai_accr_ice
-
-        S[_ρq_liq] -= ρ * (src_q_rai_acnv_liq + src_q_rai_accr_liq)
-        #S[_ρq_ice] -= ρ * (src_q_rai_acnv_ice + src_q_rai_accr_ice)
-
+        # compute source-terms of state variables
+        S[_ρq_liq] += ρ * (src_q_liq - src_q_rai_acnv - src_q_rai_accr)
         S[_ρq_rai] += ρ * src_q_rai_tot
         S[_ρq_tot] -= ρ * src_q_rai_tot
-
-        S[_ρe_tot] -= (
-            src_q_rai_evap * (DF(cv_v) * (T - DF(T_0)) + e_int_v0) -
-            (src_q_rai_acnv_liq + src_q_rai_accr_liq) * DF(cv_l) * (T - DF(T_0))# -
-            #(src_q_rai_acnv_ice + src_q_rai_accr_ice) * DF(cv_i) * (T - DF(T_0))
-        ) * ρ
-        #end
+        S[_ρe_tot] -= ρ * src_q_rai_tot * DF(cv_l) * (T - DF(T_0))
     end
 end
 """
