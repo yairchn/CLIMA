@@ -1,6 +1,13 @@
 
 # Load Modules
 using MPI
+using LinearAlgebra
+using StaticArrays
+using Logging, Printf, Dates
+using DelimitedFiles
+using Dierckx
+using TimerOutputs
+
 using CLIMA
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
@@ -11,13 +18,7 @@ using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
 using CLIMA.ParametersType
-using LinearAlgebra
-using StaticArrays
-using Logging, Printf, Dates
 using CLIMA.Vtk
-using DelimitedFiles
-using Dierckx
-using TimerOutputs
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
 using CLIMA.Microphysics
@@ -54,8 +55,6 @@ _Tx, _Ty, _Tz, _SijSij = 1:_nviscstates
 
 # Gradient state labels
 const _ngradstates = 9
-const _states_for_gradient_transform = (_ρ, _ρu, _ρv, _ρw, _ρe_tot, _ρq_tot,
-                                        _ρq_liq, _ρq_ice, _ρq_rai)
 
 const _nauxstate = 11
 const _a_z, _a_dx, _a_dy, _a_dz, _a_sponge, _a_02z, _a_z2inf, _a_T, _a_p,
@@ -70,34 +69,14 @@ end
 @parameter Prandtl_t 1//3 "Prandtl_t"
 @parameter cp_over_prandtl cp_d / Prandtl_t "cp_over_prandtl"
 
-# Problem description
-# --------------------
-# 2D thermal perturbation (cold bubble) in a neutrally stratified atmosphere
-# No wall-shear, lateral periodic boundaries with no-flux walls at the domain
-# top and bottom.
-# Inviscid, Constant viscosity, StandardSmagorinsky, MinimumDissipation
-# filters are tested against this benchmark problem
-# TODO: link to module SubGridScaleTurbulence
-
-#
 # User Input
-#
 const numdims = 3
 const Npoly = 4
 
-#
 # Define grid size
-#
 Δx    =  250
 Δy    = 1000
 Δz    =  200
-
-#
-# OR:
-#
-# Set Δx < 0 and define  Nex, Ney, Nez:
-#
-(Nex, Ney, Nez) = (5, 5, 5)
 
 # Physical domain extents
 const (xmin, xmax) = (-30000,30000)
@@ -110,9 +89,7 @@ const Ly = ymax - ymin
 const Lz = zmax - ymin
 
 if ( Δx > 0)
-    #
     # User defines the grid size:
-    #
     ratiox = (Lx/Δx - 1)/Npoly
     ratioy = (Ly/Δy - 1)/Npoly
     ratioz = (Lz/Δz - 1)/Npoly
@@ -121,9 +98,7 @@ if ( Δx > 0)
     Nez = ceil(Int64, ratioz)
 
 else
-    #
     # User defines the number of elements:
-    #
     Δx = Lx / ((Nex * Npoly) + 1)
     Δy = Ly / ((Ney * Npoly) + 1)
     Δz = Lz / ((Nez * Npoly) + 1)
@@ -155,7 +130,7 @@ const Δsqr = Δ * Δ
 # Modules: NumericalFluxes.jl
 # functions: wavespeed, cns_flux!, bcstate!
 # -------------------------------------------------------------------------
-@inline function preflux(Q, VF, aux, _...)
+@inline function preflux(Q)
 
     DFloat = eltype(Q)
 
@@ -184,9 +159,10 @@ end
 #-------------------------------------------------------------------------
 #md # Soundspeed computed using the thermodynamic state TS
 # max eigenvalue
-@inline function wavespeed(n, Q, aux, t, u, v, w, rain_w, ρ, q_tot, q_liq,
-                           q_ice, q_rai, e_tot)
+@inline function wavespeed(n, Q, aux, t)
     @inbounds begin
+        u, v, w, rain_w, ρ, q_tot, q_liq, q_ice, q_rai, e_tot = preflux(Q)
+
         (n[1] * u +
          n[2] * v +
          n[3] * max(abs(w), abs(rain_w), abs(w-rain_w))
@@ -230,12 +206,13 @@ end
 #md # Note that the preflux calculation is splatted at the end of the function call
 #md # to cns_flux!
 # -------------------------------------------------------------------------
-cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
-@inline function cns_flux!(F, Q, VF, aux, t, u, v, w, rain_w, ρ,
-                           q_tot, q_liq, q_ice, q_rai, e_tot)
+@inline function cns_flux!(F, Q, VF, aux, t)
     @inbounds begin
 
         DFloat = eltype(F)
+
+        u, v, w, rain_w, ρ, q_tot, q_liq, q_ice, q_rai, e_tot = preflux(Q)
+
         p = aux[_a_p]
 
         # Inviscid contributions
@@ -260,9 +237,6 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
         vq_rai_x, vq_rai_y, vq_rai_z = VF[_q_rai_x], VF[_q_rai_y], VF[_q_rai_z]
         vTx, vTy, vTz = VF[_Tx], VF[_Ty], VF[_Tz]
 
-        # Radiation contribution
-        F_rad = ρ * radiation(aux)
-
         SijSij = VF[_SijSij]
 
         #Dynamic eddy viscosity from Smagorinsky:
@@ -286,8 +260,6 @@ cns_flux!(F, Q, VF, aux, t) = cns_flux!(F, Q, VF, aux, t, preflux(Q,VF, aux)...)
         F[2, _ρe_tot] -= u * τ21 + v * τ22 + w * τ23 + cp_over_prandtl * vTy * ν_e
         F[3, _ρe_tot] -= u * τ31 + v * τ32 + w * τ33 + cp_over_prandtl * vTz * ν_e
 
-        F[3, _ρe_tot] -= F_rad
-
         # Viscous contributions to mass flux terms
         F[1, _ρq_tot] -= vq_tot_x * D_e; F[2, _ρq_tot] -= vq_tot_y * D_e; F[3, _ρq_tot] -= vq_tot_z * D_e
         F[1, _ρq_liq] -= vq_liq_x * D_e; F[2, _ρq_liq] -= vq_liq_y * D_e; F[3, _ρq_liq] -= vq_liq_z * D_e
@@ -303,41 +275,13 @@ end
 #md # in some cases.
 # -------------------------------------------------------------------------
 # Compute the velocity from the state
-gradient_vars!(vel, Q, aux, t, _...) = gradient_vars!(vel, Q, aux, t, preflux(Q,~,aux)...)
-@inline function gradient_vars!(vel, Q, aux, t, u, v, w, rain_w, ρ,
-                                q_tot, q_liq, q_ice, q_rai, e_tot)
-
+@inline function gradient_vars!(vel, Q, aux, t)
     @inbounds begin
         T = aux[_a_T]
-
-        # TODO
-        # ordering should match states_for_gradient_transform
-        #_states_for_gradient_transform = (_ρ, _ρu, _ρv, _ρw, _ρe_tot, _ρq_tot, _ρq_liq, _ρq_ice, _ρq_rai)
+        u, v, w, rain_w, ρ, q_tot, q_liq, q_ice, q_rai, e_tot = preflux(Q)
 
         vel[1], vel[2], vel[3] = u, v, w
-
         vel[4], vel[5], vel[6], vel[7], vel[8], vel[9]  = e_tot, q_tot, q_liq, q_ice, q_rai, T
-    end
-end
-
-@inline function radiation(aux)
-    @inbounds begin
-        DFloat = eltype(aux)
-        zero_to_z = aux[_a_02z]
-        z_to_inf = aux[_a_z2inf]
-        z = aux[_a_z]
-        z_i = 840  # Start with constant inversion height of 840 meters then build in check based on q_tot
-        Δz_i = max(z - z_i, zero(DFloat))
-        # Constants
-        F_0 = 70
-        F_1 = 22
-        α_z = 1
-        ρ_i = DFloat(1.22)
-        D_subsidence = DFloat(3.75e-6)
-        term1 = F_0 * exp(-z_to_inf)
-        term2 = F_1 * exp(-zero_to_z)
-        term3 = ρ_i * cp_d * D_subsidence * α_z * (DFloat(0.25) * (cbrt(Δz_i))^4 + z_i * cbrt(Δz_i))
-        F_rad = term1 + term2 + term3
     end
 end
 
@@ -524,16 +468,25 @@ end
 # -------------------------------------------------------------------------
 # generic bc for 2d , 3d
 #
-@inline function bcstate!(QP, VFP, auxP, nM, QM, VFM, auxM, bctype, t,
-                          u, v, w, rain_wM, ρ, q_tot, q_liq, q_ice, q_rai, e_tot)
+@inline function bcstate!(QP, VFP, auxP, nM, QM, VFM, auxM, bctype, t)
     @inbounds begin
+
+        ρe_tot_M, ρq_tot_M, ρq_liq_M, ρq_rai_M =
+          QM[_ρe_tot], QM[_ρq_tot], QM[_ρq_liq], QM[_ρq_rai]
         ρu_M, ρv_M, ρw_M = QM[_ρu], QM[_ρv], QM[_ρw]
+
         # No flux boundary conditions
         # No shear on walls (free-slip condition)
         ρu_nM = nM[1] * ρu_M + nM[2] * ρv_M + nM[3] * ρw_M
         QP[_ρu] = ρu_M - 2 * nM[1] * ρu_nM
         QP[_ρv] = ρv_M - 2 * nM[2] * ρu_nM
         QP[_ρw] = ρw_M - 2 * nM[3] * ρu_nM
+
+        QP[_ρe_tot], QP[_ρq_tot], QP[_ρq_liq] = ρe_tot_M, ρq_tot_M, ρq_liq_M#, ρq_rai_M
+
+        DF = eltype(QM)
+        QP[_ρq_rai] = DF(0)
+
         nothing
     end
 end
@@ -555,28 +508,25 @@ end
 end
 # -------------------------------------------------------------------------
 
-source!(S, Q, aux, t) = source!(S, Q, aux, t, preflux(Q, ~, aux)...)
-@inline function source!(S, Q, aux, t, u, v, w, rain_w, ρ,
-                         q_tot, q_liq, q_ice, q_rai, e_tot)
+@inline function source!(S, Q, aux, t)
     # Initialise the final block source term
     S .= 0
 
     # Typically these sources are imported from modules
     @inbounds begin
-        source_microphysics!(S, Q, aux, t, u, v, w, rain_w, ρ,
-                             q_tot, q_liq, q_ice, q_rai, e_tot)
+        source_microphysics!(S, Q, aux, t)
         source_geopot!(S, Q, aux, t)
         source_sponge!(S, Q, aux, t)
         #source_geostrophic!(S, Q, aux, t)
     end
 end
 
-@inline function source_microphysics!(S, Q, aux, t, u, v, w, rain_w, ρ,
-                                      q_tot, q_liq, q_ice, q_rai, e_tot)
+@inline function source_microphysics!(S, Q, aux, t)
 
     DF = eltype(Q)
 
     @inbounds begin
+        u, v, w, rain_w, ρ, q_tot, q_liq, q_ice, q_rai, e_tot = preflux(Q)
 
         z = aux[_a_z]
         p = aux[_a_p]
@@ -810,8 +760,15 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                                                                    DeviceArray = ArrayType,
                                                                    polynomialorder = N)
 
-    numflux!(x...) = NumericalFluxes.rusanov!(x..., cns_flux!, wavespeed, preflux)
-    numbcflux!(x...) = NumericalFluxes.rusanov_boundary_flux!(x..., cns_flux!, bcstate!, wavespeed, preflux)
+    numflux!(x...) = NumericalFluxes.rusanov!(x...,
+                                              cns_flux!,
+                                              wavespeed
+                                             )
+    numbcflux!(x...) = NumericalFluxes.rusanov_boundary_flux!(x...,
+                                                              cns_flux!,
+                                                              bcstate!,
+                                                              wavespeed
+                                                             )
 
     # spacedisc = data needed for evaluating the right-hand side function
     @timeit to "Space Disc init" spacedisc = DGBalanceLaw(grid = grid,
@@ -820,8 +777,6 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                                                           numerical_flux! = numflux!,
                                                           numerical_boundary_flux! = numbcflux!,
                                                           number_gradient_states = _ngradstates,
-                                                          states_for_gradient_transform =
-                                                          _states_for_gradient_transform,
                                                           number_viscous_states = _nviscstates,
                                                           gradient_transform! = gradient_vars!,
                                                           viscous_transform! = compute_stresses!,
@@ -829,7 +784,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                                                           viscous_boundary_penalty! = stresses_boundary_penalty!,
                                                           auxiliary_state_length = _nauxstate,
                                                           auxiliary_state_initialization! = (x...) ->
-                                                          auxiliary_state_initialization!(x...),
+                                                            auxiliary_state_initialization!(x...),
                                                           source! = source!,
                                                           preodefun! = preodefun!)
 
@@ -903,7 +858,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
 
         step = [0]
         mkpath("./vtk")
-        cbvtk = GenericCallbacks.EveryXSimulationSteps(1200) do (init=false)
+        cbvtk = GenericCallbacks.EveryXSimulationSteps(1200) do (init=false) # (0.025) * 40 * 60 * 1/2
             DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc, Q) do R, Q, QV, aux
                 @inbounds let
                     DF = eltype(Q)
@@ -922,7 +877,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
 
                     R[out_z] = aux[_a_z]
                     R[out_p] = p
-                    R[out_beta] = radiation(aux)
+                    R[out_beta] = aux[_a_sponge]
                     R[out_T] = T
                     R[out_tht] = tht
 
@@ -949,7 +904,7 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
                 end
             end
 
-            outprefix = @sprintf("./vtk/squall_line_%dD_mpirank%04d_step%04d", dim,
+            outprefix = @sprintf("./vtk/squall_line_new_energy_src_%dD_mpirank%04d_step%04d", dim,
                                  MPI.Comm_rank(mpicomm), step[1])
             @debug "doing VTK output" outprefix
             writevtk(outprefix, Q, spacedisc, statenames,
