@@ -8,7 +8,7 @@ using CLIMA.MPIStateArrays
 using CLIMA.StrongStabilityPreservingRungeKuttaMethod
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
-using CLIMA.Vtk
+using CLIMA.VTK
 using LinearAlgebra
 using Logging
 using Dates
