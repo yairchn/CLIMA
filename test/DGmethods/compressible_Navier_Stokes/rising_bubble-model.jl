@@ -161,7 +161,8 @@ function run(mpicomm, ArrayType,
     
     vtkstep = 0
     # output initial step
-    do_output(mpicomm, vtkdir, vtkstep, dg, Q, model)
+    Qdiff = Q .- Qinit
+    do_output(mpicomm, vtkdir, vtkstep, dg, Qdiff, model)
 
     # setup the output callback
     cbvtk = EveryXSimulationSteps(floor(outputtime / dt)) do
