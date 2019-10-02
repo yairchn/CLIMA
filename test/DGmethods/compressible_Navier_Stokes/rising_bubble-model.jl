@@ -93,6 +93,10 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
       Δθ          = θ_c
     end
   end
+  
+  if t < 0
+    Δθ = 0
+  end
 
   #Perturbed state:
   θ            = θ_ref + Δθ # potential temperature
@@ -138,7 +142,7 @@ function run(mpicomm, ArrayType,
                CentralGradPenalty())
 
   Q = init_ode_state(dg, DF(0))
-  Qinit = init_ode_state(dg, DF(0))
+  Qinit = init_ode_state(dg, DF(-1))
 
   lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
 
