@@ -48,6 +48,7 @@ const dt = min(Δxyz...) / soundspeed_air(300.0) / polynomialorder
 const timeend = 100
 const output_vtk = true
 const outputtime = 5
+const smooth_bubble = true
 # ------------- Initial condition function ----------- # 
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,
@@ -77,10 +78,22 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
   rc::DF        = 250
   θ_ref::DF     = 303
   Δθ::DF        = 0
-  
-  if r <= rc 
-    Δθ          = DF(1//2) 
+  θ_c::DF = 1 // 2
+ 
+  if smooth_bubble
+    a::DFloat   =  50
+    s::DFloat   = 100
+    if r <= a
+      Δθ = θ_c
+    elseif r > a
+      Δθ = θ_c * exp(-(r - a)^2 / s^2)
+    end
+  else
+    if r <= rc 
+      Δθ          = θ_c
+    end
   end
+
   #Perturbed state:
   θ            = θ_ref + Δθ # potential temperature
   π_exner      = DF(1) - grav / (c_p * θ) * x3 # exner pressure
