@@ -81,8 +81,8 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
   θ_c::DF = 1 // 2
  
   if smooth_bubble
-    a::DFloat   =  50
-    s::DFloat   = 100
+    a::DF   =  50
+    s::DF   = 100
     if r <= a
       Δθ = θ_c
     elseif r > a
