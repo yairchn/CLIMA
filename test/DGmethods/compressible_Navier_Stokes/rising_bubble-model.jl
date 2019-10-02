@@ -125,6 +125,7 @@ function run(mpicomm, ArrayType,
                CentralGradPenalty())
 
   Q = init_ode_state(dg, DF(0))
+  Qinit = init_ode_state(dg, DF(0))
 
   lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
 
@@ -165,7 +166,8 @@ function run(mpicomm, ArrayType,
     # setup the output callback
     cbvtk = EveryXSimulationSteps(floor(outputtime / dt)) do
       vtkstep += 1
-      do_output(mpicomm, vtkdir, vtkstep, dg, Q, model)
+      Qdiff = Q .- Qinit
+      do_output(mpicomm, vtkdir, vtkstep, dg, Qdiff, model)
     end
     callbacks = (callbacks..., cbvtk)
   end
