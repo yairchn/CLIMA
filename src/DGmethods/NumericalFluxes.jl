@@ -92,6 +92,10 @@ abstract type NumericalFluxNonDiffusive end
 
 function numerical_flux_nondiffusive! end
 
+function numerical_flux_nondiffusive_minus! end
+function numerical_flux_nondiffusive_plus! end
+function numerical_flux_nondiffusive_mixed! end
+
 function numerical_boundary_flux_nondiffusive!(nf::NumericalFluxNonDiffusive,
                                                bl::BalanceLaw,
                                                F::MArray{Tuple{nstate}}, nM, QM,
@@ -122,6 +126,47 @@ Requires a `flux_nondiffusive!` and `wavespeed` method for the balance law.
 """
 struct Rusanov <: NumericalFluxNonDiffusive end
 
+function numerical_flux_nondiffusive_minus!(::Rusanov, bl::BalanceLaw, F::MArray, nM,
+                                            QM, auxM, t)
+  DFloat = eltype(F)
+  nstate = num_state(bl,DFloat)
+
+  FM = similar(F, Size(3, nstate))
+  fill!(FM, -zero(eltype(FM)))
+  flux_nondiffusive!(bl, Grad{vars_state(bl,DFloat)}(FM),
+                     Vars{vars_state(bl,DFloat)}(QM),
+                     Vars{vars_aux(bl,DFloat)}(auxM), t)
+
+  @inbounds for s = 1:nstate
+    F[s] += (nM[1] * FM[1, s] + nM[2] * FM[2, s] + nM[3] * FM[3, s]) / 2
+  end
+end
+
+function numerical_flux_nondiffusive_plus!(::Rusanov, bl::BalanceLaw, F::MArray, nM,
+                                           QP, auxP, t)
+  DFloat = eltype(F)
+  nstate = num_state(bl,DFloat)
+
+  FP = similar(F, Size(3, nstate))
+  fill!(FP, -zero(eltype(FP)))
+  flux_nondiffusive!(bl, Grad{vars_state(bl,DFloat)}(FP),
+                     Vars{vars_state(bl,DFloat)}(QP),
+                     Vars{vars_aux(bl,DFloat)}(auxP), t)
+
+  @inbounds for s = 1:nstate
+    F[s] += (nM[1] *  FP[1, s] + nM[2] * FP[2, s] + nM[3] *  FP[3, s]) / 2
+  end
+end
+
+function numerical_flux_nondiffusive_mixed!(::Rusanov, bl::BalanceLaw, F::MArray,
+                                            QJP, λM, λP)
+  DFloat = eltype(F)
+  nstate = num_state(bl,DFloat)
+  λ  =  max(λM, λP)
+  @inbounds for s = 1:nstate
+    F[s] += λ * QJP[s] / 2
+  end
+end
 
 function numerical_flux_nondiffusive!(::Rusanov, bl::BalanceLaw, F::MArray, nM,
                                       QM, auxM, QP, auxP, t)
@@ -214,6 +259,8 @@ An optional method can also be defined for
 abstract type NumericalFluxDiffusive end
 
 function numerical_flux_diffusive! end
+function numerical_flux_diffusive_minus! end
+function numerical_flux_diffusive_plus! end
 
 function numerical_boundary_flux_diffusive!(nf::NumericalFluxDiffusive,
                                             bl::BalanceLaw,
@@ -276,5 +323,42 @@ function numerical_flux_diffusive!(::CentralNumericalFluxDiffusive,
   end
 end
 
+function numerical_flux_diffusive_minus!(::CentralNumericalFluxDiffusive,
+                                         bl::BalanceLaw, F::MArray, nM,
+                                         QM, QVM, auxM,
+                                         t)
+  DFloat = eltype(F)
+  nstate = num_state(bl,DFloat)
+
+  FM = similar(F, Size(3, nstate))
+  fill!(FM, -zero(eltype(FM)))
+  flux_diffusive!(bl, Grad{vars_state(bl,DFloat)}(FM),
+                  Vars{vars_state(bl,DFloat)}(QM),
+                  Vars{vars_diffusive(bl,DFloat)}(QVM),
+                  Vars{vars_aux(bl,DFloat)}(auxM), t)
+
+  @inbounds for s = 1:nstate
+    F[s] += (nM[1] * FM[1, s] + nM[2] * FM[2, s] + nM[3] * FM[3, s]) / 2
+  end
+end
+
+function numerical_flux_diffusive_plus!(::CentralNumericalFluxDiffusive,
+                                   bl::BalanceLaw, F::MArray, nM,
+                                   QP, QVP, auxP,
+                                   t)
+  DFloat = eltype(F)
+  nstate = num_state(bl,DFloat)
+
+  FP = similar(F, Size(3, nstate))
+  fill!(FP, -zero(eltype(FP)))
+  flux_diffusive!(bl, Grad{vars_state(bl,DFloat)}(FP),
+                  Vars{vars_state(bl,DFloat)}(QP),
+                  Vars{vars_diffusive(bl,DFloat)}(QVP),
+                  Vars{vars_aux(bl,DFloat)}(auxP), t)
+
+  @inbounds for s = 1:nstate
+    F[s] += (nM[1] * FP[1, s] + nM[2] * FP[2, s] + nM[3] * FP[3, s]) / 2
+  end
+end
 
 end
