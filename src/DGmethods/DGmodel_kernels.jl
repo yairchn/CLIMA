@@ -2,13 +2,8 @@ using .NumericalFluxes: GradNumericalPenalty, diffusive_boundary_penalty!,
                         diffusive_penalty!,
                         NumericalFluxNonDiffusive, NumericalFluxDiffusive,
                         numerical_flux_nondiffusive!,
-                        numerical_flux_nondiffusive_minus!,
-                        numerical_flux_nondiffusive_plus!,
-                        numerical_flux_nondiffusive_mixed!,
                         numerical_boundary_flux_nondiffusive!,
                         numerical_flux_diffusive!,
-                        numerical_flux_diffusive_minus!,
-                        numerical_flux_diffusive_plus!,
                         numerical_boundary_flux_diffusive!
 
 using ..Mesh.Geometry
@@ -277,14 +272,24 @@ function facerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
   Nq = N + 1
   Nqk = dim == 2 ? 1 : Nq
 
-  l_QMP = MArray{Tuple{nstate}, DFloat}(undef)
-  l_QJP = MArray{Tuple{nstate}, DFloat}(undef)
-  l_QviscMP = MArray{Tuple{nviscstate}, DFloat}(undef)
-  l_auxMP = MArray{Tuple{nauxstate}, DFloat}(undef)
+  l_QM = MArray{Tuple{nstate}, DFloat}(undef)
+  l_QviscM = MArray{Tuple{nviscstate}, DFloat}(undef)
+  l_auxM = MArray{Tuple{nauxstate}, DFloat}(undef)
+
+  # Need two copies since numerical_flux_nondiffusive! can modify QP
+  l_QPnondiff = MArray{Tuple{nstate}, DFloat}(undef)
+  l_QPdiff = MArray{Tuple{nstate}, DFloat}(undef)
+
+  # Need two copies since numerical_flux_nondiffusive! can modify auxP
+  l_auxPnondiff = MArray{Tuple{nauxstate}, DFloat}(undef)
+  l_auxPdiff = MArray{Tuple{nauxstate}, DFloat}(undef)
+
+  l_QviscP = MArray{Tuple{nviscstate}, DFloat}(undef)
+
   
-  #l_Q_bot1 = MArray{Tuple{nstate}, DFloat}(undef)
-  #l_Qvisc_bot1 = MArray{Tuple{nviscstate}, DFloat}(undef)
-  #l_aux_bot1 = MArray{Tuple{nauxstate}, DFloat}(undef)
+  l_Q_bot1 = MArray{Tuple{nstate}, DFloat}(undef)
+  l_Qvisc_bot1 = MArray{Tuple{nviscstate}, DFloat}(undef)
+  l_aux_bot1 = MArray{Tuple{nauxstate}, DFloat}(undef)
   
   l_F = MArray{Tuple{nstate}, DFloat}(undef)
 
@@ -297,60 +302,61 @@ function facerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
 
         eM, eP = e, ((idP - 1) ÷ Np) + 1
         vidM, vidP = ((idM - 1) % Np) + 1,  ((idP - 1) % Np) + 1
-        
-        bctype = elemtobndy[f, e]
-        fill!(l_F, -zero(eltype(l_F)))
 
         # Load minus side data
         @unroll for s = 1:nstate
-          l_QMP[s] = Q[vidM, s, eM]
-          l_QJP[s] = Q[vidM, s, eM]
+          l_QM[s] = Q[vidM, s, eM]
         end
 
         @unroll for s = 1:nviscstate
-          l_QviscMP[s] = Qvisc[vidM, s, eM]
+          l_QviscM[s] = Qvisc[vidM, s, eM]
         end
 
         @unroll for s = 1:nauxstate
-          l_auxMP[s] = auxstate[vidM, s, eM]
-        end
-
-        if bctype == 0
-          numerical_flux_nondiffusive_minus!(numfluxnondiff, bl, l_F, nM,
-                                             l_QMP, l_auxMP, t)
-
-          numerical_flux_diffusive_minus!(numfluxdiff, bl, l_F, nM,
-                                          l_QMP, l_QviscMP, l_auxMP, t)
-
-          λM = wavespeed(bl, nM, Vars{vars_state(bl,DFloat)}(l_QMP),
-                 Vars{vars_aux(bl,DFloat)}(l_auxMP), t)
+          l_auxM[s] = auxstate[vidM, s, eM]
         end
 
         # Load plus side data
         @unroll for s = 1:nstate
-          l_QMP[s] = Q[vidP, s, eP]
-          l_QJP[s] -= Q[vidP, s, eP] 
+          l_QPdiff[s] = l_QPnondiff[s] = l_QPdiff[s] = Q[vidP, s, eP]
         end
 
         @unroll for s = 1:nviscstate
-          l_QviscMP[s] = Qvisc[vidP, s, eP]
+          l_QviscP[s] = Qvisc[vidP, s, eP]
         end
 
         @unroll for s = 1:nauxstate
-          l_auxMP[s] = auxstate[vidP, s, eP]
+          l_auxPdiff[s] = l_auxPnondiff[s] = auxstate[vidP, s, eP]
         end
-        
+
+        bctype = elemtobndy[f, e]
+        fill!(l_F, -zero(eltype(l_F)))
         if bctype == 0
-          numerical_flux_nondiffusive_plus!(numfluxnondiff, bl, l_F, nM,
-                                             l_QMP, l_auxMP, t)
-          
-          numerical_flux_diffusive_plus!(numfluxdiff, bl, l_F, nM,
-                                         l_QMP, l_QviscMP, l_auxMP, t)
-          λP = wavespeed(bl, nM, Vars{vars_state(bl,DFloat)}(l_QMP),
-                         Vars{vars_aux(bl,DFloat)}(l_auxMP), t)
-          
-          numerical_flux_nondiffusive_mixed!(numfluxnondiff, bl, l_F,
-                                             l_QJP, λM, λP)
+          numerical_flux_nondiffusive!(numfluxnondiff, bl, l_F, nM, l_QM,
+                                       l_auxM, l_QPnondiff, l_auxPnondiff, t)
+          numerical_flux_diffusive!(numfluxdiff, bl, l_F, nM, l_QM, l_QviscM,
+                                    l_auxM, l_QPdiff, l_QviscP, l_auxPdiff, t)
+        else
+          if (dim == 2 && f == 3) || (dim == 3 && f == 5) 
+            # Loop up the first element along all horizontal elements
+            @unroll for s = 1:nstate
+              l_Q_bot1[s] = Q[n + Nqk^2, s, e]
+            end
+            @unroll for s = 1:nviscstate
+              l_Qvisc_bot1[s] = Qvisc[n + Nqk^2, s, e]
+            end
+            @unroll for s = 1:nauxstate
+              l_aux_bot1[s] = auxstate[n + Nqk^2,s, e]
+            end
+          end
+          numerical_boundary_flux_nondiffusive!(numfluxnondiff, bl, l_F, nM,
+                                                l_QM, l_auxM, l_QPnondiff,
+                                                l_auxPnondiff, bctype, t,
+                                                l_Q_bot1, l_aux_bot1)
+          numerical_boundary_flux_diffusive!(numfluxdiff, bl, l_F, nM, l_QM,
+                                             l_QviscM, l_auxM, l_QPdiff,
+                                             l_QviscP, l_auxPdiff, bctype, t,
+                                             l_Q_bot1, l_Qvisc_bot1, l_aux_bot1)
         end
 
         #Update RHS
