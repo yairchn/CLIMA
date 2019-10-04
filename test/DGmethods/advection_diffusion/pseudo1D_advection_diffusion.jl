@@ -175,22 +175,22 @@ let
   base_num_elem = 4
 
   expected_result = Dict()
-  expected_result[2, 1, Float64] = 1.2228434091602128e-02
-  expected_result[2, 2, Float64] = 8.8037798002260420e-04
-  expected_result[2, 3, Float64] = 4.8828676920661276e-05
-  expected_result[2, 4, Float64] = 2.0105646643725454e-06
-  expected_result[3, 1, Float64] = 9.5425450102548364e-03
-  expected_result[3, 2, Float64] = 5.9769045240778518e-04
-  expected_result[3, 3, Float64] = 4.0081798525590592e-05
-  expected_result[3, 4, Float64] = 2.9803558844543670e-06
-  expected_result[2, 1, Float32] = 1.2228445f-02
-  expected_result[2, 2, Float32] = 8.8042860f-04
-  expected_result[2, 3, Float32] = 4.8848684f-05
-  expected_result[2, 4, Float32] = 2.1814606f-06
-  expected_result[3, 1, Float32] = 9.5424980f-03
-  expected_result[3, 2, Float32] = 5.9770537f-04
-  expected_result[3, 3, Float32] = 4.0205956f-05
-  expected_result[3, 4, Float32] = 5.1562140f-06
+  expected_result[2, 1, Float64] = 4.6773313437233066e-02
+  expected_result[2, 2, Float64] = 4.0665907382118381e-03
+  expected_result[2, 3, Float64] = 5.3141853450304871e-05
+  expected_result[2, 4, Float64] = 1.8189324403472731e-06
+  expected_result[3, 1, Float64] = 6.6147454220061547e-02
+  expected_result[3, 2, Float64] = 5.7510277746000314e-03
+  expected_result[3, 3, Float64] = 7.5153929878967897e-05
+  expected_result[3, 4, Float64] = 5.6239720965873768e-07
+  expected_result[2, 1, Float32] = 4.6773295849561691e-02
+  expected_result[2, 2, Float32] = 4.0662805549800396e-03
+  expected_result[2, 3, Float32] = 5.3369087254395708e-05
+  expected_result[2, 4, Float32] = 7.1791023401601706e-06
+  expected_result[3, 1, Float32] = 6.6147215664386749e-02
+  expected_result[3, 2, Float32] = 5.7506267912685871e-03
+  expected_result[3, 3, Float32] = 8.0264209827873856e-05
+  expected_result[3, 4, Float32] = 9.9108430731575936e-05
 
   numlevels = integration_testing ? 4 : 1
 
@@ -198,7 +198,7 @@ let
     for FT in (Float64, Float32)
       result = zeros(FT, numlevels)
       for dim = 2:3
-        n = SVector(1, 1, dim == 2 ? 0 : 1) / FT(sqrt(dim))
+        n = dim == 2 ? SVector{3, FT}(0, 1, 0) : SVector{3, FT}(0, 0, 1)
         α = FT(1)
         β = FT(1 // 100)
         μ = FT(-1 // 2)
