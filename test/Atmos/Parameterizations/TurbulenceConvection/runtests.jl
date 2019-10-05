@@ -5,7 +5,7 @@ for submodule in [
                   "DomainDecomp",
                   "StateVecs",
                   "TDMA",
-                  "PDEs",
+                  # "PDEs",
                   "BOMEX",
                   ]
 

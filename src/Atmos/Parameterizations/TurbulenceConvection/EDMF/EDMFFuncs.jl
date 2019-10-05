@@ -357,10 +357,25 @@ function compute_mf_gm!(grid, q, tmp)
   end
 end
 
-function compute_mixing_length!(grid, q, tmp, params)
+function compute_mixing_tau(zi, wstar)
+  return zi / (wstar + 0.001)
+end
+
+function compute_mixing_length!(grid::Grid{FT}, q, tmp, params) where FT
   gm, en, ud, sd, al = allcombinations(DomainIdx(q))
-  @inbounds for k in over_elems(grid)
-    tmp[:l_mix, k, gm] = 100.0
+  @unpack params obukhov_length zi wstar
+  tau = compute_mixing_tau(zi, wstar)
+  for k in over_elems_real(grid)
+    l1 = tau * sqrt(max(q[:tke, k, en],0.0))
+    z_ = grid.zc[k]
+    if obukhov_length < 0 #unstable
+      l2 = k_Karman * z_ * ( (1 - FT(100) * z_/obukhov_length)^FT(0.2) )
+    elseif obukhov_length > 0 #stable
+      l2 = k_Karman * z_ /  (1 + FT(2.7) *z_/obukhov_length)
+    else
+      l2 = k_Karman * z_
+    end
+    tmp[:l_mix, k, gm] = max( 1/(1/max(l1,1e-10) + 1/l2), FT(1e-3))
   end
 end
 
