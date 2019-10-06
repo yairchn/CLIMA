@@ -1,6 +1,6 @@
 #### AuxiliaryFuncs
 
-export ActiveThermoState
+export ActiveThermoState, ActiveThermoStateDual
 
 export export_unsteady
 export update_dt!
@@ -26,6 +26,12 @@ quantities at element `k`.
                                    q[:q_tot, k, i],
                                    tmp[:ρ_0, k],
                                    tmp[:p_0, k])
+end
+@inline function ActiveThermoStateDual(q, tmp, k, i)
+  return LiquidIcePotTempSHumEquil.(q[:θ_liq, Dual(k), i],
+                                    q[:q_tot, Dual(k), i],
+                                    tmp[:ρ_0, Dual(k)],
+                                    tmp[:p_0, Dual(k)])
 end
 
 function update_dt!(grid, params, q, t)

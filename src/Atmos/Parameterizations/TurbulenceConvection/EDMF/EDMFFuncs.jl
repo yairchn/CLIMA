@@ -105,12 +105,8 @@ function compute_tendencies_ud!(grid, q_tendencies, q, tmp, params)
       adv = -advect(ρaww_cut, w_cut, grid)
       exch = ρaw_k * (- δ_model * w_i + ε_model * w_env)
       buoy = ρa_k * B_k
-      press_buoy = - ρa_k * B_k * params[:pressure_buoy_coeff]
-      p_coeff = params[:pressure_drag_coeff]/params[:pressure_plume_spacing]
-      press_drag = - ρa_k * (p_coeff * (w_i - w_env)^2/sqrt(a_k))
-      nh_press = press_buoy + press_drag
 
-      tendencies = (adv + exch + buoy + nh_press)
+      tendencies = (adv + exch + buoy + tmp[:nh_press, k, i])
       q_tendencies[:w, k, i] = tendencies
 
       tendencies_θ_liq = 0
@@ -209,10 +205,39 @@ function saturation_adjustment_sd!(grid, q, tmp)
   end
 end
 
+abstract type PressureModel end
+
+struct SCAMPyPressure{FT} <: PressureModel
+  buoy_coeff::FT
+  drag_coeff::FT
+  plume_spacing::FT
+end
+function compute_pressure!(grid::Grid{FT}, q, tmp, params, model::SCAMPyPressure) where FT
+  gm, en, ud, sd, al = allcombinations(q)
+  p_coeff = model.drag_coeff/model.plume_spacing
+  @inbounds for i in ud
+    @inbounds for k in over_elems_real(grid)
+      a_k = q[:a, k, i]
+      w_env = q[:w, k, en]
+      ρ_k = tmp[:ρ_0, k]
+      w_i = q[:w, k, i]
+      B_k = tmp[:buoy, k, i]
+      ρa_k = ρ_k * a_k
+
+      press_buoy = - ρa_k * B_k * model.buoy_coeff
+      press_drag = - ρa_k * (p_coeff * (w_i - w_env)^2/sqrt(a_k))
+      tmp[:nh_press, k, i] = press_buoy + press_drag
+    end
+  end
+end
+
 abstract type EntrDetrModel end
 
-struct BOverW2 <: EntrDetrModel end
-function compute_entrainment_detrainment!(grid::Grid{FT}, UpdVar, tmp, q, params, ::BOverW2) where FT
+struct BOverW2{FT} <: EntrDetrModel
+  ε_factor::FT
+  δ_factor::FT
+end
+function compute_entrainment_detrainment!(grid::Grid{FT}, UpdVar, tmp, q, params, model::BOverW2) where FT
   gm, en, ud, sd, al = allcombinations(q)
   Δzi = grid.Δzi
   k_1 = first_interior(grid, Zmin())
@@ -227,8 +252,8 @@ function compute_entrainment_detrainment!(grid::Grid{FT}, UpdVar, tmp, q, params
         detr_sc = FT(0)
       end
       entr_sc = 0.12 * max(buoy, FT(0) ) / max(w * w, 1e-2)
-      tmp[:ε_model, k, i] = entr_sc * params[:entrainment_factor]
-      tmp[:δ_model, k, i] = detr_sc * params[:detrainment_factor]
+      tmp[:ε_model, k, i] = entr_sc * model.ε_factor
+      tmp[:δ_model, k, i] = detr_sc * model.δ_factor
     end
     tmp[:ε_model, k_1, i] = 2 * Δzi
     tmp[:δ_model, k_1, i] = FT(0)
@@ -360,11 +385,23 @@ function compute_mf_gm!(grid, q, tmp)
   end
 end
 
-function compute_mixing_tau(zi, wstar)
-  return zi / (wstar + 0.001)
-end
 
 abstract type MixingLengthModel end
+
+compute_mixing_τ(zi::FT, wstar::FT) where FT = zi / (wstar + FT(0.001))
+ϕ_m(ξ, a_L, b_L) = (1+a_L*ξ)^(-b_L)
+
+stable(obukhov_length::FT) where FT = obukhov_length>0
+unstable(obukhov_length::FT) where FT = obukhov_length<0
+struct StabilityDependentParam{FT}
+  stable::FT
+  unstable::FT
+end
+
+function param(sdp::StabilityDependentParam{FT}, obukhov_length::FT) where FT
+  unstable(obukhov_length) ? sdp.unstable : sdp.stable
+end
+
 struct ConstantMixingLength{FT} <: MixingLengthModel
   value::FT
 end
@@ -375,30 +412,85 @@ function compute_mixing_length!(grid::Grid{FT}, q, tmp, params, model::ConstantM
   end
 end
 
-struct SCAMPyMixingLength{FT} <: MixingLengthModel end
+struct SCAMPyMixingLength{FT} <: MixingLengthModel
+  a_L::StabilityDependentParam{FT}
+  b_L::StabilityDependentParam{FT}
+end
 function compute_mixing_length!(grid::Grid{FT}, q, tmp, params, model::SCAMPyMixingLength{FT}) where FT
-  gm, en, ud, sd, al = allcombinations(DomainIdx(q))
   @unpack params obukhov_length zi wstar
-  tau = compute_mixing_tau(zi, wstar)
-  for k in over_elems_real(grid)
-    l1 = tau * sqrt(max(q[:tke, k, en], FT(0)))
+  gm, en, ud, sd, al = allcombinations(q)
+  τ = compute_mixing_τ(zi, wstar)
+  a_L = param(model.a_L, obukhov_length)
+  b_L = param(model.b_L, obukhov_length)
+  @inbounds for k in over_elems_real(grid)
+    l1 = τ * sqrt(max(q[:tke, k, en], FT(0)))
     z = grid.zc[k]
-    if obukhov_length < 0 #unstable
-      l2 = k_Karman * z * ( (1 - FT(100) * z/obukhov_length)^FT(0.2) )
-    elseif obukhov_length > 0 #stable
-      l2 = k_Karman * z /  (1 + FT(2.7) *z/obukhov_length)
-    else
-      l2 = k_Karman * z
-    end
+    ξ = z/obukhov_length
+    l2 = k_Karman * z * ϕ_m(ξ, a_L, b_L)
     tmp[:l_mix, k, gm] = max( 1/(1/max(l1,1e-10) + 1/l2), FT(1e-3))
   end
 end
 
-function compute_eddy_diffusivities_tke!(grid::Grid{FT}, q, tmp, params) where FT
+struct IgnaciosMixingLength{FT} <: MixingLengthModel
+  a_L::StabilityDependentParam{FT}
+  b_L::StabilityDependentParam{FT}
+  c_K::FT
+  c_ε::FT
+  c_w::FT
+  ω_1::FT
+  ω_2::FT
+  function IgnaciosMixingLength(a_L::StabilityDependentParam{FT},
+                                b_L::StabilityDependentParam{FT},
+                                c_K::FT,
+                                c_ε::FT,
+                                c_w::FT,
+                                ω_1::FT) where FT
+    return new{FT}(a_L, b_L, c_K, c_ε, c_w, ω_1, ω_1 + 1)
+  end
+end
+function compute_mixing_length!(grid::Grid{FT}, q, tmp, params, model::IgnaciosMixingLength{FT}) where FT
+  @unpack params Prandtl_neutral obukhov_length ustar
+  gm, en, ud, sd, al = allcombinations(q)
+  L = Vector(undef, 3)
+  a_L = param(model.a_L, obukhov_length)
+  b_L = param(model.b_L, obukhov_length)
+  @inbounds for k in over_elems_real(grid)
+    TKE_k = max(q[:tke, k, en], FT(0))
+    θ_ρ = tmp[:θ_ρ, k, gm]
+    z = grid.zc[k]
+    ts_dual = ActiveThermoStateDual(q, tmp, k, gm)
+    θ_ρ_dual = virtual_pottemp.(ts_dual)
+    ∇θ_ρ = ∇_z_flux(θ_ρ_dual, grid)
+    buoyancy_freq = grav*∇θ_ρ/θ_ρ
+    L[1] = sqrt(model.c_w*TKE_k)/buoyancy_freq
+    ξ = z/obukhov_length
+    κ_star = ustar/sqrt(TKE_k)
+    L[2] = k_Karman*z/(model.c_K*κ_star*ϕ_m(ξ, a_L, b_L))
+    S_squared = ∇_z_flux(q[:u, Dual(k), gm], grid)^2 +
+                ∇_z_flux(q[:v, Dual(k), gm], grid)^2 +
+                ∇_z_flux(q[:w, Dual(k), en], grid)^2
+    R_g = tmp[:∇buoyancy, k, gm]/S_squared
+    if unstable(obukhov_length)
+      Pr_z = Prandtl_neutral
+    else
+      discriminant1 = -4*R_g+(1+model.ω_2*R_g)^2
+      Pr_z = Prandtl_neutral*(1+model.ω_2*R_g - sqrt(discriminant1))/(2*R_g)
+    end
+    discriminant2 = S_squared - tmp[:∇buoyancy, k, gm]/Pr_z
+    L[3] = sqrt(model.c_ε/model.c_K)*sqrt(TKE_k)*1/sqrt(max(discriminant2, 1e-2))
+    tmp[:l_mix, k, gm] = sum([L[j]*exp(-L[j]) for j in 1:3])/sum([exp(-L[j]) for j in 1:3])
+  end
+end
+
+abstract type EddyDiffusivityModel end
+struct SCAMPyEddyDiffusivity{FT} <: EddyDiffusivityModel
+  tke_ed_coeff::FT
+end
+function compute_eddy_diffusivities_tke!(grid::Grid{FT}, q, tmp, params, model::SCAMPyEddyDiffusivity) where FT
   gm, en, ud, sd, al = allcombinations(q)
   @inbounds for k in over_elems_real(grid)
     l_mix = tmp[:l_mix, k, gm]
-    K_m_k = params[:tke_ed_coeff] * l_mix * sqrt(max(q[:tke, k, en], FT(0)))
+    K_m_k = model.tke_ed_coeff * l_mix * sqrt(max(q[:tke, k, en], FT(0)))
     tmp[:K_m, k, gm] = K_m_k
     tmp[:K_h, k, gm] = K_m_k / params[:prandtl_number]
   end
@@ -498,8 +590,9 @@ function compute_cv_interdomain_src!(grid::Grid{FT}, q, tmp, tmp_O2, ϕ, ψ, cv,
     end
 end
 
-function compute_tke_pressure!(grid::Grid{FT}, q, tmp, tmp_O2, cv, params) where FT
+function compute_tke_pressure!(grid::Grid{FT}, q, tmp, tmp_O2, cv, params, model::PressureModel) where FT
   gm, en, ud, sd, al = allcombinations(q)
+  p_coeff = model.drag_coeff/model.plume_spacing
   @inbounds for k in over_elems_real(grid)
     tmp_O2[cv][:press, k] = FT(0)
     @inbounds for i in ud
@@ -507,8 +600,8 @@ function compute_tke_pressure!(grid::Grid{FT}, q, tmp, tmp_O2, cv, params) where
       we_half = q[:w, k, en]
       a_i = q[:a, k, i]
       ρ_0_k = tmp[:ρ_0, k]
-      press_buoy = (-1 * ρ_0_k * a_i * tmp[:buoy, k, i] * params[:pressure_buoy_coeff])
-      press_drag_coeff = -1 * ρ_0_k * sqrt(a_i) * params[:pressure_drag_coeff]/params[:pressure_plume_spacing]
+      press_buoy = (-1 * ρ_0_k * a_i * tmp[:buoy, k, i] * model.buoy_coeff)
+      press_drag_coeff = -1 * ρ_0_k * sqrt(a_i) * p_coeff
       press_drag = press_drag_coeff * (wu_half - we_half)*abs(wu_half - we_half)
       tmp_O2[cv][:press, k] += (we_half - wu_half) * (press_buoy + press_drag)
     end

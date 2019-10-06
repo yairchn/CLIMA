@@ -16,19 +16,23 @@ function Params(::BOMEX)
   params[:export_data] = false
   params[:plot_single_fields] = true
   params[:export_frequency] = 2000
-  params[:EntrDetrModel] = BOverW2()
-  params[:MixingLengthModel] = ConstantMixingLength(FT(100))
+  params[:EntrDetrModel] = BOverW2(1.0, 1.0)
+  params[:MixingLengthModel] = ConstantMixingLength{FT}(100)
+  # params[:MixingLengthModel] = SCAMPyMixingLength{FT}(StabilityDependentParam{FT}(2.7,-100.0),
+  #                                                     StabilityDependentParam{FT}(-1.0,-0.2))
+
+  # params[:MixingLengthModel] = IgnaciosMixingLength(StabilityDependentParam{FT}(2.7,-100.0),
+  #                                                   StabilityDependentParam{FT}(-1.0,-0.2),
+  #                                                   0.1, 0.12, 0.4, 40/13)
+
 
   params[:N_subdomains] = 3
   # TOFIX: Remove indexes from Params
-  params[:entrainment_factor]     = FT(1.0)
-  params[:detrainment_factor]     = FT(1.0)
-  params[:tke_ed_coeff]           = FT(0.1)
+  params[:EddyDiffusivityModel]           = SCAMPyEddyDiffusivity(0.1)
   params[:prandtl_number]         = FT(1.0)
   params[:tke_diss_coeff]         = FT(2.0)
-  params[:pressure_buoy_coeff]    = FT(1.0/3.0)
-  params[:pressure_drag_coeff]    = FT(0.375)
-  params[:pressure_plume_spacing] = FT(500.0)
+
+  params[:PressureModel]    = SCAMPyPressure(1.0/3.0, 0.375, 500.0)
 
   params[:z_min] = 0.0
   params[:z_max] = 3000.0
@@ -45,6 +49,7 @@ function Params(::BOMEX)
   params[:q_bounds] = [0.0, 1.0]                                      # filter for q
 
   params[:f_c] = 0                                                    # buoyancy gradient factor
+  params[:Prandtl_neutral] = 0.74
   params[:zrough] = 1.0e-4                                            # surface roughness
   params[:ustar] = 0.28                                               # friction velocity?
   params[:Pg] = 1.015e5                                               # Reference state vars

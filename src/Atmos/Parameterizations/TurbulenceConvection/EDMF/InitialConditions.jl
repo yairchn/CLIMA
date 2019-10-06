@@ -138,7 +138,7 @@ function init_forcing!(q::StateVec, tmp::StateVec, grid::Grid{FT}, params, dir_t
     if z[k] <= 300.0
       tmp[:dqtdt, k, gm] = -1.2e-8   #kg/(kg * s)
     end
-    if z[k] > 300.0 and z[k] <= 500.0
+    if z[k] > 300.0 && z[k] <= 500.0
       tmp[:dqtdt, k, gm] = -1.2e-8 + (z[k] - 300.0)*(0.0 - -1.2e-8)/(500.0 - 300.0) #kg/(kg * s)
     end
 
@@ -146,7 +146,7 @@ function init_forcing!(q::StateVec, tmp::StateVec, grid::Grid{FT}, params, dir_t
     if z[k] <= 1500.0
       tmp[:subsidence, k, gm] = 0.0 + z[k]*(-0.65/100.0 - 0.0)/(1500.0 - 0.0)
     end
-    if z[k] > 1500.0 and z[k] <= 2100.0
+    if z[k] > 1500.0 && z[k] <= 2100.0
       tmp[:subsidence, k, gm] = -0.65/100 + (z[k] - 1500.0)* (0.0 - -0.65/100.0)/(2100.0 - 1500.0)
     end
   end

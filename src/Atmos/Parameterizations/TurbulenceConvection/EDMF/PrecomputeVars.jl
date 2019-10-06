@@ -7,9 +7,12 @@ function pre_compute_vars!(grid, q, tmp, tmp_O2, UpdVar, params)
 
   saturation_adjustment_sd!(grid, q, tmp)
 
+  compute_pressure!(grid, q, tmp, params, params[:PressureModel])
+
   @inbounds for k in over_elems_real(grid)
     ts = ActiveThermoState(q, tmp, k, gm)
     tmp[:θ_ρ, k] = virtual_pottemp(ts)
+    tmp[:∇buoyancy, k] = grad(tmp[:buoy, Dual(k)], grid)
   end
   params[:zi] = compute_inversion_height(tmp, q, grid, params)
   params[:wstar] = compute_convective_velocity(params[:bflux], params[:zi])
@@ -23,13 +26,13 @@ function pre_compute_vars!(grid, q, tmp, tmp_O2, UpdVar, params)
   compute_cv_gm!(grid, q, :w, :w, :tke, 0.5)
   compute_mf_gm!(grid, q, tmp)
   compute_mixing_length!(grid, q, tmp, params, params[:MixingLengthModel])
-  compute_eddy_diffusivities_tke!(grid, q, tmp, params)
+  compute_eddy_diffusivities_tke!(grid, q, tmp, params, params[:EddyDiffusivityModel])
 
   compute_tke_buoy!(grid, q, tmp, tmp_O2, :tke)
   compute_cv_entr!(grid, q, tmp, tmp_O2, :w, :w, :tke, 0.5)
   compute_cv_shear!(grid, q, tmp, tmp_O2, :w, :w, :tke)
   compute_cv_interdomain_src!(grid, q, tmp, tmp_O2, :w, :w, :tke, 0.5)
-  compute_tke_pressure!(grid, q, tmp, tmp_O2, :tke, params)
+  compute_tke_pressure!(grid, q, tmp, tmp_O2, :tke, params, params[:PressureModel])
   compute_cv_env!(grid, q, tmp, tmp_O2, :w, :w, :tke, 0.5)
 
   cleanup_covariance!(grid, q)

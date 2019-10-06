@@ -64,7 +64,7 @@ computes the surface tke
  - `obukhov_length` Monin-Obhukov length
 """
 function surface_tke(ustar::FT, wstar::FT, zLL::FT, obukhov_length::FT) where FT<:Real
-  if obukhov_length < 0
+  if unstable(obukhov_length)
     return ((3.75 + cbrt(zLL/obukhov_length * zLL/obukhov_length)) * ustar * ustar + 0.2 * wstar * wstar)
   else
     return (3.75 * ustar * ustar)
@@ -72,20 +72,20 @@ function surface_tke(ustar::FT, wstar::FT, zLL::FT, obukhov_length::FT) where FT
 end
 
 """
-    surface_variance(flux1::FT, flux2::FT, ustar::FT, zLL::FT, oblength::FT) where FT<:Real
+    surface_variance(flux1::FT, flux2::FT, ustar::FT, zLL::FT, obukhov_length::FT) where FT<:Real
 
 computes the surface variance given
 
  - `ustar` friction velocity
  - `wstar` convective velocity
  - `zLL` elevation at the first grid level
- - `oblength` Monin-Obhukov length
+ - `obukhov_length` Monin-Obhukov length
 """
-function surface_variance(flux1::FT, flux2::FT, ustar::FT, zLL::FT, oblength::FT) where FT<:Real
+function surface_variance(flux1::FT, flux2::FT, ustar::FT, zLL::FT, obukhov_length::FT) where FT<:Real
   c_star1 = -flux1/ustar
   c_star2 = -flux2/ustar
-  if oblength < 0
-    return 4 * c_star1 * c_star2 * (1 - 8.3 * zLL/oblength)^(-2/3)
+  if unstable(obukhov_length)
+    return 4 * c_star1 * c_star2 * (1 - 8.3 * zLL/obukhov_length)^(-2/3)
   else
     return 4 * c_star1 * c_star2
   end
