@@ -24,14 +24,14 @@ markersize = [6, 4, 2]
 
 function nice_string(name)
   friendly_name = string(name)
+  friendly_name = replace(friendly_name, "εδ" => "entr-detr")
   friendly_name = replace(friendly_name, "θ" => "theta")
-  friendly_name = replace(friendly_name, "ε" => "eps")
-  friendly_name = replace(friendly_name, "δ" => "delta")
   friendly_name = replace(friendly_name, "Δ" => "Delta")
   friendly_name = replace(friendly_name, "ρ" => "rho")
   friendly_name = replace(friendly_name, "α" => "alpha")
   friendly_name = replace(friendly_name, "∇" => "grad")
-  friendly_name = replace(friendly_name, "εδ" => "entr-detr")
+  friendly_name = replace(friendly_name, "ε" => "eps")
+  friendly_name = replace(friendly_name, "δ" => "delta")
   return friendly_name
 end
 

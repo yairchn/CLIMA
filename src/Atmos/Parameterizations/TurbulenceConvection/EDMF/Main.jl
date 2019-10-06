@@ -33,7 +33,7 @@ function run(case)
 
   assign!(q_tendencies, (:u, :v, :q_tot, :θ_liq), grid, 0.0)
   update_surface!(tmp, q, grid, params, case)
-  update_forcing!(tmp, q, grid, params, case)
+  update_forcing!(q_tendencies, tmp, q, grid, params, case)
   compute_cloud_base_top_cover!(params[:UpdVar], grid, q, tmp)
 
   pre_compute_vars!(grid, q, tmp, tmp_O2, params[:UpdVar], params)
@@ -44,7 +44,7 @@ function run(case)
     assign!(q_tendencies, (:u, :v, :q_tot, :θ_liq), grid, 0.0)
 
     update_surface!(tmp, q, grid, params, case)
-    update_forcing!(tmp, q, grid, params, case)
+    update_forcing!(q_tendencies, tmp, q, grid, params, case)
 
     pre_compute_vars!(grid, q, tmp, tmp_O2, params[:UpdVar], params)
 
