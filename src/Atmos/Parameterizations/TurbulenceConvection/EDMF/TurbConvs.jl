@@ -77,6 +77,8 @@ function TurbConv(params, case::Case)
   (:mf_tend_q_tot          , DomainSubSet(gm=true)),
   (:mf_tmp                 , DomainSubSet(ud=true)),
   (:θ_ρ                    , DomainSubSet(gm=true)),
+  (:ug                     , DomainSubSet(gm=true)),
+  (:subsidence             , DomainSubSet(gm=true)),
   )
 
   tri_diag_vars = (

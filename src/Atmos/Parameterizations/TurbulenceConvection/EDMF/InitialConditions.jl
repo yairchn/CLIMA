@@ -25,7 +25,7 @@ function init_forcing! end
 
 
 function initialize_updrafts!(q::StateVec, tmp::StateVec, grid::Grid, params, dir_tree::DirTree, ::BOMEX)
-  gm, en, ud, sd, al = allcombinations(DomainIdx(q))
+  gm, en, ud, sd, al = allcombinations(q)
   k_1 = first_interior(grid, Zmin())
   n_updrafts = length(ud)
   for i in ud
@@ -39,10 +39,10 @@ function initialize_updrafts!(q::StateVec, tmp::StateVec, grid::Grid, params, di
 end
 
 function init_state_vecs!(q::StateVec, tmp::StateVec, grid::Grid, params, dir_tree::DirTree, case::BOMEX)
-  @unpack params qtg Tg Pg a_bounds a_surf
+  @unpack params qtg Tg Pg a_bounds surface_area
   z = grid.zc
 
-  gm, en, ud, sd, al = allcombinations(DomainIdx(q))
+  gm, en, ud, sd, al = allcombinations(q)
   k_1 = first_interior(grid, Zmin())
 
   @inbounds for k in over_elems(grid)
@@ -56,7 +56,7 @@ function init_state_vecs!(q::StateVec, tmp::StateVec, grid::Grid, params, dir_tr
     q[:a, k, gm] = 1.0
     for i in ud
       q[:a, k, i] = bound(0.0, a_bounds)
-      k==k_1 && (q[:a, k, i] = bound(a_surf, a_bounds))
+      k==k_1 && (q[:a, k, i] = bound(surface_area, a_bounds))
     end
     q[:a, k, en] = q[:a, k, gm] - sum([q[:a, k, i] for i in ud])
 
@@ -104,11 +104,9 @@ function init_state_vecs!(q::StateVec, tmp::StateVec, grid::Grid, params, dir_tr
   end # end over_elems
 
   # Extrapolate to ghost points
-  extrap_0th_order!(q, :θ_liq, grid, gm)
-  extrap_0th_order!(q, :q_tot, grid, gm)
-  extrap_0th_order!(q, :u, grid, gm)
+  extrap_0th_order!(q, (:θ_liq, :q_tot, :u), grid, gm)
   extrap_0th_order!(tmp, :T, grid, gm)
-  # Use domain-average for sub-domain values:
+  # Use grid-mean for sub-domain values:
 
   initialize_updrafts!(q, tmp, grid, params, dir_tree, case)
   distribute!(q, grid, (:q_tot, :θ_liq))
@@ -123,33 +121,33 @@ function init_state_vecs!(q::StateVec, tmp::StateVec, grid::Grid, params, dir_tr
 
 end
 
-function init_forcing!(q::StateVec, tmp::StateVec, grid::Grid, params, dir_tree::DirTree, case::BOMEX)
-  # gm, en, ud, sd, al = allcombinations(DomainIdx(q))
-  # z = grid.zc
-  # for k in over_elems_real(grid)
-  #   # Geostrophic velocity profiles. vg = 0
-  #   tmp[:ug, k, gm] = -10.0 + (1.8e-3)*z[k]
-  #   # Set large-scale cooling
-  #   if z[k] <= 1500.0
-  #     tmp[:dTdt, k, gm] =  (-2.0/(3600 * 24.0))  * exner(tmp[:p_0, k])
-  #   else
-  #     tmp[:dTdt, k, gm] = (-2.0/(3600 * 24.0) + (z[k] - 1500.0)
-  #                         * (0.0 - -2.0/(3600 * 24.0)) / (3000.0 - 1500.0)) * exner(tmp[:p_0, k])
-  #   end
-  #   # Set large-scale drying
-  #   if z[k] <= 300.0
-  #     tmp[:dqtdt, k, gm] = -1.2e-8   #kg/(kg * s)
-  #   end
-  #   if z[k] > 300.0 and z[k] <= 500.0
-  #     tmp[:dqtdt, k, gm] = -1.2e-8 + (z[k] - 300.0)*(0.0 - -1.2e-8)/(500.0 - 300.0) #kg/(kg * s)
-  #   end
+function init_forcing!(q::StateVec, tmp::StateVec, grid::Grid{FT}, params, dir_tree::DirTree, case::BOMEX) where FT
+  gm, en, ud, sd, al = allcombinations(q)
+  z = grid.zc
+  for k in over_elems_real(grid)
+    # Geostrophic velocity profiles. vg = 0
+    tmp[:ug, k, gm] = -10.0 + (1.8e-3)*z[k]
+    # Set large-scale cooling
+    if z[k] <= 1500.0
+      tmp[:dTdt, k, gm] =  (-2.0/(3600 * 24.0))  * exner(tmp[:p_0, k])
+    else
+      tmp[:dTdt, k, gm] = (-2.0/(3600 * 24.0) + (z[k] - 1500.0)
+                          * (0.0 - -2.0/(3600 * 24.0)) / (3000.0 - 1500.0)) * exner(tmp[:p_0, k])
+    end
+    # Set large-scale drying
+    if z[k] <= 300.0
+      tmp[:dqtdt, k, gm] = -1.2e-8   #kg/(kg * s)
+    end
+    if z[k] > 300.0 and z[k] <= 500.0
+      tmp[:dqtdt, k, gm] = -1.2e-8 + (z[k] - 300.0)*(0.0 - -1.2e-8)/(500.0 - 300.0) #kg/(kg * s)
+    end
 
-  #   #Set large scale subsidence
-  #   if z[k] <= 1500.0
-  #     tmp[:subsidence, k, gm] = 0.0 + z[k]*(-0.65/100.0 - 0.0)/(1500.0 - 0.0)
-  #   end
-  #   if z[k] > 1500.0 and z[k] <= 2100.0
-  #     tmp[:subsidence, k, gm] = -0.65/100 + (z[k] - 1500.0)* (0.0 - -0.65/100.0)/(2100.0 - 1500.0)
-  #   end
-  # end
+    #Set large scale subsidence
+    if z[k] <= 1500.0
+      tmp[:subsidence, k, gm] = 0.0 + z[k]*(-0.65/100.0 - 0.0)/(1500.0 - 0.0)
+    end
+    if z[k] > 1500.0 and z[k] <= 2100.0
+      tmp[:subsidence, k, gm] = -0.65/100 + (z[k] - 1500.0)* (0.0 - -0.65/100.0)/(2100.0 - 1500.0)
+    end
+  end
 end
