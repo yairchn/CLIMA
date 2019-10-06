@@ -1,4 +1,5 @@
 #### Turbulence closures
+using DocStringExtensions
 using CLIMA.PlanetParameters
 using CLIMA.SubgridScaleParameters
 export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman
@@ -25,8 +26,13 @@ end
     ConstantViscosityWithDivergence <: TurbulenceClosure
 
 Turbulence with constant dynamic viscosity (`ρν`). Divergence terms are included in the momentum flux tensor.
+
+# Fields
+
+$(DocStringExtensions.FIELDS)
 """
 struct ConstantViscosityWithDivergence{T} <: TurbulenceClosure
+  "Dynamic Viscosity [kg/m/s]"
   ρν::T
 end
 function dynamic_viscosity_tensor(m::ConstantViscosityWithDivergence, S, 
@@ -56,8 +62,12 @@ end
   eprint = {https://doi.org/10.1175/1520-0493(1963)091<0099:GCEWTP>2.3.CO;2}
   }
 
+# Fields
+
+$(DocStringExtensions.FIELDS)
 """
 struct SmagorinskyLilly{T} <: TurbulenceClosure
+  "Smagorinsky Coefficient [dimensionless]"
   C_smag::T
 end
 vars_aux(::SmagorinskyLilly,T) = @vars(Δ::T)
@@ -136,7 +146,7 @@ end
 Filter width Δ is the local grid resolution calculated from the mesh metric tensor. A Smagorinsky coefficient
 is specified and used to compute the equivalent Vreman coefficient. 
 
-1) ν_e = √(Bᵦ/(αᵢⱼαᵢⱼ)) where αᵢⱼ = ∂uᵢ∂uⱼ with uᵢ the resolved scale velocity component.
+1) ν_e = √(Bᵦ/(αᵢⱼαᵢⱼ)) where αᵢⱼ = ∂uⱼ∂uᵢ with uᵢ the resolved scale velocity component.
 2) βij = Δ²αₘᵢαₘⱼ
 3) Bᵦ = β₁₁β₂₂ + β₂₂β₃₃ + β₁₁β₃₃ - β₁₂² - β₁₃² - β₂₃²
 βᵢⱼ is symmetric, positive-definite. 
@@ -153,8 +163,12 @@ If Δᵢ = Δ, then β = Δ²αᵀα
   publisher={AIP}
 }
 
+# Fields
+
+$(DocStringExtensions.FIELDS)
 """
 struct Vreman{DT} <: TurbulenceClosure
+  "Smagorinsky Coefficient [dimensionless]"
   C_smag::DT
 end
 vars_aux(::Vreman,T) = @vars(Δ::T)
@@ -170,7 +184,7 @@ function dynamic_viscosity_tensor(m::Vreman, S, state::Vars, diffusive::Vars, �
   f_b² = squared_buoyancy_correction(normS, ∇transform, aux)
   βij = f_b² * (aux.turbulence.Δ)^2 * (∇u' * ∇u)
   @inbounds Bβ = βij[1,1]*βij[2,2] - βij[1,2]^2 + βij[1,1]*βij[3,3] - βij[1,3]^2 + βij[2,2]*βij[3,3] - βij[2,3]^2 
-  return state.ρ * max(0,m.C_smag^2 * 2.5 * sqrt(abs(Bβ/(αijαij+eps(DT))))) 
+  return state.ρ * (m.C_smag^2 * DT(2.5)) * sqrt(abs(Bβ/(αijαij+eps(DT))))
 end
 function scaled_momentum_flux_tensor(m::Vreman, ρν, S)
   (-2*ρν) * S
