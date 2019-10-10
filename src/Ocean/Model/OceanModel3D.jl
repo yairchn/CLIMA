@@ -305,6 +305,10 @@ end
                                        Q⁺, α⁺, n⁻, Q⁻, α⁻, t)
   Q⁺.u = -Q⁻.u
 
+  # @inbounds z = coords[3]
+  # @inbounds H = p.H
+  # Q.θ = 9 + 8z/H
+
   return nothing
 end
 
@@ -314,6 +318,10 @@ end
                                        σ⁺, α⁺, n⁻, Q⁻, σ⁻, α⁻, t)
   Q⁺.u = -Q⁻.u
 
+  # @inbounds z = coords[3]
+  # @inbounds H = p.H
+  # Q.θ = 9 + 8z/H
+  
   σ⁺.κ∇θ = -σ⁻.κ∇θ
 
   return nothing
@@ -325,6 +333,8 @@ end
   Q⁺.u = -Q⁻.u
   α⁺.w = -α⁻.w
 
+  Q⁺.θ = 1
+
   return nothing
 end
 
@@ -335,6 +345,8 @@ end
 
   Q⁺.u = -Q⁻.u
   α⁺.w = -α⁻.w
+
+  Q⁺.θ = 1
 
   σ⁺.κ∇θ = -σ⁻.κ∇θ
 
@@ -346,6 +358,8 @@ end
                                        Q⁺, α⁺, n⁻, Q⁻, α⁻, t)
   α⁺.w = α⁻.w
 
+  Q⁺.θ = 9
+
   return nothing
 end
 
@@ -355,11 +369,13 @@ end
                                        Q⁺, σ⁺, α⁺, n⁻, Q⁻, σ⁻, α⁻, t)
   α⁺.w = α⁻.w
 
+  Q⁺.θ = 9
+
   τ = α⁻.τ
   σ⁺.ν∇u = -σ⁻.ν∇u - 2 * @SMatrix [ -0 -0;
                                     -0 -0;
                                     τ / 1000 -0]
-
+  
   θ  = Q⁻.θ
   θʳ = α⁻.θʳ
   λʳ = m.λʳ

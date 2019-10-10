@@ -81,13 +81,13 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_one_vert_level"
+vtkpath = "vtk_periodic_dirichlet_order10"
 
-const timeend = 30 * 86400 # 4 * 365 * 86400
+const timeend = 3 * 30 * 86400 # 4 * 365 * 86400
 const tout    = 24 * 60 * 60
 
-const N  = 4
-const Ne = (10, 10, 1)
+const N  = 9
+const Ne = (10, 10, 4)
 const Lˣ = 1e6
 const Lʸ = 1e6
 const H  = 400
@@ -133,7 +133,7 @@ let
                 range(DFloat(0); length=Ne[2]+1, stop=L[2]),
                 range(DFloat(-L[3]); length=Ne[3]+1, stop=0))
   topl = StackedBrickTopology(mpicomm, brickrange;
-                              periodicity = (false, false, false),
+                              periodicity = (true, true, false),
                               boundary = ((1, 1), (1, 1), (2, 3)))
 
   dt = 120 # 240 # (L[1] / c) / Ne[1] / N^2
