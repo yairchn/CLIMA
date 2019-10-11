@@ -14,8 +14,8 @@ using MPI
 using CLIMA
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
-using CLIMA.DGBalanceLawDiscretizations
-using CLIMA.DGBalanceLawDiscretizations.NumericalFluxes
+using CLIMA.DGmethods
+using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.MPIStateArrays
 using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.ODESolvers
@@ -35,31 +35,62 @@ else
   const ArrayTypes = (Array, )
 end
 
-const _nstate = 2
-const _q, _p = 1:_nstate
-const stateid = (qid = _q, pid = _p)
-const statenames = ("q", "p")
+struct SphereConservation <: BalanceLaw
+end
 
-const _nauxstate = 3
-@inline function velocity_initialization!(vel, x, y, z)
-  @inbounds begin
-    r = x^2 + y^2 + z^2
-    vel[1] = cos(10*π*x) * sin(10*π*y) + cos(20 * π * z)
-    vel[2] = exp(sin(π*r))
-    vel[3] = sin(π * (x + y + z))
+vars_aux(::SphereConservation,T) = @vars(vel::SVector{3,T})
+vars_state(::SphereConservation, T) = @vars(q::T, p::T)
+
+vars_gradient(::SphereConservation, T) = @vars()
+vars_diffusive(::SphereConservation, T) = @vars()
+
+function init_aux!(::SphereConservation, aux::Vars, g::LocalGeometry)
+  x,y,z = g.coord
+  r = x^2 + y^2 + z^2
+  aux.vel = SVector(cos(10*π*x) * sin(10*π*y) + cos(20 * π * z),
+                    exp(sin(π*r)),
+                    sin(π * (x + y + z)))
+end
+
+function init_state!(bl::SphereConservation, state::Vars, aux::Vars, (x1,x2,x3), t)
+  state.q = rand()
+  state.p = rand()
+end
+
+function flux_nondiffusive!(::SphereConservation, flux::Grad, state::Vars, auxstate::Vars, t::Real)
+  vel = aux.vel
+  flux.q =  q .* vel
+  flux.p = -p .* vel
+end
+
+function source!(::SphereConservation, source::Vars, state::Vars, aux::Vars, t::Real)
+end
+
+struct CustomNumFlux <: NumericalFluxNonDiffusive end
+function numerical_flux_nondiffusive!(::CustomNumFlux,
+                                      bl::BalanceLaw, F::MArray, nM,
+                                      QM, auxM, QP, auxP, t)
+  FT = eltype(F)
+  stateM = Vars{vars_state(bl,FT)}(QM)
+  auxstateM = Vars{vars_state(bl,FT)}(auxM)
+  stateP = Vars{vars_state(bl,FT)}(QP)
+  auxstateP = Vars{vars_state(bl,FT)}(auxP)
+
+  unM = dot(nM, auxM.vel)
+  unP = dot(nM, auxP.vel)
+  un = (unP + unM) / 2
+
+  Fn = Vars{vars_state(bl,FT)}(F)
+
+  if un > 0
+    Fn.q = un*stateM.q
+    Fn.p = un*stateM.p
+  else
+    Fn.q = un*stateP.q
+    Fn.p = un*stateP.p
   end
 end
 
-# physical flux function
-@inline function flux!(F, Q, _, vel, _)
-  @inbounds begin
-    u, v, w = vel[1], vel[2], vel[3]
-    q, p = Q[_q], Q[_p]
-
-    F[1, _q], F[2, _q], F[3, _q] =  u*q,  v*q,  w*q
-    F[1, _p], F[2, _p], F[3, _p] = -u*p, -v*p, -w*p
-  end
-end
 # physical flux function
 @inline function numerical_flux!(F, nM, QM, _, velM, QP, _, velP, _)
   @inbounds begin
