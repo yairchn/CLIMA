@@ -25,6 +25,16 @@ using StaticArrays
 using Logging, Printf, Dates
 using Random
 
+using CLIMA.VariableTemplates
+import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
+                        vars_diffusive, flux_nondiffusive!, flux_diffusive!,
+                        source!, boundary_state!,
+                        init_aux!, init_state!,
+                        init_ode_state, LocalGeometry
+import CLIMA.DGmethods.NumericalFluxes: NumericalFluxNonDiffusive,
+                                        numerical_flux_nondiffusive!,
+                                        numerical_boundary_flux_nondiffusive! 
+
 @static if haspkg("CuArrays")
   using CUDAdrv
   using CUDAnative
@@ -44,6 +54,8 @@ vars_state(::SphereConservation, T) = @vars(q::T, p::T)
 vars_gradient(::SphereConservation, T) = @vars()
 vars_diffusive(::SphereConservation, T) = @vars()
 
+flux_diffusive!(::SphereConservation, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real) = nothing
+
 function init_aux!(::SphereConservation, aux::Vars, g::LocalGeometry)
   x,y,z = g.coord
   r = x^2 + y^2 + z^2
@@ -52,103 +64,87 @@ function init_aux!(::SphereConservation, aux::Vars, g::LocalGeometry)
                     sin(π * (x + y + z)))
 end
 
-function init_state!(bl::SphereConservation, state::Vars, aux::Vars, (x1,x2,x3), t)
+function init_state!(::SphereConservation, state::Vars, aux::Vars, (x1,x2,x3), t)
   state.q = rand()
   state.p = rand()
 end
 
 function flux_nondiffusive!(::SphereConservation, flux::Grad, state::Vars, auxstate::Vars, t::Real)
-  vel = aux.vel
-  flux.q =  q .* vel
-  flux.p = -p .* vel
+  vel = auxstate.vel
+  flux.q =  state.q .* vel
+  flux.p = -state.p .* vel
 end
 
-function source!(::SphereConservation, source::Vars, state::Vars, aux::Vars, t::Real)
-end
+source!(::SphereConservation, source::Vars, state::Vars, aux::Vars, t::Real) = nothing
 
-struct CustomNumFlux <: NumericalFluxNonDiffusive end
-function numerical_flux_nondiffusive!(::CustomNumFlux,
+struct SphereConservationNumFlux <: NumericalFluxNonDiffusive end
+
+boundary_state!(::CentralNumericalFluxDiffusive, ::SphereConservation, _...) = nothing
+
+function numerical_flux_nondiffusive!(::SphereConservationNumFlux,
                                       bl::BalanceLaw, F::MArray, nM,
                                       QM, auxM, QP, auxP, t)
   FT = eltype(F)
   stateM = Vars{vars_state(bl,FT)}(QM)
-  auxstateM = Vars{vars_state(bl,FT)}(auxM)
+  auxstateM = Vars{vars_aux(bl,FT)}(auxM)
   stateP = Vars{vars_state(bl,FT)}(QP)
-  auxstateP = Vars{vars_state(bl,FT)}(auxP)
+  auxstateP = Vars{vars_aux(bl,FT)}(auxP)
 
-  unM = dot(nM, auxM.vel)
-  unP = dot(nM, auxP.vel)
+  unM = dot(nM, auxstateM.vel)
+  unP = dot(nM, auxstateP.vel)
   un = (unP + unM) / 2
 
   Fn = Vars{vars_state(bl,FT)}(F)
 
   if un > 0
-    Fn.q = un*stateM.q
-    Fn.p = un*stateM.p
+    Fn.q =  un*stateM.q
+    Fn.p = -un*stateP.p
   else
-    Fn.q = un*stateP.q
-    Fn.p = un*stateP.p
+    Fn.q =  un*stateP.q
+    Fn.p = -un*stateM.p
   end
 end
 
-# physical flux function
-@inline function numerical_flux!(F, nM, QM, _, velM, QP, _, velP, _)
-  @inbounds begin
-    uM, vM, wM = velM[1], velM[2], velM[3]
-    unM = nM[1] * uM + nM[2] * vM + nM[3] * wM
-    uP, vP, wP = velP[1], velP[2], velP[3]
-    unP = nM[1] * uP + nM[2] * vP + nM[3] * wP
-    un = (unP + unM) / 2
+function numerical_boundary_flux_nondiffusive!(nf::SphereConservationNumFlux,
+                                               bl::BalanceLaw,
+                                               F::MArray{Tuple{nstate}}, nM, QM,
+                                               auxM, QP, auxP, bctype, t,
+                                               Q1, aux1) where {nstate}
+  FT = eltype(F)
+  stateM = Vars{vars_state(bl,FT)}(QM)
+  auxstateM = Vars{vars_aux(bl,FT)}(auxM)
 
-    if un > 0
-      F[_q], F[_p] = un * QM[_q], -un * QP[_p]
-    else
-      F[_q], F[_p] = un * QP[_q], -un * QM[_p]
-    end
-  end
-end
-@inline function numerical_boundary_flux!(F, nM, QM, _, vel, QP, _, _, _, _)
-  @inbounds begin
-    u, v, w = vel[1], vel[2], vel[3]
-    un = nM[1] * vel[1] + nM[2] * vel[2] + nM[3] * vel[3]
+  un = dot(nM, auxstateM.vel)
+  Fn = Vars{vars_state(bl,FT)}(F)
 
-    if un > 0
-      F[_q], F[_p] = un * QM[_q], -un * QM[_q]
-    else
-      F[_q], F[_p] = un * QM[_p], -un * QM[_p]
-    end
+  if un > 0
+    Fn.q =  un*stateM.q
+    Fn.p = -un*stateM.q
+  else
+    Fn.q =  un*stateM.p
+    Fn.p = -un*stateM.p
   end
 end
 
-function run(mpicomm, ArrayType, N, Nhorz, Rrange, timeend, DFloat, dt)
+function run(mpicomm, ArrayType, N, Nhorz, Rrange, timeend, FT, dt)
 
   topl = StackedCubedSphereTopology(mpicomm, Nhorz, Rrange)
 
   grid = DiscontinuousSpectralElementGrid(topl,
-                                          FloatType = DFloat,
+                                          FloatType = FT,
                                           DeviceArray = ArrayType,
                                           polynomialorder = N,
                                           meshwarp = Topologies.cubedshellwarp
                                          )
+  dg = DGModel(SphereConservation(),
+               grid,
+               SphereConservationNumFlux(),
+               CentralNumericalFluxDiffusive(),
+               CentralGradPenalty())
 
-  # spacedisc = data needed for evaluating the right-hand side function
-  spacedisc = DGBalanceLaw(grid = grid,
-                           length_state_vector = _nstate,
-                           flux! = flux!,
-                           numerical_flux! = numerical_flux!,
-                           numerical_boundary_flux! = numerical_boundary_flux!,
-                           auxiliary_state_length = _nauxstate,
-                           auxiliary_state_initialization! =
-                           velocity_initialization!,
-                          )
+  Q = init_ode_state(dg, FT(0))
 
-  # This is a actual state/function that lives on the grid
-  initialcondition!(Q, x, y, z, _...) = begin
-    @inbounds Q[_q], Q[_p] = rand(), rand()
-  end
-  Q = MPIStateArray(spacedisc, initialcondition!)
-
-  lsrk = LSRK54CarpenterKennedy(spacedisc, Q; dt = dt, t0 = 0)
+  lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
 
   eng0 = norm(Q)
   sum0 = weightedsum(Q)
@@ -156,8 +152,8 @@ function run(mpicomm, ArrayType, N, Nhorz, Rrange, timeend, DFloat, dt)
   norm(Q₀) = %.16e
   sum(Q₀) = %.16e""" eng0 sum0
 
-  max_mass_loss = DFloat(0)
-  max_mass_gain = DFloat(0)
+  max_mass_loss = FT(0)
+  max_mass_gain = FT(0)
   cbmass = GenericCallbacks.EveryXSimulationSteps(1) do
     cbsum = weightedsum(Q)
     max_mass_loss = max(max_mass_loss, sum0 - cbsum)
@@ -204,10 +200,10 @@ let
 
   dim = 3
   @testset "$(@__FILE__)" for ArrayType in ArrayTypes
-    for DFloat in (Float64,) #Float32)
+    for FT in (Float64,) #Float32)
       Random.seed!(0)
-      @info (ArrayType, DFloat, dim)
-      delta_mass = run(mpicomm, ArrayType, polynomialorder, Nhorz, Rrange, timeend, DFloat, dt)
+      @info (ArrayType, FT, dim)
+      delta_mass = run(mpicomm, ArrayType, polynomialorder, Nhorz, Rrange, timeend, FT, dt)
       @test abs(delta_mass) < 1e-15
     end
   end
