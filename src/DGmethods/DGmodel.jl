@@ -121,14 +121,24 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   end
 end
 
-function init_ode_state(dg::DGModel, args...; device=arraytype(dg.grid) <: Array ? CPU() : CUDA(), commtag=888)
+function MPIStateArrays.MPIStateArray(dg::DGModel, commtag=888)
+  bl = dg.balancelaw
+  grid = dg.grid
+
+  state = create_state(bl, grid, commtag)
+
+  return state
+end
+
+function init_ode_state(dg::DGModel, args...;
+                        device=arraytype(dg.grid) <: Array ? CPU() : CUDA(), commtag=888)
   array_device = arraytype(dg.grid) <: Array ? CPU() : CUDA()
   @assert device == CPU() || device == array_device
 
   bl = dg.balancelaw
   grid = dg.grid
 
-  state = create_state(bl, grid, commtag)
+  state = MPIStateArray(dg, commtag)
 
   topology = grid.topology
   Np = dofs_per_element(grid)
@@ -243,4 +253,26 @@ function nodal_update_aux!(f!, dg::DGModel, m::BalanceLaw, Q::MPIStateArray,
   @launch(device, threads=(Np,), blocks=nrealelem,
           knl_nodal_update_aux!(m, Val(dim), Val(polyorder), f!,
                           Q.data, auxstate.data, t, topology.realelems))
+end
+
+using SparseArrays
+function SparseArrays.SparseMatrixCSC(dg::DGModel)
+  Q = MPIStateArray(dg)
+  dQ = MPIStateArray(dg)
+  Q .= 0
+  dQ .= 0
+  I = Array{Int64}(undef, 0)
+  J = Array{Int64}(undef, 0)
+  V = Array{eltype(Q)}(undef, 0)
+  for k = 1:length(Q)
+    mod(k, 1000) == 1 && @show k, length(Q)
+    Q[k] = 1
+    dg(dQ, Q, nothing, 0; increment=false)
+    Q .= 0
+    SV = sparse(reshape(dQ, length(dQ)))
+    append!(I, SV.nzind)
+    append!(J, k * ones(Int64, size(SV.nzind)))
+    append!(V, SV.nzval)
+  end
+  sparse(I, J, V)
 end
