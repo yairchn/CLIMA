@@ -42,13 +42,14 @@ let
   N = 4
   Nq = N+1
   Neh = 1
-  Nev = 5
+  Nev = 4
 
   # Setup the topology
   brickrange = (range(FT(0); length=Neh+1, stop=1),
                 range(FT(0); length=Neh+1, stop=1),
                 range(FT(0); length=Nev+1, stop=1))
-  topl = BrickTopology(mpicomm, brickrange, periodicity = (false, false, false))
+  topl = StackedBrickTopology(mpicomm, brickrange,
+                              periodicity = (false, false, false))
 
   # Warp mesh and apply a random rotation
   (Q, R) = qr(rand(3,3))
@@ -94,7 +95,15 @@ let
                       auxstate=dg.auxstate)
 
   A = SparseMatrixCSC(dg_linear)
-  display(spy(A))
+  C = CartesianIndices((Nq, Nq, Nq, 5, Nev, Neh^2))
+  I = reshape(1:size(A,1), Nq, Nq, Nq, 5, Nev, Neh^2)
+  K = PermutedDimsArray(I, (1, 2, 4, 3, 5, 6))
+
+  display(spy(A[I[1, 1, :, :, :, 1][:], I[1, 1, :, :, :, 1][:]]))
+  display(spy(A[I[:], I[:]]))
+
+  display(spy(A[K[1, 1, :, :, :, 1][:], K[1, 1, :, :, :, 1][:]]))
+  display(spy(A[K[:], K[:]]))
 
   # vtk for debugging
   x1 = reshape(view(grid.vgeo, :, grid.x1id, :), Nq, Nq, Nq, Neh^2*Nev)
