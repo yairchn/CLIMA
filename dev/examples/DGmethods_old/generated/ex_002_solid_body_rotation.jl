@@ -16,17 +16,17 @@ using StaticArrays
 MPI.Initialized() || MPI.Init()
 
 const num_aux_states = 3
-function velocity_initilization!(uvec::MVector{num_aux_states, DFloat},
-                                 x, y, z) where DFloat
+function velocity_initilization!(uvec::MVector{num_aux_states, FT},
+                                 x, y, z) where FT
   @inbounds begin
     r = hypot(x, y)
     θ = atan(y, x)
-    uvec .= 2DFloat(π) * r .* (-sin(θ), cos(θ), 0)
+    uvec .= 2FT(π) * r .* (-sin(θ), cos(θ), 0)
   end
 end
 
 function advectionflux!(F, state, _, uvec, _)
-  DFloat = eltype(state) # get the floating point type we are using
+  FT = eltype(state) # get the floating point type we are using
   @inbounds begin
     q = state[1]
     F[:, 1] = uvec * q
@@ -34,7 +34,7 @@ function advectionflux!(F, state, _, uvec, _)
 end
 
 function upwindflux!(fs, nM, stateM, viscM, uvecM, stateP, viscP, uvecP, t)
-  DFloat = eltype(fs)
+  FT = eltype(fs)
   @inbounds begin
     # determine the advection speed and direction
     un = dot(nM, uvecM)
@@ -47,7 +47,7 @@ end
 
 function upwindboundaryflux!(fs, nM, stateM, viscM, uvecM, stateP, viscP, uvecP,
                              bctype, t)
-  DFloat = eltype(fs)
+  FT = eltype(fs)
   @inbounds begin
     # determine the advection speed and direction
     un = dot(nM, uvecM)
@@ -63,10 +63,10 @@ end
 
 function exactsolution!(Q, t, x, y, z, uvec)
   @inbounds begin
-    DFloat = eltype(Q)
+    FT = eltype(Q)
 
     r = hypot(x, y)
-    θ = atan(y, x) - 2DFloat(π) * t
+    θ = atan(y, x) - 2FT(π) * t
 
     x, y = r * cos(θ), r * sin(θ)
 
@@ -74,19 +74,19 @@ function exactsolution!(Q, t, x, y, z, uvec)
   end
 end
 
-function setupDG(mpicomm, dim, Ne, polynomialorder, DFloat=Float64,
+function setupDG(mpicomm, dim, Ne, polynomialorder, FT=Float64,
                  ArrayType=Array)
 
   @assert ArrayType === Array
 
-  brickrange = (range(DFloat(-1); length=Ne+1, stop=1),
-                range(DFloat(-1); length=Ne+1, stop=1),
-                range(DFloat(-1); length=Ne+1, stop=1))
+  brickrange = (range(FT(-1); length=Ne+1, stop=1),
+                range(FT(-1); length=Ne+1, stop=1),
+                range(FT(-1); length=Ne+1, stop=1))
 
   topology = BrickTopology(mpicomm, brickrange[1:dim])
 
   grid = DiscontinuousSpectralElementGrid(topology; polynomialorder =
-                                          polynomialorder, FloatType = DFloat,
+                                          polynomialorder, FloatType = FT,
                                           DeviceArray = ArrayType,)
 
   spatialdiscretization = DGBalanceLaw(grid = grid, length_state_vector = 1,

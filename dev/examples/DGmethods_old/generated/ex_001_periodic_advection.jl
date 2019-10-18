@@ -18,18 +18,18 @@ MPI.Initialized() || MPI.Init()
 const uvec = (1, 2, 3)
 
 function advectionflux!(F, state, _...)
-  DFloat = eltype(state) # get the floating point type we are using
+  FT = eltype(state) # get the floating point type we are using
   @inbounds begin
     q = state[1]
-    F[:, 1] = SVector{3, DFloat}(uvec) * q
+    F[:, 1] = SVector{3, FT}(uvec) * q
   end
 end
 
 function upwindflux!(fs, nM, stateM, viscM, auxM, stateP, viscP, auxP, t)
-  DFloat = eltype(fs)
+  FT = eltype(fs)
   @inbounds begin
     # determine the advection speed and direction
-    un = dot(nM, DFloat.(uvec))
+    un = dot(nM, FT.(uvec))
     qM = stateM[1]
     qP = stateP[1]
     # Determine which state is "upwind" of the minus side
@@ -43,29 +43,29 @@ end
 
 function exactsolution!(dim, Q, t, x_1, x_2, x_3, _...)
   @inbounds begin
-    DFloat = eltype(Q)
+    FT = eltype(Q)
 
     # trace back the point (x_1, x_2, x_3) in the velocity field and
     # determine where in our "original" [0, L_1] X [0, L_2] X [0, L_3] domain
     # this point is located
-    y_1 = mod(x_1 - DFloat(uvec[1]) * t, 1)
-    y_2 = mod(x_2 - DFloat(uvec[2]) * t, 1)
+    y_1 = mod(x_1 - FT(uvec[1]) * t, 1)
+    y_2 = mod(x_2 - FT(uvec[2]) * t, 1)
 
     # if we are really just 2-D we do not want to change the x_3 coordinate
-    y_3 = dim == 3 ? mod(x_3 - DFloat(uvec[3]) * t, 1) : x_3
+    y_3 = dim == 3 ? mod(x_3 - FT(uvec[3]) * t, 1) : x_3
 
     initialcondition!(Q, y_1, y_2, y_3)
   end
 end
 
-function setupDG(mpicomm, dim, Ne, polynomialorder, DFloat=Float64,
+function setupDG(mpicomm, dim, Ne, polynomialorder, FT=Float64,
                  ArrayType=Array)
 
   @assert ArrayType === Array
 
-  brickrange = (range(DFloat(0); length=Ne+1, stop=1), # x_1 corner locations
-                range(DFloat(0); length=Ne+1, stop=1), # x_2 corner locations
-                range(DFloat(0); length=Ne+1, stop=1)) # x_3 corner locations
+  brickrange = (range(FT(0); length=Ne+1, stop=1), # x_1 corner locations
+                range(FT(0); length=Ne+1, stop=1), # x_2 corner locations
+                range(FT(0); length=Ne+1, stop=1)) # x_3 corner locations
 
   periodicity = (true, true, true)
 
@@ -73,7 +73,7 @@ function setupDG(mpicomm, dim, Ne, polynomialorder, DFloat=Float64,
                            periodicity=periodicity[1:dim])
 
   grid = DiscontinuousSpectralElementGrid(topology; polynomialorder =
-                                          polynomialorder, FloatType = DFloat,
+                                          polynomialorder, FloatType = FT,
                                           DeviceArray = ArrayType,)
 
   spatialdiscretization = DGBalanceLaw(grid = grid, length_state_vector = 1,
