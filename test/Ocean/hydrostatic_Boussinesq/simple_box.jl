@@ -67,13 +67,11 @@ function ocean_init_aux!(P::SimpleBox, α, geom)
 end
 
 function ocean_init_state!(p::SimpleBox, Q, α, coords, t)
-  @inbounds x = coords[1]
   @inbounds z = coords[3]
   @inbounds H = p.H
-  @inbounds Lˣ = p.Lˣ
+
   Q.u = @SVector [0,0]
   Q.η = 0
-  # z > -200 ? Q.θ = 10 : Q.θ = 5
   Q.θ = 9 + 8z/H
 end
 
@@ -81,13 +79,13 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_euler_60min"
+vtkpath = "vtk_diffusion_noforcing_periodic"
 
-const timeend = 60 * 60 # 30 * 86400 # 4 * 365 * 86400
-const tout    = 60 # 24 * 60 * 60
+const timeend = 6 * 30 * 86400 # 4 * 365 * 86400
+const tout    = 24 * 60 * 60
 
-const N  = 9
-const Ne = (10, 10, 4)
+const N  = 4
+const Ne = (10, 10, 10)
 const Lˣ = 1e6
 const Lʸ = 1e6
 const H  = 400
@@ -103,8 +101,8 @@ const θᴱ = 25
 const αᵀ = 0 # 2e-4
 const νʰ = 1e4
 const νᶻ = 1e-2
-const κʰ = 0 # 1e3
-const κᶻ = 0 # 1e-3
+const κʰ = 1e3
+const κᶻ = 1e-3
 const λʳ = 0 # 1 // 86400
 
 let
@@ -136,7 +134,7 @@ let
                               periodicity = (true, true, false),
                               boundary = ((1, 1), (1, 1), (2, 3)))
 
-  dt = 1 # 120 # 240 # (L[1] / c) / Ne[1] / N^2
+  dt = 60 # 120 # 240 # (L[1] / c) / Ne[1] / N^2
   @show nout = ceil(Int64, tout / dt)
   @show dt = tout / nout
 
@@ -200,8 +198,8 @@ let
     end
   end
 
-  # lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
-  lsrk = LSRKEulerMethod(dg, Q; dt=dt, t0=0)
+  lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
+  # lsrk = LSRKEulerMethod(dg, Q; dt=dt, t0=0)
 
   eng0 = norm(Q)
   @info @sprintf """Starting

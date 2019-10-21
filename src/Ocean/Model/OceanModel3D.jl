@@ -354,28 +354,32 @@ end
   return nothing
 end
 
-@inline function ocean_boundary_state!(::HBModel, ::OceanFloor,
+@inline function ocean_boundary_state!(m::HBModel, ::OceanFloor,
                                        ::Union{Rusanov, CentralFlux, CentralGradPenalty},
                                        Q⁺, α⁺, n⁻, Q⁻, α⁻, t)
   Q⁺.u = -Q⁻.u
   α⁺.w = -α⁻.w
 
-  Q⁺.θ = 1
+  if m.κᶻ == 0
+    Q⁺.θ = 1
+  end
 
   return nothing
 end
 
 
-@inline function ocean_boundary_state!(::HBModel, ::OceanFloor,
+@inline function ocean_boundary_state!(m::HBModel, ::OceanFloor,
                                        ::CentralNumericalFluxDiffusive, Q⁺,
                                        σ⁺, α⁺, n⁻, Q⁻, σ⁻, α⁻, t)
 
   Q⁺.u = -Q⁻.u
   α⁺.w = -α⁻.w
 
-  Q⁺.θ = 1
-
-  σ⁺.κ∇θ = -σ⁻.κ∇θ
+  if m.κᶻ == 0
+    Q⁺.θ = 1
+  else
+    σ⁺.κ∇θ = -σ⁻.κ∇θ
+  end
 
   return nothing
 end
@@ -396,8 +400,6 @@ end
                                        Q⁺, σ⁺, α⁺, n⁻, Q⁻, σ⁻, α⁻, t)
   α⁺.w = α⁻.w
 
-  Q⁺.θ = 9
-
   τ = α⁻.τ
   σ⁺.ν∇u = -σ⁻.ν∇u - 2 * @SMatrix [ -0 -0;
                                     -0 -0;
@@ -406,7 +408,14 @@ end
   θ  = Q⁻.θ
   θʳ = α⁻.θʳ
   λʳ = m.λʳ
-  σ⁺.κ∇θ = -σ⁻.κ∇θ + 2 * λʳ * (θ - θʳ)
+
+  if m.κᶻ == 0
+    Q⁺.θ = 9
+  elseif m.λʳ != 0
+    σ⁺.κ∇θ = -σ⁻.κ∇θ + 2 * λʳ * (θ - θʳ)
+  else
+    σ⁺.κ∇θ = -σ⁻.κ∇θ
+  end
 
   return nothing
 end
