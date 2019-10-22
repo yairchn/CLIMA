@@ -14,9 +14,9 @@ using CLIMA.Atmos: AtmosModel, AtmosAcousticLinearModel,
 using CLIMA.VariableTemplates: flattenednames
 
 using CLIMA.PlanetParameters: T_0
-using CLIMA.DGmethods: VerticalDirection, DGModel, Matrix
+using CLIMA.DGmethods: VerticalDirection, DGModel, Vars, vars_state, num_state
 using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralNumericalFluxDiffusive,
-                                       CentralGradPenalty, vars_aux
+                                       CentralGradPenalty
 using SparseArrays
 using UnicodePlots
 
@@ -42,7 +42,7 @@ let
   N = 4
   Nq = N+1
   Neh = 1
-  Nev = 4
+  Nev = 1
 
   # Setup the topology
   brickrange = (range(FT(0); length=Neh+1, stop=1),
@@ -52,9 +52,13 @@ let
                               periodicity = (false, false, false))
 
   # Warp mesh and apply a random rotation
-  (Q, R) = qr(rand(3,3))
+  (Q, _) = qr(rand(3,3))
   function warpfun(ξ1, ξ2, ξ3)
-    ξ3 = 1 + ξ3 + (ξ3 - 1) * sin(2π * ξ2 * ξ1) / 5
+    ξ3 = 1 + ξ3 # + (ξ3 - 1) * sin(2π * ξ2 * ξ1) / 5
+    @inbounds (ξ1, ξ2, ξ3)
+  end
+  function rotfun(ξ1, ξ2, ξ3)
+    (ξ1, ξ2, ξ3) = warpfun(ξ1, ξ2, ξ3)
 
     ξ = SVector(ξ1, ξ2, ξ3)
     x = Q * ξ
@@ -63,13 +67,18 @@ let
   end
 
   # create the actual grid
-  grid = DiscontinuousSpectralElementGrid(topl,
-                                          FloatType = FT,
-                                          DeviceArray = AT,
-                                          polynomialorder = N,
-                                          meshwarp = warpfun,
-                                         )
-
+  grid = (warp = DiscontinuousSpectralElementGrid(topl,
+                                                  FloatType = FT,
+                                                  DeviceArray = AT,
+                                                  polynomialorder = N,
+                                                  meshwarp = rotfun,
+                                                 ),
+          flat = DiscontinuousSpectralElementGrid(topl,
+                                                  FloatType = FT,
+                                                  DeviceArray = AT,
+                                                  polynomialorder = N,
+                                                  meshwarp = warpfun,
+                                                 ))
   model = AtmosModel(FlatOrientation(),
                      HydrostaticState(IsothermalProfile(FT(T_0)), FT(0)),
                      ConstantViscosityWithDivergence(0.0),
@@ -79,35 +88,90 @@ let
                      NoFluxBC(),
                      nothing)
   linear_model = AtmosAcousticLinearModel(model)
-  @show flattenednames(vars_aux(linear_model, Float64))
   # the nonlinear model is needed so we can grab the auxstate below
-  dg = DGModel(model,
-               grid,
-               Rusanov(),
-               CentralNumericalFluxDiffusive(),
-               CentralGradPenalty())
-  dg_linear = DGModel(linear_model,
-                      grid,
-                      Rusanov(),
-                      CentralNumericalFluxDiffusive(),
-                      CentralGradPenalty();
-                      direction=VerticalDirection(),
-                      auxstate=dg.auxstate)
+  dg = (warp = DGModel(model,
+                       grid.warp,
+                       Rusanov(),
+                       CentralNumericalFluxDiffusive(),
+                       CentralGradPenalty()),
+        flat = DGModel(model,
+                       grid.flat,
+                       Rusanov(),
+                       CentralNumericalFluxDiffusive(),
+                       CentralGradPenalty()))
+  dg_linear = (warp = DGModel(linear_model,
+                              grid.warp,
+                              Rusanov(),
+                              CentralNumericalFluxDiffusive(),
+                              CentralGradPenalty();
+                              direction=VerticalDirection(),
+                              auxstate=dg.warp.auxstate),
+               flat = DGModel(linear_model,
+                              grid.flat,
+                              Rusanov(),
+                              CentralNumericalFluxDiffusive(),
+                              CentralGradPenalty();
+                              direction=VerticalDirection(),
+                              auxstate=dg.flat.auxstate))
 
-  A = SparseMatrixCSC(dg_linear)
+  A = (warp = I - SparseMatrixCSC(dg_linear.warp), 
+       flat = I - SparseMatrixCSC(dg_linear.flat))
 
-  #                          1,  2,  3, 4,   5, 6)
-  I = reshape(1:size(A,1),  Nq, Nq, Nq, 5, Nev, Neh^2)
-  K = PermutedDimsArray(I, (4, 3, 5, 1, 2, 6))
+  nstate = num_state(linear_model, FT)
+  NdofV = Nq * Nev
+  K = PermutedDimsArray(reshape(1:size(A.warp,1),  Nq, Nq, Nq, nstate, Nev,
+                                Neh^2),
+                        (4, 3, 5, 1, 2, 6))
+  ξ1x1, ξ2x1, ξ3x1 = grid.warp.vgeo[1, Grids._ξ1x1, 1], grid.warp.vgeo[1, Grids._ξ2x1, 1], grid.warp.vgeo[1, Grids._ξ3x1, 1]
+  ξ1x2, ξ2x2, ξ3x2 = grid.warp.vgeo[1, Grids._ξ1x2, 1], grid.warp.vgeo[1, Grids._ξ2x2, 1], grid.warp.vgeo[1, Grids._ξ3x2, 1]
+  ξ1x3, ξ2x3, ξ3x3 = grid.warp.vgeo[1, Grids._ξ1x3, 1], grid.warp.vgeo[1, Grids._ξ2x3, 1], grid.warp.vgeo[1, Grids._ξ3x3, 1]
 
-  B = A[K[:, :, :, 1, 1, 1][:], K[:, :, :, 1, 1, 1][:]]
-  display(spy(B))
+  R = [ξ1x1 ξ1x2 ξ1x3;
+       ξ2x1 ξ2x2 ξ2x3;
+       ξ3x1 ξ3x2 ξ3x3] / 2
+  display(R' * R)
+  @assert size(K, 1) == nstate
+  @assert size(K, 2) == Nq
+  @assert size(K, 3) == Nev
+
+  cA = (warp = A.warp[K[:, :, :, 1, 1, 1][:], K[:, :, :, 1, 1, 1][:]],
+        flat = A.flat[K[:, :, :, 1, 1, 1][:], K[:, :, :, 1, 1, 1][:]])
+
+  x = rand(nstate * NdofV)
+  for k = 1:NdofV
+    state = Vars{vars_state(linear_model, FT)}(view(x, (k-1) * nstate .+
+                                                    (1:nstate)))
+    state.ρu = R' * Diagonal([0 0 1]) * state.ρu
+  end
+  b = cA.warp * x
+  y = cA.warp \ b
+
+  @show norm(cA.warp * x - b)
+  @show norm(cA.warp * y - b)
+  @show norm(x - y)
+
+  c = copy(b)
+  for k = 1:NdofV
+    state = Vars{vars_state(linear_model, FT)}(view(c, (k-1) * nstate .+
+                                                    (1:nstate)))
+    state.ρu = R * state.ρu
+    @show state.ρu
+  end
+  z = cA.flat \ c
+
+  for k = 1:NdofV
+    state = Vars{vars_state(linear_model, FT)}(view(z, (k-1) * nstate .+
+                                                    (1:nstate)))
+    state.ρu = R' * state.ρu
+  end
+  @show norm(z - y)
+  display(spy(cA.flat, width=nstate*NdofV, height=nstate*NdofV))
 
   # vtk for debugging
-  x1 = reshape(view(grid.vgeo, :, grid.x1id, :), Nq, Nq, Nq, Neh^2*Nev)
-  x2 = reshape(view(grid.vgeo, :, grid.x2id, :), Nq, Nq, Nq, Neh^2*Nev)
-  x3 = reshape(view(grid.vgeo, :, grid.x3id, :), Nq, Nq, Nq, Neh^2*Nev)
-  writemesh("mesh", x1, x2, x3)
+  x1 = reshape(view(grid.warp.vgeo, :, grid.warp.x1id, :), Nq, Nq, Nq, Neh^2*Nev)
+  x2 = reshape(view(grid.warp.vgeo, :, grid.warp.x2id, :), Nq, Nq, Nq, Neh^2*Nev)
+  x3 = reshape(view(grid.warp.vgeo, :, grid.warp.x3id, :), Nq, Nq, Nq, Neh^2*Nev)
+  writemesh("mesh_warp", x1, x2, x3)
 
 end
 
