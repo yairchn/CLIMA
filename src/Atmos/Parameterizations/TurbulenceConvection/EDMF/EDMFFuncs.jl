@@ -50,6 +50,7 @@ function compute_tendencies_en_O2!(grid::Grid{FT}, q_tendencies, tmp_O2, cv) whe
 end
 
 function compute_tendencies_gm_scalars!(grid, q_tendencies, q, tmp, params)
+  @unpack params SurfaceType
   gm, en, ud, sd, al = allcombinations(q)
   k_1 = first_interior(grid, Zmin())
   Δzi = grid.Δzi
@@ -60,8 +61,8 @@ function compute_tendencies_gm_scalars!(grid, q_tendencies, q, tmp, params)
     q_tendencies[:θ_liq, k, gm] += tmp[:mf_tend_θ_liq, k]
   end
 
-  q_tendencies[:q_tot, k_1, gm] += params[:ρq_tot_flux] * Δzi * α_1/ae_1
-  q_tendencies[:θ_liq, k_1, gm] += params[:ρθ_liq_flux] * Δzi * α_1/ae_1
+  q_tendencies[:q_tot, k_1, gm] += SurfaceType.ρq_tot_flux * Δzi * α_1/ae_1
+  q_tendencies[:θ_liq, k_1, gm] += SurfaceType.ρθ_liq_flux * Δzi * α_1/ae_1
 end
 
 function compute_tendencies_ud!(grid, q_tendencies, q, tmp, params)

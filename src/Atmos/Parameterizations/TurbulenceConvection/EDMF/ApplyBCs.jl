@@ -10,7 +10,7 @@ Apply boundary conditions to the state vector.
 function apply_bcs! end
 
 function apply_bcs!(grid::Grid, q::StateVec, tmp::StateVec, params, case::BOMEX)
-  @unpack params ρq_tot_flux ρθ_liq_flux obukhov_length ustar surface_area wstar UpdVar
+  @unpack params SurfaceType obukhov_length wstar UpdVar
   gm, en, ud, sd, al = allcombinations(q)
   n_updrafts = length(ud)
   k_1 = first_interior(grid, Zmin())
@@ -18,10 +18,10 @@ function apply_bcs!(grid::Grid, q::StateVec, tmp::StateVec, params, case::BOMEX)
   θ_liq_1 = q[:θ_liq, k_1, gm]
   q_tot_1 = q[:q_tot, k_1, gm]
   alpha0LL  = tmp[:α_0, k_1]
-  cv_q_tot = surface_variance(ρq_tot_flux*alpha0LL, ρq_tot_flux*alpha0LL, ustar, zLL, obukhov_length)
-  cv_θ_liq = surface_variance(ρθ_liq_flux*alpha0LL, ρθ_liq_flux*alpha0LL, ustar, zLL, obukhov_length)
+  cv_q_tot = surface_variance(SurfaceType.ρq_tot_flux*alpha0LL, SurfaceType.ρq_tot_flux*alpha0LL, SurfaceType.ustar, zLL, obukhov_length)
+  cv_θ_liq = surface_variance(SurfaceType.ρθ_liq_flux*alpha0LL, SurfaceType.ρθ_liq_flux*alpha0LL, SurfaceType.ustar, zLL, obukhov_length)
   @inbounds for i in ud
-    UpdVar[i].surface_bc.a = surface_area/n_updrafts
+    UpdVar[i].surface_bc.a = SurfaceType.area/n_updrafts
     UpdVar[i].surface_bc.w = 0.0
     UpdVar[i].surface_bc.θ_liq = (θ_liq_1 + UpdVar[i].surface_scalar_coeff * sqrt(cv_θ_liq))
     UpdVar[i].surface_bc.q_tot = (q_tot_1 + UpdVar[i].surface_scalar_coeff * sqrt(cv_q_tot))
@@ -35,5 +35,5 @@ function apply_bcs!(grid::Grid, q::StateVec, tmp::StateVec, params, case::BOMEX)
   end
   apply_Dirichlet!(q, :w  , grid, 0.0, (Zmin(),Zmax()), en)
   apply_Neumann!(q, :tke, grid, 0.0, (Zmin(),Zmax()), en)
-  q[:tke, k_1, en] = surface_tke(ustar, wstar, zLL, obukhov_length)
+  q[:tke, k_1, en] = surface_tke(SurfaceType.ustar, wstar, zLL, obukhov_length)
 end

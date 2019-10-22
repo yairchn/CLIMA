@@ -14,6 +14,30 @@ struct TurbConv{G, SVQ, SVT, TD, DT}
   dir_tree::DT
 end
 
+mutable struct TimeMarchingParams{FT}
+  Δt::FT
+  Δt_min::FT
+  t_end::FT
+  CFL::FT
+  TimeMarchingParams(;Δt::FT,Δt_min::FT,t_end::FT,CFL::FT) where FT =
+    new{FT}(Δt,Δt_min,t_end,CFL)
+end
+
+"""
+    GridParams{FT,I}
+
+Grid parameters used to initialize a grid.
+"""
+struct GridParams{FT,I}
+  z_min::FT
+  z_max::FT
+  n_elems::I
+  GridParams(;z_min::FT, z_max::FT, n_elems::I) where {FT,I} =
+    new{FT,I}(z_min, z_max, n_elems)
+end
+import ..FiniteDifferenceGrids:Grid
+Grid(gp::GridParams) = Grid(gp.z_min, gp.z_max, gp.n_elems)
+
 """
     get_ϕ_ψ(ϕ)
 
@@ -32,10 +56,10 @@ function get_ϕ_ψ(ϕ)
 end
 
 function TurbConv(params, case::Case)
-  @unpack params N_subdomains z_min z_max N_elems
+  @unpack params N_subdomains
   n_ud = N_subdomains-2
 
-  grid = Grid(z_min, z_max, N_elems)
+  grid = Grid(params[:GridParams])
   dd = DomainDecomp(gm=1,en=1,ud=n_ud)
 
   unkowns = (
@@ -44,8 +68,8 @@ function TurbConv(params, case::Case)
   (:q_tot , DomainSubSet(gm=true,en=true,ud=true)),
   (:θ_liq , DomainSubSet(gm=true,en=true,ud=true)),
   (:tke   , DomainSubSet(en=true)),
-  (:u     , DomainSubSet(gm=true,en=true,ud=true)),
-  (:v     , DomainSubSet(gm=true,en=true,ud=true)),
+  (:u     , DomainSubSet(gm=true)),
+  (:v     , DomainSubSet(gm=true)),
   )
 
   tmp_vars = (
@@ -80,6 +104,7 @@ function TurbConv(params, case::Case)
   (:mf_tmp                 , DomainSubSet(ud=true)),
   (:θ_ρ                    , DomainSubSet(gm=true)),
   (:ug                     , DomainSubSet(gm=true)),
+  (:vg                     , DomainSubSet(gm=true)),
   (:subsidence             , DomainSubSet(gm=true)),
   )
 

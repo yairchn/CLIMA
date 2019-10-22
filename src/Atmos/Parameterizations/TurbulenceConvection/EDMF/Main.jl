@@ -18,13 +18,13 @@ function run(case)
   dir_tree = tc.dir_tree
   tri_diag = tc.tri_diag
   tmp_O2 = tc.tmp_O2
+  @unpack params SurfaceType ForcingType
 
   gm, en, ud, sd, al = allcombinations(tc.q)
-  init_ref_state!(tmp, grid, params, dir_tree)
+  init_ref_state!(tmp, grid, SurfaceType, dir_tree)
   init_state_vecs!(q, tmp, grid, params, dir_tree, case)
 
-
-  params[:UpdVar] = [UpdraftVar(0, params[:surface_area], length(ud)) for i in al]
+  params[:UpdVar] = [UpdraftVar(0, SurfaceType.area, length(ud)) for i in al]
   # export_initial_conditions(q, tmp, grid, dir_tree[:processed_initial_conditions], true)
 
   @unpack params Δt t_end
@@ -32,8 +32,8 @@ function run(case)
   i_Δt, i_export, t = [0], [0], [0.0]
 
   assign!(q_tendencies, (:u, :v, :q_tot, :θ_liq), grid, 0.0)
-  update_surface!(tmp, q, grid, params, case)
-  update_forcing!(q_tendencies, tmp, q, grid, params, case)
+  update_surface!(tmp, q, grid, params, SurfaceType)
+  update_forcing!(q_tendencies, tmp, q, grid, params, ForcingType)
   compute_cloud_base_top_cover!(params[:UpdVar], grid, q, tmp)
 
   pre_compute_vars!(grid, q, tmp, tmp_O2, params[:UpdVar], params)
@@ -43,8 +43,8 @@ function run(case)
   while t[1] < t_end
     assign!(q_tendencies, (:u, :v, :q_tot, :θ_liq), grid, 0.0)
 
-    update_surface!(tmp, q, grid, params, case)
-    update_forcing!(q_tendencies, tmp, q, grid, params, case)
+    update_surface!(tmp, q, grid, params, SurfaceType)
+    update_forcing!(q_tendencies, tmp, q, grid, params, ForcingType)
 
     pre_compute_vars!(grid, q, tmp, tmp_O2, params[:UpdVar], params)
 

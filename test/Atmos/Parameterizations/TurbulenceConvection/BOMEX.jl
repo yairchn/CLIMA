@@ -10,7 +10,7 @@ mkpath(test_data_dir)
 # set `accept_new_solution = true`, and run once. Then,
 # reset to `false` before committing. This parameter should
 # never be `true` for commits.
-const accept_new_solution = false
+const accept_new_solution = true
 
 tc = TurbulenceConvection
 @testset "Integration test: EDMF equations (BOMEX)" begin
