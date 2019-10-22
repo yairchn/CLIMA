@@ -95,15 +95,13 @@ let
                       auxstate=dg.auxstate)
 
   A = SparseMatrixCSC(dg_linear)
-  C = CartesianIndices((Nq, Nq, Nq, 5, Nev, Neh^2))
-  I = reshape(1:size(A,1), Nq, Nq, Nq, 5, Nev, Neh^2)
-  K = PermutedDimsArray(I, (1, 2, 4, 3, 5, 6))
 
-  display(spy(A[I[1, 1, :, :, :, 1][:], I[1, 1, :, :, :, 1][:]]))
-  display(spy(A[I[:], I[:]]))
+  #                          1,  2,  3, 4,   5, 6)
+  I = reshape(1:size(A,1),  Nq, Nq, Nq, 5, Nev, Neh^2)
+  K = PermutedDimsArray(I, (4, 3, 5, 1, 2, 6))
 
-  display(spy(A[K[1, 1, :, :, :, 1][:], K[1, 1, :, :, :, 1][:]]))
-  display(spy(A[K[:], K[:]]))
+  B = A[K[:, :, :, 1, 1, 1][:], K[:, :, :, 1, 1, 1][:]]
+  display(spy(B))
 
   # vtk for debugging
   x1 = reshape(view(grid.vgeo, :, grid.x1id, :), Nq, Nq, Nq, Neh^2*Nev)
