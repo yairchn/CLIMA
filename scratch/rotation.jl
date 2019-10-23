@@ -46,14 +46,15 @@ let
   # Setup the topology
   brickrange = (range(FT(0); length=Neh+1, stop=1),
                 range(FT(0); length=Neh+1, stop=1),
-                range(FT(0); length=Nev+1, stop=1))
+                range(FT(1); length=Nev+1, stop=2))
   topl = StackedBrickTopology(mpicomm, brickrange,
                               periodicity = (false, false, false))
 
   # Warp mesh and apply a random rotation
   (Q, _) = qr(rand(3,3))
   function warpfun(ξ1, ξ2, ξ3)
-    ξ3 = 1 + ξ3 # + (ξ3 - 1) * sin(2π * ξ2 * ξ1) / 5
+    ξ2 = ξ2 + sin(2π * ξ1) / 5
+    ξ1 = ξ1 + sin(2π * ξ1 * ξ2) / 10
     @inbounds (ξ1, ξ2, ξ3)
   end
   function rotfun(ξ1, ξ2, ξ3)
@@ -115,6 +116,11 @@ let
 
   A = (warp = I - SparseMatrixCSC(dg_linear.warp), 
        flat = I - SparseMatrixCSC(dg_linear.flat))
+
+  vgeo = reshape(grid.warp.vgeo, Nq, Nq, Nq, Grids._nvgeo, Nev, Neh)
+  _ξ1x1, _ξ1x2, _ξ1x3 = Grids._ξ1x1, Grids._ξ1x2, Grids._ξ1x3
+  _ξ2x1, _ξ2x2, _ξ2x3 = Grids._ξ2x1, Grids._ξ2x2, Grids._ξ2x3
+  _ξ3x1, _ξ3x2, _ξ3x3 = Grids._ξ3x1, Grids._ξ3x2, Grids._ξ3x3
   println()
 
   nstate = num_state(linear_model, FT)
@@ -122,15 +128,6 @@ let
   NdofV = Nq * Nev
   K = PermutedDimsArray(reshape(1:Ndof,  Nq, Nq, Nq, nstate, Nev, Neh^2),
                         (4, 3, 5, 1, 2, 6))
-  ξ1x1, ξ2x1, ξ3x1 = grid.warp.vgeo[1, Grids._ξ1x1, 1], grid.warp.vgeo[1, Grids._ξ2x1, 1], grid.warp.vgeo[1, Grids._ξ3x1, 1]
-  ξ1x2, ξ2x2, ξ3x2 = grid.warp.vgeo[1, Grids._ξ1x2, 1], grid.warp.vgeo[1, Grids._ξ2x2, 1], grid.warp.vgeo[1, Grids._ξ3x2, 1]
-  ξ1x3, ξ2x3, ξ3x3 = grid.warp.vgeo[1, Grids._ξ1x3, 1], grid.warp.vgeo[1, Grids._ξ2x3, 1], grid.warp.vgeo[1, Grids._ξ3x3, 1]
-
-  R = [ξ1x1 ξ1x2 ξ1x3;
-       ξ2x1 ξ2x2 ξ2x3;
-       ξ3x1 ξ3x2 ξ3x3] / 2
-  display(R' * R)
-  println()
 
   @assert size(K, 1) == nstate
   @assert size(K, 2) == Nq
@@ -150,21 +147,64 @@ let
   println()
 
   c = copy(b)
-  for ev = 1:Nev
+  for eV = 1:Nev
+    eH = helm
     for k = 1:Nq
-      offset = ((ev-1) * Nq + k-1) * nstate
-      state = Vars{vars_state(linear_model, FT)}(view(c, offset .+ (1:nstate)))
-      state.ρu = R * state.ρu
+      i, j = idof, jdof
+      ξ1 = SVector(vgeo[i, j, k, _ξ1x1, eV, eH],
+                   vgeo[i, j, k, _ξ1x2, eV, eH],
+                   vgeo[i, j, k, _ξ1x3, eV, eH])
+      ξ2 = SVector(vgeo[i, j, k, _ξ2x1, eV, eH],
+                   vgeo[i, j, k, _ξ2x2, eV, eH],
+                   vgeo[i, j, k, _ξ2x3, eV, eH])
+      ξ3 = SVector(vgeo[i, j, k, _ξ3x1, eV, eH],
+                   vgeo[i, j, k, _ξ3x2, eV, eH],
+                   vgeo[i, j, k, _ξ3x3, eV, eH])
+
+      ξ3 = ξ3 / norm(ξ3)
+
+      ξ2 = ξ2 - (ξ3' * ξ2) * ξ3
+      ξ2 = ξ2 / norm(ξ2)
+
+      ξ1 = ξ1 - (ξ3' * ξ1) * ξ3 - (ξ2' * ξ1) * ξ2
+      ξ1 = ξ1 / norm(ξ1)
+
+      R = [ξ1 ξ2 ξ3]
+
+      offset = ((eV-1) * Nq + k-1) * nstate
+      cs = Vars{vars_state(linear_model, FT)}(view(c, offset .+ (1:nstate)))
+      cs.ρu = R' * cs.ρu
     end
   end
   println()
   z = cA.flat \ c
 
-  for ev = 1:Nev
+  for eV = 1:Nev
+    eH = helm
     for k = 1:Nq
-      offset = ((ev-1) * Nq + k-1) * nstate
-      state = Vars{vars_state(linear_model, FT)}(view(z, offset .+ (1:nstate)))
-      state.ρu = R' * state.ρu
+      i, j = idof, jdof
+      ξ1 = SVector(vgeo[i, j, k, _ξ1x1, eV, eH],
+                   vgeo[i, j, k, _ξ1x2, eV, eH],
+                   vgeo[i, j, k, _ξ1x3, eV, eH])
+      ξ2 = SVector(vgeo[i, j, k, _ξ2x1, eV, eH],
+                   vgeo[i, j, k, _ξ2x2, eV, eH],
+                   vgeo[i, j, k, _ξ2x3, eV, eH])
+      ξ3 = SVector(vgeo[i, j, k, _ξ3x1, eV, eH],
+                   vgeo[i, j, k, _ξ3x2, eV, eH],
+                   vgeo[i, j, k, _ξ3x3, eV, eH])
+
+      ξ3 = ξ3 / norm(ξ3)
+
+      ξ2 = ξ2 - (ξ3' * ξ2) * ξ3
+      ξ2 = ξ2 / norm(ξ2)
+
+      ξ1 = ξ1 - (ξ3' * ξ1) * ξ3 - (ξ2' * ξ1) * ξ2
+      ξ1 = ξ1 / norm(ξ1)
+      R = [ξ1 ξ2 ξ3]
+
+      offset = ((eV-1) * Nq + k-1) * nstate
+      zs = Vars{vars_state(linear_model, FT)}(view(z, offset .+ (1:nstate)))
+      zs.ρu = R * zs.ρu
     end
   end
   println()
@@ -183,10 +223,10 @@ let
   println()
 
   # vtk for debugging
-  x1 = reshape(view(grid.warp.vgeo, :, grid.warp.x1id, :), Nq, Nq, Nq, Neh^2*Nev)
-  x2 = reshape(view(grid.warp.vgeo, :, grid.warp.x2id, :), Nq, Nq, Nq, Neh^2*Nev)
-  x3 = reshape(view(grid.warp.vgeo, :, grid.warp.x3id, :), Nq, Nq, Nq, Neh^2*Nev)
-  writemesh("mesh_warp", x1, x2, x3)
+  x1 = reshape(view(grid.flat.vgeo, :, grid.flat.x1id, :), Nq, Nq, Nq, Neh^2*Nev)
+  x2 = reshape(view(grid.flat.vgeo, :, grid.flat.x2id, :), Nq, Nq, Nq, Neh^2*Nev)
+  x3 = reshape(view(grid.flat.vgeo, :, grid.flat.x3id, :), Nq, Nq, Nq, Neh^2*Nev)
+  writemesh("mesh_flat", x1, x2, x3)
 end
 
 nothing
