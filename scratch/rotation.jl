@@ -150,19 +150,22 @@ let
   println()
 
   c = copy(b)
-  for k = 1:NdofV
-    state = Vars{vars_state(linear_model, FT)}(view(c, (k-1) * nstate .+
-                                                    (1:nstate)))
-    state.ρu = R * state.ρu
+  for ev = 1:Nev
+    for k = 1:Nq
+      offset = ((ev-1) * Nq + k-1) * nstate
+      state = Vars{vars_state(linear_model, FT)}(view(c, offset .+ (1:nstate)))
+      state.ρu = R * state.ρu
+    end
   end
   println()
   z = cA.flat \ c
 
-  for k = 1:NdofV
-    state = Vars{vars_state(linear_model, FT)}(view(z, (k-1) * nstate .+
-                                                    (1:nstate)))
-    state.ρu = R' * state.ρu
-    @show state.ρu
+  for ev = 1:Nev
+    for k = 1:Nq
+      offset = ((ev-1) * Nq + k-1) * nstate
+      state = Vars{vars_state(linear_model, FT)}(view(z, offset .+ (1:nstate)))
+      state.ρu = R' * state.ρu
+    end
   end
   println()
   @show norm(z - y)
