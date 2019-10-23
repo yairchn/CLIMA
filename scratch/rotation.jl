@@ -41,7 +41,7 @@ let
   N = 4
   Nq = N+1
   Neh = 1
-  Nev = 1
+  Nev = 4
 
   # Setup the topology
   brickrange = (range(FT(0); length=Neh+1, stop=1),
@@ -151,29 +151,15 @@ let
     eH = helm
     for k = 1:Nq
       i, j = idof, jdof
-      ξ1 = SVector(vgeo[i, j, k, _ξ1x1, eV, eH],
-                   vgeo[i, j, k, _ξ1x2, eV, eH],
-                   vgeo[i, j, k, _ξ1x3, eV, eH])
-      ξ2 = SVector(vgeo[i, j, k, _ξ2x1, eV, eH],
-                   vgeo[i, j, k, _ξ2x2, eV, eH],
-                   vgeo[i, j, k, _ξ2x3, eV, eH])
       ξ3 = SVector(vgeo[i, j, k, _ξ3x1, eV, eH],
                    vgeo[i, j, k, _ξ3x2, eV, eH],
                    vgeo[i, j, k, _ξ3x3, eV, eH])
-
       ξ3 = ξ3 / norm(ξ3)
-
-      ξ2 = ξ2 - (ξ3' * ξ2) * ξ3
-      ξ2 = ξ2 / norm(ξ2)
-
-      ξ1 = ξ1 - (ξ3' * ξ1) * ξ3 - (ξ2' * ξ1) * ξ2
-      ξ1 = ξ1 / norm(ξ1)
-
-      R = [ξ1 ξ2 ξ3]
 
       offset = ((eV-1) * Nq + k-1) * nstate
       cs = Vars{vars_state(linear_model, FT)}(view(c, offset .+ (1:nstate)))
-      cs.ρu = R' * cs.ρu
+
+      cs.ρu = SVector(0, 0, ξ3' * cs.ρu)
     end
   end
   println()
@@ -183,41 +169,31 @@ let
     eH = helm
     for k = 1:Nq
       i, j = idof, jdof
-      ξ1 = SVector(vgeo[i, j, k, _ξ1x1, eV, eH],
-                   vgeo[i, j, k, _ξ1x2, eV, eH],
-                   vgeo[i, j, k, _ξ1x3, eV, eH])
-      ξ2 = SVector(vgeo[i, j, k, _ξ2x1, eV, eH],
-                   vgeo[i, j, k, _ξ2x2, eV, eH],
-                   vgeo[i, j, k, _ξ2x3, eV, eH])
       ξ3 = SVector(vgeo[i, j, k, _ξ3x1, eV, eH],
                    vgeo[i, j, k, _ξ3x2, eV, eH],
                    vgeo[i, j, k, _ξ3x3, eV, eH])
-
       ξ3 = ξ3 / norm(ξ3)
-
-      ξ2 = ξ2 - (ξ3' * ξ2) * ξ3
-      ξ2 = ξ2 / norm(ξ2)
-
-      ξ1 = ξ1 - (ξ3' * ξ1) * ξ3 - (ξ2' * ξ1) * ξ2
-      ξ1 = ξ1 / norm(ξ1)
-      R = [ξ1 ξ2 ξ3]
 
       offset = ((eV-1) * Nq + k-1) * nstate
       zs = Vars{vars_state(linear_model, FT)}(view(z, offset .+ (1:nstate)))
-      zs.ρu = R * zs.ρu
+      zs.ρu = ξ3 * zs.ρu[3]
+
+      bs = Vars{vars_state(linear_model, FT)}(view(b, offset .+ (1:nstate)))
+      zs.ρu += bs.ρu - ξ3 * ξ3' * bs.ρu
     end
   end
   println()
   @show norm(z - y)
   @show norm(z)
+  @show norm(z - y)/ norm(y)
   println()
   println()
   println()
-  display(reshape(z, nstate, NdofV))
+  @show display(reshape(z, nstate, NdofV))
   println()
-  display(reshape(y, nstate, NdofV))
+  @show display(reshape(y, nstate, NdofV))
   println()
-  display(reshape(z - y, nstate, NdofV))
+  @show display(reshape(z - y, nstate, NdofV))
   println()
   # display(spy(cA.flat, width=nstate*NdofV, height=nstate*NdofV))
   println()
