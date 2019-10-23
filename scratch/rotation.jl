@@ -67,7 +67,7 @@ let
   end
 
   # create the actual grid
-  grid = (warp = DiscontinuousSpectralElementGrid(topl,
+  grid = (rota = DiscontinuousSpectralElementGrid(topl,
                                                   FloatType = FT,
                                                   DeviceArray = AT,
                                                   polynomialorder = N,
@@ -89,8 +89,8 @@ let
                      nothing)
   linear_model = AtmosAcousticLinearModel(model)
   # the nonlinear model is needed so we can grab the auxstate below
-  dg = (warp = DGModel(model,
-                       grid.warp,
+  dg = (rota = DGModel(model,
+                       grid.rota,
                        Rusanov(),
                        CentralNumericalFluxDiffusive(),
                        CentralGradPenalty()),
@@ -99,13 +99,13 @@ let
                        Rusanov(),
                        CentralNumericalFluxDiffusive(),
                        CentralGradPenalty()))
-  dg_linear = (warp = DGModel(linear_model,
-                              grid.warp,
+  dg_linear = (rota = DGModel(linear_model,
+                              grid.rota,
                               Rusanov(),
                               CentralNumericalFluxDiffusive(),
                               CentralGradPenalty();
                               direction=VerticalDirection(),
-                              auxstate=dg.warp.auxstate),
+                              auxstate=dg.rota.auxstate),
                flat = DGModel(linear_model,
                               grid.flat,
                               Rusanov(),
@@ -114,10 +114,10 @@ let
                               direction=VerticalDirection(),
                               auxstate=dg.flat.auxstate))
 
-  A = (warp = I - SparseMatrixCSC(dg_linear.warp), 
+  A = (rota = I - SparseMatrixCSC(dg_linear.rota), 
        flat = I - SparseMatrixCSC(dg_linear.flat))
 
-  vgeo = reshape(grid.warp.vgeo, Nq, Nq, Nq, Grids._nvgeo, Nev, Neh)
+  vgeo = reshape(grid.rota.vgeo, Nq, Nq, Nq, Grids._nvgeo, Nev, Neh)
   _ξ1x1, _ξ1x2, _ξ1x3 = Grids._ξ1x1, Grids._ξ1x2, Grids._ξ1x3
   _ξ2x1, _ξ2x2, _ξ2x3 = Grids._ξ2x1, Grids._ξ2x2, Grids._ξ2x3
   _ξ3x1, _ξ3x2, _ξ3x3 = Grids._ξ3x1, Grids._ξ3x2, Grids._ξ3x3
@@ -137,11 +137,11 @@ let
   jdof = 1
   helm = 1
   Ks = @view K[:, :, :, idof, jdof, helm][:]
-  cA = (warp = A.warp[Ks, Ks], flat = A.flat[Ks, Ks])
+  cA = (rota = A.rota[Ks, Ks], flat = A.flat[Ks, Ks])
 
   x = rand(nstate * NdofV)
-  b = cA.warp * x
-  y = cA.warp \ b
+  b = cA.rota * x
+  y = cA.rota \ b
 
   @show norm(x - y)
   println()
