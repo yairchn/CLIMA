@@ -20,7 +20,6 @@ using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralNumericalFluxDiffusive,
 using SparseArrays
 using UnicodePlots
 
-
 let
   # boiler plate MPI stuff
   MPI.Initialized() || MPI.Init()
@@ -119,9 +118,9 @@ let
   println()
 
   nstate = num_state(linear_model, FT)
+  Ndof = Nq^3 * nstate * Nev * Neh^2
   NdofV = Nq * Nev
-  K = PermutedDimsArray(reshape(1:size(A.warp,1),  Nq, Nq, Nq, nstate, Nev,
-                                Neh^2),
+  K = PermutedDimsArray(reshape(1:Ndof,  Nq, Nq, Nq, nstate, Nev, Neh^2),
                         (4, 3, 5, 1, 2, 6))
   ξ1x1, ξ2x1, ξ3x1 = grid.warp.vgeo[1, Grids._ξ1x1, 1], grid.warp.vgeo[1, Grids._ξ2x1, 1], grid.warp.vgeo[1, Grids._ξ3x1, 1]
   ξ1x2, ξ2x2, ξ3x2 = grid.warp.vgeo[1, Grids._ξ1x2, 1], grid.warp.vgeo[1, Grids._ξ2x2, 1], grid.warp.vgeo[1, Grids._ξ3x2, 1]
@@ -137,15 +136,16 @@ let
   @assert size(K, 2) == Nq
   @assert size(K, 3) == Nev
 
-  cA = (warp = A.warp[K[:, :, :, 1, 1, 1][:], K[:, :, :, 1, 1, 1][:]],
-        flat = A.flat[K[:, :, :, 1, 1, 1][:], K[:, :, :, 1, 1, 1][:]])
+  idof = 1
+  jdof = 1
+  helm = 1
+  Ks = @view K[:, :, :, idof, jdof, helm][:]
+  cA = (warp = A.warp[Ks, Ks], flat = A.flat[Ks, Ks])
 
   x = rand(nstate * NdofV)
   b = cA.warp * x
   y = cA.warp \ b
 
-  @show norm(cA.warp * x - b)
-  @show norm(cA.warp * y - b)
   @show norm(x - y)
   println()
 
@@ -168,13 +168,15 @@ let
   @show norm(z - y)
   @show norm(z)
   println()
-  display(reshape(z - y, nstate, NdofV))
+  println()
   println()
   display(reshape(z, nstate, NdofV))
   println()
   display(reshape(y, nstate, NdofV))
   println()
-  display(spy(cA.flat, width=nstate*NdofV, height=nstate*NdofV))
+  display(reshape(z - y, nstate, NdofV))
+  println()
+  # display(spy(cA.flat, width=nstate*NdofV, height=nstate*NdofV))
   println()
 
   # vtk for debugging
@@ -182,7 +184,6 @@ let
   x2 = reshape(view(grid.warp.vgeo, :, grid.warp.x2id, :), Nq, Nq, Nq, Neh^2*Nev)
   x3 = reshape(view(grid.warp.vgeo, :, grid.warp.x3id, :), Nq, Nq, Nq, Neh^2*Nev)
   writemesh("mesh_warp", x1, x2, x3)
-
 end
 
 nothing
