@@ -141,12 +141,6 @@ let
         flat = A.flat[K[:, :, :, 1, 1, 1][:], K[:, :, :, 1, 1, 1][:]])
 
   x = rand(nstate * NdofV)
-  for k = 1:NdofV
-    state = Vars{vars_state(linear_model, FT)}(view(x, (k-1) * nstate .+
-                                                    (1:nstate)))
-    state.ρu = R' * Diagonal([0,0,1]) * state.ρu
-    @show state.ρu
-  end
   b = cA.warp * x
   y = cA.warp \ b
 
