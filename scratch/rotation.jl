@@ -10,7 +10,7 @@ using StaticArrays
 using CLIMA.Atmos: AtmosModel, AtmosAcousticLinearModel,
                    DryModel, NoRadiation, NoFluxBC,
                    ConstantViscosityWithDivergence, IsothermalProfile,
-                   HydrostaticState, FlatOrientation
+                   HydrostaticState, NoOrientation
 using CLIMA.VariableTemplates: flattenednames
 
 using CLIMA.PlanetParameters: T_0
@@ -79,7 +79,7 @@ let
                                                   polynomialorder = N,
                                                   meshwarp = warpfun,
                                                  ))
-  model = AtmosModel(FlatOrientation(),
+  model = AtmosModel(NoOrientation(),
                      HydrostaticState(IsothermalProfile(FT(T_0)), FT(0)),
                      ConstantViscosityWithDivergence(0.0),
                      DryModel(),
@@ -116,6 +116,7 @@ let
 
   A = (warp = I - SparseMatrixCSC(dg_linear.warp), 
        flat = I - SparseMatrixCSC(dg_linear.flat))
+  println()
 
   nstate = num_state(linear_model, FT)
   NdofV = Nq * Nev
@@ -130,6 +131,8 @@ let
        ξ2x1 ξ2x2 ξ2x3;
        ξ3x1 ξ3x2 ξ3x3] / 2
   display(R' * R)
+  println()
+
   @assert size(K, 1) == nstate
   @assert size(K, 2) == Nq
   @assert size(K, 3) == Nev
@@ -141,7 +144,8 @@ let
   for k = 1:NdofV
     state = Vars{vars_state(linear_model, FT)}(view(x, (k-1) * nstate .+
                                                     (1:nstate)))
-    state.ρu = R' * Diagonal([0 0 1]) * state.ρu
+    state.ρu = R' * Diagonal([0,0,1]) * state.ρu
+    @show state.ρu
   end
   b = cA.warp * x
   y = cA.warp \ b
@@ -149,23 +153,35 @@ let
   @show norm(cA.warp * x - b)
   @show norm(cA.warp * y - b)
   @show norm(x - y)
+  println()
 
   c = copy(b)
   for k = 1:NdofV
     state = Vars{vars_state(linear_model, FT)}(view(c, (k-1) * nstate .+
                                                     (1:nstate)))
     state.ρu = R * state.ρu
-    @show state.ρu
   end
+  println()
   z = cA.flat \ c
 
   for k = 1:NdofV
     state = Vars{vars_state(linear_model, FT)}(view(z, (k-1) * nstate .+
                                                     (1:nstate)))
     state.ρu = R' * state.ρu
+    @show state.ρu
   end
+  println()
   @show norm(z - y)
+  @show norm(z)
+  println()
+  display(reshape(z - y, nstate, NdofV))
+  println()
+  display(reshape(z, nstate, NdofV))
+  println()
+  display(reshape(y, nstate, NdofV))
+  println()
   display(spy(cA.flat, width=nstate*NdofV, height=nstate*NdofV))
+  println()
 
   # vtk for debugging
   x1 = reshape(view(grid.warp.vgeo, :, grid.warp.x1id, :), Nq, Nq, Nq, Neh^2*Nev)
