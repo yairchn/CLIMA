@@ -72,6 +72,12 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
     l_ξ3x3 = @scratch FT (Nq, Nq, Nqk) 3
   end
 
+  grad_l_F = Grad{vars_state(bl,FT)}(l_F)
+  vars_l_Q = Vars{vars_state(bl,FT)}(l_Q)
+  vars_l_Qvisc = Vars{vars_diffusive(bl,FT)}(l_Qvisc)
+  vars_l_aux = Vars{vars_aux(bl,FT)}(l_aux)
+  vars_l_S = Vars{vars_state(bl,FT)}(l_S)
+
   @inbounds @loop for k in (1; threadIdx().z)
     @loop for j in (1:Nq; threadIdx().y)
       s_ω[j] = ω[j]
@@ -118,13 +124,8 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
           end
 
           fill!(l_F, -zero(eltype(l_F)))
-          flux_nondiffusive!(bl, Grad{vars_state(bl,FT)}(l_F),
-                             Vars{vars_state(bl,FT)}(l_Q),
-                             Vars{vars_aux(bl,FT)}(l_aux), t)
-          flux_diffusive!(bl, Grad{vars_state(bl,FT)}(l_F),
-                          Vars{vars_state(bl,FT)}(l_Q),
-                          Vars{vars_diffusive(bl,FT)}(l_Qvisc),
-                          Vars{vars_aux(bl,FT)}(l_aux), t)
+          flux_nondiffusive!(bl, grad_l_F, vars_l_Q, vars_l_aux, t)
+          flux_diffusive!(bl, grad_l_F, vars_l_Q, vars_l_Qvisc, vars_l_aux, t)
 
           @unroll for s = 1:nstate
             s_F[1,i,j,k,s] = l_F[1,s]
@@ -134,8 +135,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
 
           # if source! !== nothing
           fill!(l_S, -zero(eltype(l_S)))
-          source!(bl, Vars{vars_state(bl,FT)}(l_S), Vars{vars_state(bl,FT)}(l_Q),
-                  Vars{vars_aux(bl,FT)}(l_aux), t)
+          source!(bl, vars_l_S, vars_l_Q, vars_l_aux, t)
 
           @unroll for s = 1:nstate
             l_rhs[s, i, j, k] += l_S[s]
@@ -283,6 +283,12 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
   _ζx2 = dim == 2 ? _ξ2x2 : _ξ3x2
   _ζx3 = dim == 2 ? _ξ2x3 : _ξ3x3
 
+  grad_l_F = Grad{vars_state(bl,FT)}(l_F)
+  vars_l_Q = Vars{vars_state(bl,FT)}(l_Q)
+  vars_l_Qvisc = Vars{vars_diffusive(bl,FT)}(l_Qvisc)
+  vars_l_aux = Vars{vars_aux(bl,FT)}(l_aux)
+  vars_l_S = Vars{vars_state(bl,FT)}(l_S)
+
   @inbounds @loop for k in (1; threadIdx().z)
     @loop for j in (1:Nq; threadIdx().y)
       s_ω[j] = ω[j]
@@ -319,13 +325,8 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
           end
 
           fill!(l_F, -zero(eltype(l_F)))
-          flux_nondiffusive!(bl, Grad{vars_state(bl,FT)}(l_F),
-                             Vars{vars_state(bl,FT)}(l_Q),
-                             Vars{vars_aux(bl,FT)}(l_aux), t)
-          flux_diffusive!(bl, Grad{vars_state(bl,FT)}(l_F),
-                          Vars{vars_state(bl,FT)}(l_Q),
-                          Vars{vars_diffusive(bl,FT)}(l_Qvisc),
-                          Vars{vars_aux(bl,FT)}(l_aux), t)
+          flux_nondiffusive!(bl, grad_l_F, vars_l_Q, vars_l_aux, t)
+          flux_diffusive!(bl, grad_l_F, vars_l_Q, vars_l_Qvisc, vars_l_aux, t)
 
           @unroll for s = 1:nstate
             s_F[1,i,j,k,s] = l_F[1,s]
@@ -335,8 +336,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
 
           # if source! !== nothing
           fill!(l_S, -zero(eltype(l_S)))
-          source!(bl, Vars{vars_state(bl,FT)}(l_S), Vars{vars_state(bl,FT)}(l_Q),
-                  Vars{vars_aux(bl,FT)}(l_aux), t)
+          source!(bl, vars_l_S, vars_l_Q, vars_l_aux, t)
 
           @unroll for s = 1:nstate
             l_rhs[s, i, j, k] += l_S[s]
