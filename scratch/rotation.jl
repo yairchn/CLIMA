@@ -114,8 +114,8 @@ let
                               direction=VerticalDirection(),
                               auxstate=dg.flat.auxstate))
 
-  A = (rota = I - SparseMatrixCSC(dg_linear.rota), 
-       flat = I - SparseMatrixCSC(dg_linear.flat))
+  A = (rota = SparseMatrixCSC(dg_linear.rota),
+       flat = SparseMatrixCSC(dg_linear.flat))
 
   vgeo = reshape(grid.rota.vgeo, Nq, Nq, Nq, Grids._nvgeo, Nev, Neh)
   _ξ1x1, _ξ1x2, _ξ1x3 = Grids._ξ1x1, Grids._ξ1x2, Grids._ξ1x3
@@ -137,7 +137,7 @@ let
   jdof = 1
   helm = 1
   Ks = @view K[:, :, :, idof, jdof, helm][:]
-  cA = (rota = A.rota[Ks, Ks], flat = A.flat[Ks, Ks])
+  cA = (rota = I - A.rota[Ks, Ks], flat = I - A.flat[Ks, Ks])
 
   x = rand(nstate * NdofV)
   b = cA.rota * x
@@ -194,8 +194,11 @@ let
   @show display(reshape(y, nstate, NdofV))
   println()
   @show display(reshape(z - y, nstate, NdofV))
+  @show maximum(abs.(z-y))
   println()
   # display(spy(cA.flat, width=nstate*NdofV, height=nstate*NdofV))
+  @show extrema(real.(eigen(Matrix(A.flat[Ks, Ks])).values))
+  @show extrema(real.(eigen(Matrix(A.rota[Ks, Ks])).values))
   println()
 
   # vtk for debugging
