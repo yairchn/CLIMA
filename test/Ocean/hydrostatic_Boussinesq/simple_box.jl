@@ -79,16 +79,21 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_diffusion_noforcing_periodic"
+vtkpath = "vtk_diffusion_variable_spacing"
 
-const timeend = 6 * 30 * 86400 # 4 * 365 * 86400
+const timeend = 30 * 86400 # 4 * 365 * 86400
 const tout    = 24 * 60 * 60
 
 const N  = 4
-const Ne = (10, 10, 10)
+const Nˣ = 10
+const Nʸ = 10
 const Lˣ = 1e6
 const Lʸ = 1e6
 const H  = 400
+
+@show xrange = [Lˣ/2 * (1 - cos(x)) for x in range(DFloat(0); length=Nˣ+1, stop=π)]
+@show yrange = [Lʸ/2 * (1 - cos(y)) for y in range(DFloat(0); length=Nʸ+1, stop=π)]
+@show zrange = -H * [1, 0.9875, 0.975, 0.75, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.0375, 0.025, 0.0125, 0]
 
 const cʰ = sqrt(grav * H)
 const cᶻ = 0
@@ -99,10 +104,10 @@ const β  = 1e-11
 const θᴱ = 25
 
 const αᵀ = 0 # 2e-4
-const νʰ = 1e4
+const νʰ = 1e4   # L^2 / t
 const νᶻ = 1e-2
 const κʰ = 1e3
-const κᶻ = 1e-3
+const κᶻ = 2e-3
 const λʳ = 0 # 1 // 86400
 
 let
@@ -127,14 +132,12 @@ let
 
   L = SVector{3, DFloat}(Lˣ, Lʸ, H)
   c = @SVector [cʰ, cʰ, cᶻ]
-  brickrange = (range(DFloat(0); length=Ne[1]+1, stop=L[1]),
-                range(DFloat(0); length=Ne[2]+1, stop=L[2]),
-                range(DFloat(-L[3]); length=Ne[3]+1, stop=0))
+  brickrange = (xrange, yrange, zrange)
   topl = StackedBrickTopology(mpicomm, brickrange;
-                              periodicity = (true, true, false),
+                              periodicity = (false, false, false),
                               boundary = ((1, 1), (1, 1), (2, 3)))
 
-  dt = 60 # 120 # 240 # (L[1] / c) / Ne[1] / N^2
+  dt = 60 # 240 # (L[1] / c) / Ne[1] / N^2
   @show nout = ceil(Int64, tout / dt)
   @show dt = tout / nout
 
@@ -147,7 +150,7 @@ let
 
   problem = SimpleBox{DFloat}(L..., τₒ, fₒ, β, θᴱ)
 
-  model = HBModel{typeof(problem),DFloat}(problem, c...,αᵀ, λʳ, νʰ, νᶻ, κʰ, κᶻ)
+  model = HBModel{typeof(problem),DFloat}(problem, c..., αᵀ, λʳ, νʰ, νᶻ, κʰ, κᶻ)
 
   dg = DGModel(model,
                grid,
