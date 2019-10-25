@@ -79,7 +79,7 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_diffusion_variable_spacing"
+vtkpath = "vtk_diffusion_filtering"
 
 const timeend = 30 * 86400 # 4 * 365 * 86400
 const tout    = 24 * 60 * 60
@@ -93,7 +93,8 @@ const H  = 400
 
 @show xrange = [Lˣ/2 * (1 - cos(x)) for x in range(DFloat(0); length=Nˣ+1, stop=π)]
 @show yrange = [Lʸ/2 * (1 - cos(y)) for y in range(DFloat(0); length=Nʸ+1, stop=π)]
-@show zrange = -H * [1, 0.9875, 0.975, 0.75, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.0375, 0.025, 0.0125, 0]
+@show zrange = -H * [1, 0.75, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0]
+  # [1, 0.9875, 0.975, 0.75, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.0375, 0.025, 0.0125, 0]
 
 const cʰ = sqrt(grav * H)
 const cᶻ = 0
@@ -137,7 +138,7 @@ let
                               periodicity = (false, false, false),
                               boundary = ((1, 1), (1, 1), (2, 3)))
 
-  dt = 60 # 240 # (L[1] / c) / Ne[1] / N^2
+  dt = 120 # 240 # (L[1] / c) / Ne[1] / N^2
   @show nout = ceil(Int64, tout / dt)
   @show dt = tout / nout
 

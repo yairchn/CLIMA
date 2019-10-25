@@ -61,7 +61,7 @@ function init_ode_param(dg::DGModel, m::HBModel)
   vert_param  = init_ode_param(vert_dg)
   vert_dQ     = init_ode_state(vert_dg, 948)
   vert_filter = CutoffFilter(dg.grid, polynomialorder(dg.grid)-1)
-  exp_filter  = ExponentialFilter(dg.grid, 1, 32)
+  exp_filter  = ExponentialFilter(dg.grid, 1, 8)
 
   return (vert_dg = vert_dg, vert_param = vert_param, vert_dQ = vert_dQ,
           vert_filter = vert_filter, exp_filter=exp_filter)
@@ -237,8 +237,8 @@ function update_aux!(dg, m::HBModel, Q::MPIStateArray,
   apply!(Q, (1, 2), dg.grid, vert_filter; horizontal=false)
 
   exp_filter = params.exp_filter
-  # Q[4] = θ
-  # apply!(Q, (4,), dg.grid, exp_filter; horizontal=false)
+  # Q[5] = θ
+  apply!(Q, (5,), dg.grid, exp_filter; horizontal=false)
 
   # calculate ∇ʰ⋅u
   vert_dg(vert_dQ, Q, vert_param, t; increment = false)
