@@ -62,7 +62,7 @@ function ocean_init_aux!(P::SimpleBox, α, geom)
 
   α.τ  = -τₒ * cos(y * 2π / Lʸ)
   α.f  =  fₒ + β * y
-  α.θʳ =  θᴱ * (1 - y / Lʸ)
+  α.θʳ =  θᴱ # * (1 - y / Lʸ)
 
 end
 
@@ -79,7 +79,7 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_diffusion_filtering"
+vtkpath = "vtk_temperature_forcing"
 
 const timeend = 30 * 86400 # 4 * 365 * 86400
 const tout    = 24 * 60 * 60
@@ -93,7 +93,7 @@ const H  = 400
 
 @show xrange = [Lˣ/2 * (1 - cos(x)) for x in range(DFloat(0); length=Nˣ+1, stop=π)]
 @show yrange = [Lʸ/2 * (1 - cos(y)) for y in range(DFloat(0); length=Nʸ+1, stop=π)]
-@show zrange = -H * [1, 0.75, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0]
+@show zrange = -H * [1, 0.95, 0.75, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0]
   # [1, 0.9875, 0.975, 0.75, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.0375, 0.025, 0.0125, 0]
 
 const cʰ = sqrt(grav * H)
@@ -102,14 +102,14 @@ const cᶻ = 0
 const τₒ = 1e-1
 const fₒ = 1e-4
 const β  = 1e-11
-const θᴱ = 25
+const θᴱ = 9 # 25
 
-const αᵀ = 0 # 2e-4
+const αᵀ = 2e-4
 const νʰ = 1e4   # L^2 / t
 const νᶻ = 1e-2
 const κʰ = 1e3
-const κᶻ = 2e-3
-const λʳ = 0 # 1 // 86400
+const κᶻ = 1e-3
+const λʳ = 1 // 86400
 
 let
   MPI.Initialized() || MPI.Init()
