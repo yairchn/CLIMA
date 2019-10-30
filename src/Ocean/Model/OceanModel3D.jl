@@ -71,7 +71,6 @@ end
 function vars_state(m::Union{HBModel, VSModel}, T)
   @vars begin
     u::SVector{2, T}
-    wₒ::T # copy of aux.w
     η::T # real a 2-D variable TODO: should be 2D
     θ::T
   end
@@ -88,14 +87,15 @@ function vars_aux(m::HBModel, T)
     θʳ::T           # SST given    # TODO: Should be 2D
     f::T            # coriolis
     τ::T            # wind stress  # TODO: Should be 2D
+    # κ::SMatrix{3, 3, T, 9} # diffusivity tensor (for convective adjustment)
+    κᶻ::T
 
     # diagnostics (should be ported elsewhere eventually)
-    ∂w∂z::T
     div2D::T
-    div3D::T
     θu::T
     θv::T
     θw::T
+    ∂θ∂z::T
   end
 end
 
@@ -145,34 +145,7 @@ end
     # ∇h • (v ⊗ u)
     # F.u += v * u'
 
-    F.wₒ = -0
   end
-
-  return nothing
-end
-
-@inline function flux_diffusive!(m::HBModel, F::Grad, Q::Vars, σ::Vars,
-                                 α::Vars, t::Real)
-  F.u += σ.ν∇u
-  F.θ += σ.κ∇θ
-
-  return nothing
-end
-
-@inline function gradvariables!(m::HBModel, G::Vars, Q::Vars, α, t)
-  G.u = Q.u
-  G.θ = Q.θ
-
-  return nothing
-end
-
-@inline function diffusive!(m::HBModel, σ::Vars, G::Grad, Q::Vars,
-                            α::Vars, t)
-  ν = Diagonal(@SVector [m.νʰ, m.νʰ, m.νᶻ])
-  σ.ν∇u = -ν * G.u
-
-  κ = Diagonal(@SVector [m.κʰ, m.κʰ, m.κᶻ])
-  σ.κ∇θ = -κ * G.θ
 
   return nothing
 end
@@ -208,6 +181,32 @@ function update_penalty!(::Rusanov, ::HBModel, ΔQ::Vars,
   return nothing
 end
 
+@inline function flux_diffusive!(m::HBModel, F::Grad, Q::Vars, σ::Vars,
+                                 α::Vars, t::Real)
+  F.u -= σ.ν∇u
+  F.θ -= σ.κ∇θ
+
+  return nothing
+end
+
+@inline function gradvariables!(m::HBModel, G::Vars, Q::Vars, α, t)
+  G.u = Q.u
+  G.θ = Q.θ
+
+  return nothing
+end
+
+@inline function diffusive!(m::HBModel, σ::Vars, G::Grad, Q::Vars,
+                            α::Vars, t)
+  ν = Diagonal(@SVector [m.νʰ, m.νʰ, m.νᶻ])
+  σ.ν∇u = ν * G.u
+
+  κ = Diagonal(@SVector [m.κʰ, m.κʰ, α.κᶻ])
+  σ.κ∇θ = κ * G.θ
+
+  return nothing
+end
+
 @inline function source!(m::HBModel{P}, source::Vars, Q::Vars, α::Vars,
                          t::Real) where P
   @inbounds begin
@@ -237,8 +236,8 @@ function update_aux!(dg, m::HBModel, Q::MPIStateArray,
   apply!(Q, (1, 2), dg.grid, vert_filter; horizontal=false)
 
   exp_filter = params.exp_filter
-  # Q[5] = θ
-  apply!(Q, (5,), dg.grid, exp_filter; horizontal=false)
+  # Q[4] = θ
+  apply!(Q, (4,), dg.grid, exp_filter; horizontal=false)
 
   # calculate ∇ʰ⋅u
   vert_dg(vert_dQ, Q, vert_param, t; increment = false)
@@ -262,37 +261,25 @@ function update_aux!(dg, m::HBModel, Q::MPIStateArray,
   # α[1] = w, α[5] = wz0
   copy_stack_field_down!(dg, m, α, 1, 5)
 
-  # copy w back to state of HBModel
-  function h!(::HBModel, Q, α, σ, t)
-    Q.wₒ  = α.w
-
-    return nothing
-  end
-  nodal_update_state!(h!, dg, m, Q, α, σ, t)
-
-  # get ∂w/∂z
-  vert_dg(vert_dQ, Q, vert_param, t; increment = false)
-
-
-  function j!(m::HBModel, vert_dQ, α, σ, t)
-    α.∂w∂z = vert_dQ.η
-    α.div3D = α.div2D + vert_dQ.η
-
-    return nothing
-  end
-  nodal_update_aux!(j!, dg, m, vert_dQ, α, σ, t)
-
-  #  store some diagnostic variables
+  # store some diagnostic variables
+  # and update diffusivity tensor for convective adjustment
   function g!(m::HBModel, Q, α, σ, t)
     @inbounds begin
       α.θu = Q.θ * Q.u[1]
       α.θv = Q.θ * Q.u[2]
       α.θw = Q.θ * α.w
 
-      return nothing
+      α.∂θ∂z = σ.κ∇θ[3] / m.κᶻ
+      # κʰ = m.κʰ
+      σ.κ∇θ[3] < 0 ? α.κᶻ = 1000 * m.κᶻ : α.κᶻ = m.κᶻ
+      # α.κ = @SMatrix [κʰ -0 -0; -0 κʰ -0; -0 -0 κᶻ]
     end
+
+    return nothing
   end
   nodal_update_aux!(g!, dg, m, Q, α, σ, t)
+
+  return nothing
 end
 
 surface_flux!(m::HBModel, _...) = nothing
@@ -302,12 +289,14 @@ surface_flux!(m::HBModel, _...) = nothing
   αᵀ = m.αᵀ
   integrand.αᵀθ = -αᵀ * Q.θ
   integrand.∇hu = α.w # borrow the w value from α...
+
+  return nothing
 end
 
 
 function ocean_init_aux! end
 function init_aux!(m::HBModel, α::Vars, geom::LocalGeometry)
-  return ocean_init_aux!(m.problem, α, geom)
+  return ocean_init_aux!(m, m.problem, α, geom)
 end
 
 function ocean_init_state! end
@@ -332,10 +321,6 @@ end
                                        Q⁺, α⁺, n⁻, Q⁻, α⁻, t)
   Q⁺.u = -Q⁻.u
 
-  # @inbounds z = coords[3]
-  # @inbounds H = p.H
-  # Q.θ = 9 + 8z/H
-
   return nothing
 end
 
@@ -344,10 +329,6 @@ end
                                        ::CentralNumericalFluxDiffusive, Q⁺,
                                        σ⁺, α⁺, n⁻, Q⁻, σ⁻, α⁻, t)
   Q⁺.u = -Q⁻.u
-
-  # @inbounds z = coords[3]
-  # @inbounds H = p.H
-  # Q.θ = 9 + 8z/H
   
   σ⁺.κ∇θ = -σ⁻.κ∇θ
 
@@ -401,7 +382,7 @@ end
   α⁺.w = α⁻.w
 
   τ = α⁻.τ
-  σ⁺.ν∇u = -σ⁻.ν∇u - 2 * @SMatrix [ -0 -0;
+  σ⁺.ν∇u = -σ⁻.ν∇u + 2 * @SMatrix [ -0 -0;
                                     -0 -0;
                                     τ / 1000 -0]
   
@@ -412,7 +393,7 @@ end
   if m.κᶻ == 0
     Q⁺.θ = 9
   elseif m.λʳ != 0
-    σ⁺.κ∇θ = -σ⁻.κ∇θ + 2 * λʳ * (θ - θʳ)
+    σ⁺.κ∇θ = -σ⁻.κ∇θ - 2 * λʳ * (θ - θʳ)
   else
     σ⁺.κ∇θ = -σ⁻.κ∇θ
   end
@@ -432,7 +413,6 @@ init_aux!(::VSModel, _...) = nothing
 
 # This allows the balance law framework to compute the horizontal gradient of u
 # (which will be stored back in the field θ)
-# now also using η to store the full 3D gradient of (u,v,w)
 @inline function flux_nondiffusive!(m::VSModel, F::Grad, Q::Vars,
                                     α::Vars, t::Real)
   @inbounds begin
@@ -442,11 +422,6 @@ init_aux!(::VSModel, _...) = nothing
     # ∇ • (v)
     # Just using θ to store w = ∇h • u
     F.θ += v
-
-    w = @SVector [-0, -0, Q.wₒ]
-    # ∇ • (ṽ)
-    # Just using η to store ∇•(0,0,w)
-    F.η += w
   end
 
   return nothing

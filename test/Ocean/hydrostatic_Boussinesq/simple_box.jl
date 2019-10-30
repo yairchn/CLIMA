@@ -50,7 +50,7 @@ struct SimpleBox{T} <: HBProblem
 end
 
 # α is Filled afer the state
-function ocean_init_aux!(P::SimpleBox, α, geom)
+function ocean_init_aux!(m::HBModel, P::SimpleBox, α, geom)
   DFloat = eltype(α)
   @inbounds y = geom.coord[2]
 
@@ -62,13 +62,19 @@ function ocean_init_aux!(P::SimpleBox, α, geom)
 
   α.τ  = -τₒ * cos(y * 2π / Lʸ)
   α.f  =  fₒ + β * y
-  α.θʳ =  θᴱ # * (1 - y / Lʸ)
+  α.θʳ =  θᴱ * (1 - y / Lʸ)
+
+  κʰ = m.κʰ
+  κᶻ = m.κᶻ
+
+  # α.κ = @SMatrix [ κʰ -0 -0; -0 κʰ -0; -0 -0 κᶻ]
+  α.κᶻ = κᶻ
 
 end
 
-function ocean_init_state!(p::SimpleBox, Q, α, coords, t)
+function ocean_init_state!(P::SimpleBox, Q, α, coords, t)
   @inbounds z = coords[3]
-  @inbounds H = p.H
+  @inbounds H = P.H
 
   Q.u = @SVector [0,0]
   Q.η = 0
@@ -79,10 +85,10 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_temperature_forcing"
+vtkpath = "vtk_fast_convective_adjustment_no_windstress"
 
-const timeend = 30 * 86400 # 4 * 365 * 86400
-const tout    = 24 * 60 * 60
+const timeend = 86400 # 4 * 365 * 86400
+const tout    = 60 * 60
 
 const N  = 4
 const Nˣ = 10
@@ -99,17 +105,17 @@ const H  = 400
 const cʰ = sqrt(grav * H)
 const cᶻ = 0
 
-const τₒ = 1e-1
+const τₒ = 0 # 1e-1
 const fₒ = 1e-4
 const β  = 1e-11
-const θᴱ = 9 # 25
+const θᴱ = 9
 
 const αᵀ = 2e-4
 const νʰ = 1e4   # L^2 / t
 const νᶻ = 1e-2
 const κʰ = 1e3
-const κᶻ = 1e-3
-const λʳ = 1 // 86400
+const κᶻ = 1e-4
+const λʳ = 24 * 1 // 86400
 
 let
   MPI.Initialized() || MPI.Init()
@@ -138,7 +144,7 @@ let
                               periodicity = (false, false, false),
                               boundary = ((1, 1), (1, 1), (2, 3)))
 
-  dt = 120 # 240 # (L[1] / c) / Ne[1] / N^2
+  dt = 6 # 120 # 240 # (L[1] / c) / Ne[1] / N^2
   @show nout = ceil(Int64, tout / dt)
   @show dt = tout / nout
 
