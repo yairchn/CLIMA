@@ -90,7 +90,8 @@ function linearsolve!(linearoperator!, solver::AbstractIterativeLinearSolver, Q,
     
     achieved_tolerance = residual_norm / threshold * solver.tolerance[1]
   end
-  
+
+  @info "Iters = $iters"
   iters
 end
 
