@@ -365,12 +365,22 @@ end
   return nothing
 end
 
-@inline function ocean_boundary_state!(::HBModel, ::OceanSurface,
-                                       ::Union{Rusanov, CentralFlux, CentralGradPenalty},
+@inline function ocean_boundary_state!(m::HBModel, ::OceanSurface,
+                                       ::Union{Rusanov, CentralFlux},
                                        Q⁺, α⁺, n⁻, Q⁻, α⁻, t)
   α⁺.w = α⁻.w
 
-  Q⁺.θ = 9
+  if m.κᶻ == 0
+    Q⁺.θ = α⁻.θʳ
+  end
+
+  return nothing
+end
+
+@inline function ocean_boundary_state!(m::HBModel, ::OceanSurface,
+                                       ::CentralGradPenalty,
+                                       Q⁺, α⁺, n⁻, Q⁻, α⁻, t)
+  Q⁺.θ = α⁻.θʳ
 
   return nothing
 end
@@ -391,7 +401,7 @@ end
   λʳ = m.λʳ
 
   if m.κᶻ == 0
-    Q⁺.θ = 9
+    Q⁺.θ = θʳ
   elseif m.λʳ != 0
     σ⁺.κ∇θ = -σ⁻.κ∇θ - 2 * λʳ * (θ - θʳ)
   else

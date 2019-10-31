@@ -62,7 +62,7 @@ function ocean_init_aux!(m::HBModel, P::SimpleBox, α, geom)
 
   α.τ  = -τₒ * cos(y * 2π / Lʸ)
   α.f  =  fₒ + β * y
-  α.θʳ =  θᴱ * (1 - y / Lʸ)
+  α.θʳ =  θᴱ # * (1 - y / Lʸ)
 
   κʰ = m.κʰ
   κᶻ = m.κᶻ
@@ -85,7 +85,7 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_fast_convective_adjustment_no_windstress"
+vtkpath = "vtk_fast_heating_no_convective_adjustment"
 
 const timeend = 86400 # 4 * 365 * 86400
 const tout    = 60 * 60
@@ -105,10 +105,10 @@ const H  = 400
 const cʰ = sqrt(grav * H)
 const cᶻ = 0
 
-const τₒ = 0 # 1e-1
+const τₒ = 1e-1
 const fₒ = 1e-4
 const β  = 1e-11
-const θᴱ = 9
+const θᴱ = 25
 
 const αᵀ = 2e-4
 const νʰ = 1e4   # L^2 / t
