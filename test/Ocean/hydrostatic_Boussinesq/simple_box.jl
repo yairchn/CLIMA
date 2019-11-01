@@ -87,8 +87,8 @@ end
 DFloat = Float64
 vtkpath = "vtk_fast_heating_no_convective_adjustment"
 
-const timeend = 86400 # 4 * 365 * 86400
-const tout    = 60 * 60
+const timeend = 30 * 86400 # 4 * 365 * 86400
+const tout    = 24 * 60 * 60
 
 const N  = 4
 const Nˣ = 10
@@ -115,7 +115,7 @@ const νʰ = 1e4   # L^2 / t
 const νᶻ = 1e-2
 const κʰ = 1e3
 const κᶻ = 1e-4
-const λʳ = 24 * 1 // 86400
+const λʳ = 1 // 86400
 
 let
   MPI.Initialized() || MPI.Init()

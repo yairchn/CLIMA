@@ -380,7 +380,7 @@ end
 @inline function ocean_boundary_state!(m::HBModel, ::OceanSurface,
                                        ::CentralGradPenalty,
                                        Q⁺, α⁺, n⁻, Q⁻, α⁻, t)
-  Q⁺.θ = α⁻.θʳ
+  # Q⁺.θ = α⁻.θʳ
 
   return nothing
 end
