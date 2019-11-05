@@ -62,7 +62,7 @@ function ocean_init_aux!(m::HBModel, P::SimpleBox, α, geom)
 
   α.τ  = -τₒ * cos(y * 2π / Lʸ)
   α.f  =  fₒ + β * y
-  α.θʳ =  θᴱ # * (1 - y / Lʸ)
+  α.θʳ =  θᴱ * (1 - y / Lʸ)
 
   κʰ = m.κʰ
   κᶻ = m.κᶻ
@@ -85,10 +85,10 @@ end
 # PARAM SELECTION #
 ###################
 DFloat = Float64
-vtkpath = "vtk_fast_heating_no_convective_adjustment"
+vtkpath = "vtk_two_year_double_gyre_run"
 
-const timeend = 30 * 86400 # 4 * 365 * 86400
-const tout    = 24 * 60 * 60
+const timeend = 24 * 30 * 86400 # 4 * 365 * 86400
+const tout    = 6 * 24 * 60 * 60
 
 const N  = 4
 const Nˣ = 10
@@ -174,25 +174,35 @@ let
     rm(vtkpath, recursive=true)
   end
   mkpath(vtkpath)
+  mkpath(vtkpath*"/weekly")
+  mkpath(vtkpath*"/monthly")
 
-  step = [0]
-  function do_output(step)
-    outprefix = @sprintf("%s/mpirank%04d_step%04d",vtkpath,
-                         MPI.Comm_rank(mpicomm), step[1])
+  step = [0, 0]
+  function do_output(span, step)
+    outprefix = @sprintf("%s/%s/mpirank%04d_step%04d",vtkpath, span,
+                         MPI.Comm_rank(mpicomm), step)
     @info "doing VTK output" outprefix
     statenames = flattenednames(vars_state(model, eltype(Q)))
     auxnames = flattenednames(vars_aux(model, eltype(Q)))
     writevtk(outprefix, Q, dg, statenames, param.aux, auxnames)
   end
-  do_output(step)
+
+  do_output("weekly", step[1])
   cbvtk = GenericCallbacks.EveryXSimulationSteps(nout)  do (init=false)
-    do_output(step)
+    do_output("weekly", step[1])
     step[1] += 1
     nothing
   end
 
+  do_output("monthly", step[2])
+  cbvtk2 = GenericCallbacks.EveryXSimulationSteps(5*nout)  do (init=false)
+    do_output("monthly", step[2])
+    step[2] += 1
+    nothing
+  end
+
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(60, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -216,7 +226,7 @@ let
   norm(Q₀) = %.16e
   ArrayType = %s""" eng0 ArrayType
 
-  solve!(Q, lsrk, param; timeend=timeend, callbacks=(cbinfo,cbvtk))
+  solve!(Q, lsrk, param; timeend=timeend, callbacks=(cbinfo,cbvtk,cbvtk2))
   nothing
 
 end
