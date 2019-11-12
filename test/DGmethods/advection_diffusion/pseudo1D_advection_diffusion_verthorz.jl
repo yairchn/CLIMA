@@ -117,14 +117,30 @@ let
                       auxstate=dge.auxstate,
                       direction=DGmethods.VerticalDirection())
 
-        Q = DGmethods.create_state(dge.balancelaw, dge.grid, 888)
-        Q.data .= rand(size(Q.data))
+        # Q = DGmethods.create_state(dge.balancelaw, dge.grid, 888)
+        # Q.data .= rand(size(Q.data))
+
+        Q = init_ode_state(dge, sqrt(FT(2)))
 
         dQe = similar(Q)
         dQh = similar(Q)
         dQv = similar(Q)
 
         t = sqrt(FT(2))
+
+        dQe .= 0
+        dQh .= 0
+        dQv .= 0
+
+        dge(dQe, Q, nothing, t; increment=false)
+        dgh(dQh, Q, nothing, t; increment=false)
+        dgv(dQv, Q, nothing, t; increment=false)
+
+        dQhv =  dQh .+ dQv
+
+        @test all(dQe.realdata .≈ dQhv.realdata)
+
+        Q.data .= dQhv.data
 
         dge(dQe, Q, nothing, t; increment=false)
         dgh(dQh, Q, nothing, t; increment=false)
@@ -134,7 +150,7 @@ let
 
         @show dQe.realdata .≈ dQhv.realdata
 
-        @test dQe.realdata .≈ dQhv.realdata
+        @test all(dQe.realdata .≈ dQhv.realdata)
       end
     end
   end
