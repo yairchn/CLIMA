@@ -72,8 +72,8 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::NoFluxBC,
   FT = eltype(stateM)
   stateP.ρ = stateM.ρ
   stateP.ρu -= 2 * dot(stateM.ρu, nM) * SVector(nM)
-  diffP.ρτ = SVector(FT(0), FT(0), FT(0), FT(0), FT(0), FT(0))
-  diffP.ρd_h_tot =  SVector(FT(0), FT(0), FT(0))
+  #diffP.ρτ = SVector(FT(0), FT(0), FT(0), FT(0), FT(0), FT(0))
+  #diffP.ρd_h_tot =  SVector(FT(0), FT(0), FT(0))
 end
 
 """

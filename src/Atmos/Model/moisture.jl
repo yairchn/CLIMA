@@ -21,7 +21,7 @@ function gradvariables!(::MoistureModel, transform::Vars, state::Vars, aux::Vars
 end
 
 @inline function internal_energy(moist::MoistureModel, orientation::Orientation, state::Vars, aux::Vars)
-  MoistThermodynamics.internal_energy(state.ρ, state.ρe, state.ρu, gravitational_potential(orientation, aux))
+  MoistThermodynamics.internal_energy(state.ρ + aux.ref_state.ρ, state.ρe + aux.ref_state.ρe, state.ρu, gravitational_potential(orientation, aux))
 end
 @inline temperature(moist::MoistureModel, orientation::Orientation, state::Vars, aux::Vars) = air_temperature(thermo_state(moist, orientation, state, aux))
 @inline pressure(moist::MoistureModel, orientation::Orientation, state::Vars, aux::Vars) = air_pressure(thermo_state(moist, orientation, state, aux))
@@ -49,12 +49,12 @@ vars_aux(::DryModel,FT) = @vars(θ_v::FT)
 @inline function atmos_nodal_update_aux!(moist::DryModel, atmos::AtmosModel,
                                          state::Vars, aux::Vars, t::Real)
   e_int = internal_energy(moist, atmos.orientation, state, aux)
-  TS = PhaseDry(e_int, state.ρ)
+  TS = PhaseDry(e_int, state.ρ + aux.ref_state.ρ)
   aux.moisture.θ_v = virtual_pottemp(TS)
   nothing
 end
 
-thermo_state(moist::DryModel, orientation::Orientation, state::Vars, aux::Vars) = PhaseDry(internal_energy(moist, orientation, state, aux), state.ρ)
+thermo_state(moist::DryModel, orientation::Orientation, state::Vars, aux::Vars) = PhaseDry(internal_energy(moist, orientation, state, aux), state.ρ + aux.ref_state.ρ)
 
 """
     EquilMoist

@@ -6,9 +6,10 @@ using CLIMA.DGmethods: DGModel, init_ode_state, VerticalDirection
 using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralGradPenalty,
                                        CentralNumericalFluxDiffusive
 using CLIMA.ODESolvers: solve!, gettime
-using CLIMA.LowStorageRungeKuttaMethod: LSRK54CarpenterKennedy
+using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.AdditiveRungeKuttaMethod
 using CLIMA.GeneralizedMinimalResidualSolver
+using CLIMA.ColumnwiseLUSolver: SingleColumnLU, ManyColumnLU
 using CLIMA.VTK: writevtk, writepvtu
 using CLIMA.GenericCallbacks: EveryXWallTimeSeconds, EveryXSimulationSteps
 using CLIMA.PlanetParameters: planet_radius, day
@@ -32,7 +33,7 @@ else
   const ArrayType = Array
 end
 
-const output_vtk = true
+const output_vtk = false
 
 function main()
   MPI.Initialized() || MPI.Init()
@@ -52,8 +53,8 @@ function main()
 
   numelem_vert = 5
 
-  timeend = 60
-  #timeend = 33 * 60 * 60 # Full simulation
+  #timeend = 60
+  timeend = 33 * 60 * 60 # Full simulation
 
   outputtime = 60 * 60
   
@@ -99,20 +100,25 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
   # determine the time step
   element_size = (setup.domain_height / numelem_vert)
   acoustic_speed = soundspeed_air(FT(setup.T_ref))
-  dt_factor = 40
+  dt_factor = 120
   dt = dt_factor * element_size / acoustic_speed / polynomialorder ^ 2
   # Adjust the time step so we exactly hit 1 hour for VTK output
   dt = 60 * 60 / ceil(60 * 60 / dt)
+  nsteps = ceil(Int, timeend / dt)
 
   Q = init_ode_state(dg, FT(0))
 
-  linearsolver = GeneralizedMinimalResidual(30, Q, sqrt(eps(FT)))
+  #linearsolver = GeneralizedMinimalResidual(30, Q, sqrt(eps(FT)))
+  linearsolver = ManyColumnLU()
   odesolver = ARK2GiraldoKellyConstantinescu(dg, lineardg, linearsolver, Q;
                                              dt = dt, t0 = 0, split_nonlinear_linear=false)
+
+  #odesolver = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
 
   filterorder = 18
   filter = ExponentialFilter(grid, 0, filterorder)
   cbfilter = EveryXSimulationSteps(1) do
+    #@info @sprintf "norm(Q)" norm(Q) 
     Filters.apply!(Q, 1:size(Q, 2), grid, filter; horizontal=false, vertical=true)
     nothing
   end
@@ -130,7 +136,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
 
   # Set up the information callback
   starttime = Ref(now())
-  cbinfo = EveryXWallTimeSeconds(60, mpicomm) do (s=false)
+  cbinfo = EveryXWallTimeSeconds(10, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -141,13 +147,14 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                         runtime = %s
                         norm(Q) = %.16e
                         """ gettime(odesolver) runtime energy
+      flush(stderr)
     end
   end
   callbacks = (cbinfo, cbfilter)
 
   if output_vtk
     # create vtk dir
-    vtkdir = "vtk_acousticwave" *
+    vtkdir = "vtk_acousticwave_lsrk" *
       "_poly$(polynomialorder)_horz$(numelem_horz)_vert$(numelem_vert)" *
       "_dt$(dt_factor)x_$(ArrayType)_$(FT)"
     mkpath(vtkdir)
@@ -165,15 +172,18 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
     callbacks = (callbacks..., cbvtk)
   end
 
-  solve!(Q, odesolver; timeend=timeend, callbacks=callbacks)
+  #elap = @CUDAdrv.elapsed 
+  elap = 0
+  solve!(Q, odesolver; numberofsteps=nsteps, adjustfinalstep=false, callbacks=callbacks)
 
   # final statistics
   engf = norm(Q)
   @info @sprintf """Finished
+  elapsed time            = %.16e
   norm(Q)                 = %.16e
   norm(Q) / norm(Q₀)      = %.16e
   norm(Q) - norm(Q₀)      = %.16e
-  """ engf engf/eng0 engf-eng0
+  """ elap engf engf/eng0 engf-eng0
 end
 
 Base.@kwdef struct AcousticWaveSetup{FT}
@@ -199,9 +209,10 @@ function (setup::AcousticWaveSetup)(state, aux, coords, t)
   Δp = setup.γ * f * g
   p = aux.ref_state.p + Δp
 
-  state.ρ = air_density(setup.T_ref, p)
+  ρ = air_density(setup.T_ref, p)
+  state.ρ =  ρ - aux.ref_state.ρ
   state.ρu = SVector{3, FT}(0, 0, 0)
-  state.ρe = state.ρ * (internal_energy(setup.T_ref) + aux.orientation.Φ)
+  state.ρe = ρ * (internal_energy(setup.T_ref) + aux.orientation.Φ) - aux.ref_state.ρe
   nothing
 end
 

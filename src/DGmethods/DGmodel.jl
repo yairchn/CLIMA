@@ -70,23 +70,23 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
 
   if nviscstate > 0
 
-    @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
-            volumeviscterms!(bl, Val(dim), Val(polyorder), dg.direction, Q.data,
-                             Qvisc.data, auxstate.data, vgeo, t, Dmat,
-                             topology.realelems))
+    #@launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
+    #        volumeviscterms!(bl, Val(dim), Val(polyorder), dg.direction, Q.data,
+    #                         Qvisc.data, auxstate.data, vgeo, t, Dmat,
+    #                         topology.realelems))
 
-    if communicate
-      MPIStateArrays.finish_ghost_recv!(Q)
-      MPIStateArrays.finish_ghost_recv!(auxstate)
-    end
+    #if communicate
+    #  MPIStateArrays.finish_ghost_recv!(Q)
+    #  MPIStateArrays.finish_ghost_recv!(auxstate)
+    #end
 
-    @launch(device, threads=Nfp, blocks=nrealelem,
-            faceviscterms!(bl, Val(dim), Val(polyorder), dg.direction,
-                           dg.gradnumflux, Q.data, Qvisc.data, auxstate.data,
-                           vgeo, sgeo, t, vmapM, vmapP, elemtobndy,
-                           topology.realelems))
+    #@launch(device, threads=Nfp, blocks=nrealelem,
+    #        faceviscterms!(bl, Val(dim), Val(polyorder), dg.direction,
+    #                       dg.gradnumflux, Q.data, Qvisc.data, auxstate.data,
+    #                       vgeo, sgeo, t, vmapM, vmapP, elemtobndy,
+    #                       topology.realelems))
 
-    communicate && MPIStateArrays.start_ghost_exchange!(Qvisc)
+    #communicate && MPIStateArrays.start_ghost_exchange!(Qvisc)
   end
 
   ###################
@@ -99,7 +99,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
 
   if communicate
     if nviscstate > 0
-      MPIStateArrays.finish_ghost_recv!(Qvisc)
+      #MPIStateArrays.finish_ghost_recv!(Qvisc)
     else
       MPIStateArrays.finish_ghost_recv!(Q)
       MPIStateArrays.finish_ghost_recv!(auxstate)

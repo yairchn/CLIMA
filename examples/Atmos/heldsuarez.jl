@@ -2,11 +2,10 @@ using CLIMA: haspkg
 using CLIMA.Mesh.Topologies: StackedCubedSphereTopology, cubedshellwarp, grid1d
 using CLIMA.Mesh.Grids: DiscontinuousSpectralElementGrid
 using CLIMA.Mesh.Filters
-using CLIMA.DGmethods: DGModel, init_ode_state
+using CLIMA.DGmethods: DGModel, init_ode_state, VerticalDirection
 using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralGradPenalty,
                                        CentralNumericalFluxDiffusive
 using CLIMA.ODESolvers: solve!, gettime
-using CLIMA.LowStorageRungeKuttaMethod: LSRK144NiegemannDiehlBusch
 using CLIMA.VTK: writevtk, writepvtu
 using CLIMA.GenericCallbacks: EveryXWallTimeSeconds, EveryXSimulationSteps
 using CLIMA.MPIStateArrays: euclidean_distance
@@ -17,8 +16,11 @@ using CLIMA.Atmos: AtmosModel, SphericalOrientation, NoReferenceState,
                    ConstantViscosityWithDivergence,
                    vars_state, vars_aux,
                    Gravity, Coriolis,
-                   HydrostaticState, IsothermalProfile
+                   HydrostaticState, IsothermalProfile,
+                   AtmosAcousticLinearModel
 using CLIMA.VariableTemplates: flattenednames
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.ColumnwiseLUSolver: SingleColumnLU, ManyColumnLU
 
 using MPI, Logging, StaticArrays, LinearAlgebra, Printf, Dates, Test
 @static if haspkg("CuArrays")
@@ -49,7 +51,7 @@ function main()
   polynomialorder = 5
   numelem_horz = 6
   numelem_vert = 8
-  timeend = 60 # 400day
+  timeend = 400day
   outputtime = 2day
   
   for FT in (Float64,)
@@ -81,20 +83,31 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                      (Gravity(), Coriolis(), held_suarez_forcing!), 
                      NoFluxBC(),
                      setup)
+  linearmodel = AtmosAcousticLinearModel(model)
 
   dg = DGModel(model, grid, Rusanov(),
                CentralNumericalFluxDiffusive(), CentralGradPenalty())
 
+
+
+  lineardg = DGModel(linearmodel, grid, Rusanov(),
+                     CentralNumericalFluxDiffusive(), CentralGradPenalty();
+                     direction=VerticalDirection(),
+                     auxstate=dg.auxstate)
+
   # determine the time step
   element_size = (setup.domain_height / numelem_vert)
   acoustic_speed = soundspeed_air(FT(315))
-  lucas_magic_factor = 14
+  lucas_magic_factor = 30
   dt = lucas_magic_factor * element_size / acoustic_speed / polynomialorder ^ 2
 
   Q = init_ode_state(dg, FT(0))
-  lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
 
-  filterorder = 14
+  linearsolver = ManyColumnLU()
+  odesolver = ARK2GiraldoKellyConstantinescu(dg, lineardg, linearsolver, Q;
+                                             dt = dt, t0 = 0, split_nonlinear_linear=false)
+
+  filterorder = 10
   filter = ExponentialFilter(grid, 0, filterorder)
   cbfilter = EveryXSimulationSteps(1) do
     Filters.apply!(Q, 1:size(Q, 2), grid, filter)
@@ -125,14 +138,15 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                         simtime = %.16e
                         runtime = %s
                         norm(Q) = %.16e
-                        """ gettime(lsrk) runtime energy
+                        """ gettime(odesolver) runtime energy
+      flush(stderr)
     end
   end
   callbacks = (cbinfo, cbfilter)
 
   if output_vtk
     # create vtk dir
-    vtkdir = "vtk_heldsuarez" *
+    vtkdir = "vtk_ark_heldsuarez" *
       "_poly$(polynomialorder)_horz$(numelem_horz)_vert$(numelem_vert)" *
       "_filter$(filterorder)_$(ArrayType)_$(FT)"
     mkpath(vtkdir)
@@ -144,13 +158,13 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
     # setup the output callback
     cbvtk = EveryXSimulationSteps(floor(outputtime / dt)) do
       vtkstep += 1
-      Qe = init_ode_state(dg, gettime(lsrk))
+      Qe = init_ode_state(dg, gettime(odesolver))
       do_output(mpicomm, vtkdir, vtkstep, dg, Q, model)
     end
     callbacks = (callbacks..., cbvtk)
   end
 
-  solve!(Q, lsrk; timeend=timeend, callbacks=callbacks)
+  solve!(Q, odesolver; timeend=timeend, callbacks=callbacks)
 
   # final statistics
   engf = norm(Q)
