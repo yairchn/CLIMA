@@ -614,6 +614,9 @@ function volumeviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
   l_G = MArray{Tuple{ngradstate}, FT}(undef)
   l_Qvisc = MArray{Tuple{nviscstate}, FT}(undef)
   l_gradG = MArray{Tuple{3, ngradstate}, FT}(undef)
+  if direction == HorizontalDirection
+    l_gradG_vert = MArray{Tuple{3, ngradstate}, FT}(undef)
+  end
 
   @inbounds @loop for k in (1; threadIdx().z)
     @loop for j in (1:Nq; threadIdx().y)
@@ -653,10 +656,8 @@ function volumeviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
         @loop for i in (1:Nq; threadIdx().x)
           ijk = i + Nq * ((j-1) + Nq * (k-1))
           ξ1x1, ξ1x2, ξ1x3 = vgeo[ijk, _ξ1x1, e], vgeo[ijk, _ξ1x2, e], vgeo[ijk, _ξ1x3, e]
-          if dim == 3 || (dim == 2 && direction == EveryDirection)
-            ξ2x1, ξ2x2, ξ2x3 = vgeo[ijk, _ξ2x1, e], vgeo[ijk, _ξ2x2, e], vgeo[ijk, _ξ2x3, e]
-          end
-          if dim == 3 && direction == EveryDirection
+          ξ2x1, ξ2x2, ξ2x3 = vgeo[ijk, _ξ2x1, e], vgeo[ijk, _ξ2x2, e], vgeo[ijk, _ξ2x3, e]
+          if dim == 3
             ξ3x1, ξ3x2, ξ3x3 = vgeo[ijk, _ξ3x1, e], vgeo[ijk, _ξ3x2, e], vgeo[ijk, _ξ3x3, e]
           end
 
@@ -664,10 +665,8 @@ function volumeviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
             Gξ1 = Gξ2 = Gξ3 = zero(FT)
             @unroll for n = 1:Nq
               Gξ1 += s_D[i, n] * s_G[n, j, k, s]
-              if dim == 3 || (dim == 2 && direction == EveryDirection)
-                Gξ2 += s_D[j, n] * s_G[i, n, k, s]
-              end
-              if dim == 3 && direction == EveryDirection
+              Gξ2 += s_D[j, n] * s_G[i, n, k, s]
+              if dim == 3
                 Gξ3 += s_D[k, n] * s_G[i, j, n, s]
               end
             end
@@ -675,22 +674,43 @@ function volumeviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
             l_gradG[2, s] = ξ1x2 * Gξ1
             l_gradG[3, s] = ξ1x3 * Gξ1
 
-            if dim == 3 || (dim == 2 && direction == EveryDirection)
-              l_gradG[1, s] += ξ2x1 * Gξ2
-              l_gradG[2, s] += ξ2x2 * Gξ2
-              l_gradG[3, s] += ξ2x3 * Gξ2
-            end
+            l_gradG[1, s] += ξ2x1 * Gξ2
+            l_gradG[2, s] += ξ2x2 * Gξ2
+            l_gradG[3, s] += ξ2x3 * Gξ2
 
-            if dim == 3 && direction == EveryDirection
+            if dim == 3
               l_gradG[1, s] += ξ3x1 * Gξ3
               l_gradG[2, s] += ξ3x2 * Gξ3
               l_gradG[3, s] += ξ3x3 * Gξ3
             end
+
+            if direction == HorizontalDirection
+              if dim == 2
+                l_gradG_vert[1, s] = ξ2x1 * Gξ2
+                l_gradG_vert[2, s] = ξ2x2 * Gξ2
+                l_gradG_vert[3, s] = ξ2x3 * Gξ2
+              elseif  dim == 3
+                l_gradG_vert[1, s] = ξ3x1 * Gξ3
+                l_gradG_vert[2, s] = ξ3x2 * Gξ3
+                l_gradG_vert[3, s] = ξ3x3 * Gξ3
+              end
+            end
           end
 
           fill!(l_Qvisc, -zero(eltype(l_Qvisc)))
-          diffusive!(bl, Vars{vars_diffusive(bl,FT)}(l_Qvisc), Grad{vars_gradient(bl,FT)}(l_gradG),
-                     Vars{vars_state(bl,FT)}(l_Q[:, i, j, k]), Vars{vars_aux(bl,FT)}(l_aux[:, i, j, k]), t)
+
+          if direction == HorizontalDirection
+            diffusive!(bl, Vars{vars_diffusive(bl,FT)}(l_Qvisc),
+                       Grad{vars_gradient(bl,FT)}(l_gradG_vert),
+                       Vars{vars_state(bl,FT)}(l_Q[:, i, j, k]),
+                       Vars{vars_aux(bl,FT)}(l_aux[:, i, j, k]), t)
+            @. l_Qvisc = -l_Qvisc
+          end
+
+          diffusive!(bl, Vars{vars_diffusive(bl,FT)}(l_Qvisc),
+                     Grad{vars_gradient(bl,FT)}(l_gradG),
+                     Vars{vars_state(bl,FT)}(l_Q[:, i, j, k]),
+                     Vars{vars_aux(bl,FT)}(l_aux[:, i, j, k]), t)
 
           @unroll for s = 1:nviscstate
             Qvisc[ijk, s, e] = l_Qvisc[s]

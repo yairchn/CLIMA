@@ -103,7 +103,7 @@ function diffusive!(m::AdvectionDiffusion, auxDG::Vars, gradvars::Grad,
                     state::Vars, aux::Vars, t::Real)
   ∇ρ = gradvars.ρ
   D = aux.D
-  auxDG.σ = D * ∇ρ
+  auxDG.σ += D * ∇ρ
 end
 
 """
