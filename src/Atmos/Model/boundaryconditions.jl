@@ -139,7 +139,7 @@ function atmos_boundary_state!(::Rusanov, bc::DYCOMS_BC, m::AtmosModel,
       stateP.ρu = SVector(0,0,0)
 
       #Dirichlet on T
-      SST = FT(292.5)
+#=      SST = FT(292.5)
       TM     = SST
       q_ptM  = PhasePartition(q_totM)
       e_intM = internal_energy(TM, q_ptM)
@@ -147,6 +147,7 @@ function atmos_boundary_state!(::Rusanov, bc::DYCOMS_BC, m::AtmosModel,
       e_potM = grav*zM
       e_totM = total_energy(e_kinM, e_potM, TM, q_ptM)
       stateP.ρe = ρM * e_totM
+=#
   end
 end
 function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::DYCOMS_BC,
@@ -233,21 +234,10 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::DYCOMS_BC,
     # Boundary energy fluxes
     # ----------------------------------------------------------
     # Assign diffusive enthalpy flux (i.e. ρ(J+D) terms) 
-#=    diffP.ρd_h_tot  = SVector(FT(0),
+    diffP.ρd_h_tot  = SVector(FT(0),
                               FT(0),
                               bc.LHF + bc.SHF)
-=#
-    
-    #Dirichlet on T
-    SST = FT(292.5)
-    TM     = SST
-    q_ptM  = PhasePartition(q_totM)
-    e_intM = internal_energy(TM, q_ptM)
-    e_kinM = FT(1//2)*windspeed^2
-    e_potM = grav*zM
-    e_totM = total_energy(e_kinM, e_potM, TM, q_ptM)
-    stateP.ρe = ρM * e_totM
-
+      
   end
 end
 
