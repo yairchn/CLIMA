@@ -317,6 +317,25 @@ function main(mpicomm, DFloat, topl::AbstractTopology{dim}, N, timeend,
       @printf(io, "simtime =  %.16e\n", ODESolvers.gettime(lsrk))
       @printf(io, "runtime =  %03d:%02d:%05.2f (hour:min:sec)\n", hrs, min, sec)
       @printf(io, "||Q||₂  =  %.16e\n", norm(Q))
+
+      #min_ρq_tot = MPI.Reduce([minimum(Q.realQ[:,_ρq_tot,:])], MPI.MIN, 0, Q.mpicomm)[1]
+      #max_ρq_tot = MPI.Reduce([maximum(Q.realQ[:,_ρq_tot,:])], MPI.MAX, 0, Q.mpicomm)[1]
+      #min_ρq_liq = MPI.Reduce([minimum(Q.realQ[:,_ρq_liq,:])], MPI.MIN, 0, Q.mpicomm)[1]
+      #max_ρq_liq = MPI.Reduce([maximum(Q.realQ[:,_ρq_liq,:])], MPI.MAX, 0, Q.mpicomm)[1]
+      #min_ρq_rai = MPI.Reduce([minimum(Q.realQ[:, _ρq_rai,:])], MPI.MIN, 0, Q.mpicomm)[1]
+      #max_ρq_rai = MPI.Reduce([maximum(Q.realQ[:, _ρq_rai,:])], MPI.MAX, 0, Q.mpicomm)[1]
+      ##with_logger(mpi_logger) do
+      ##@info @sprintf("""Run with
+      #@printf(io, """
+      #                ρq_tot (%25.16e, %25.16e)
+      #                ρq_liq (%25.16e, %25.16e)
+      #                ρq_rai (%25.16e, %25.16e)
+      #            """,
+      #                min_ρq_tot, max_ρq_tot,
+      #                min_ρq_liq, max_ρq_liq,
+      #                min_ρq_rai, max_ρq_rai)
+
+
     end
     nothing
   end
