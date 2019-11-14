@@ -8,11 +8,6 @@ using LinearAlgebra
 export DiscontinuousSpectralElementGrid, AbstractGrid
 export dofs_per_element, arraytype, dimensionality, polynomialorder
 export referencepoints
-<<<<<<< HEAD
-export grid_stretching
-
-=======
->>>>>>> c615460074cf62afd8575a16db88889720a1c247
 
 abstract type AbstractGrid{FloatType, dim, polynomialorder, numberofDOFs,
                          DeviceArray} end

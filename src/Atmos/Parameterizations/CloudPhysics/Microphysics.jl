@@ -21,7 +21,6 @@ export terminal_velocity
 
 # rates of conversion between microphysics categories
 export conv_q_vap_to_q_liq
-#export conv_q_vap_to_q_ice
 export conv_q_liq_to_q_rai_acnv
 export conv_q_liq_to_q_rai_accr
 export conv_q_rai_to_q_vap
@@ -38,7 +37,7 @@ individual water drop and the square root of its radius * g.
 function terminal_velocity_single_drop_coeff(ρ::FT) where {FT<:Real}
 
   # terminal_vel_of_individual_drop = v_drop_coeff * (g * drop_radius)^(1/2)
-  return sqrt(DT(8/3) / C_drag * (ρ_cloud_liq / ρ - DT(1)))
+  return sqrt(FT(8/3) / C_drag * (ρ_cloud_liq / ρ - FT(1)))
 end
 
 """
@@ -56,11 +55,11 @@ function terminal_velocity(q_rai::FT, ρ::FT) where {FT<:Real}
   v_c = terminal_velocity_single_drop_coeff(ρ)
 
   # gamma(9/2)
-  gamma_9_2 = DT(11.631728396567448)
+  gamma_9_2 = FT(11.631728396567448)
 
-  lambda::DT = (DT(8) * π * ρ_cloud_liq * MP_n_0 / ρ / q_rai)^DT(1/4)
+  lambda::FT = (FT(8) * π * ρ_cloud_liq * MP_n_0 / ρ / q_rai)^FT(1/4)
 
-  return gamma_9_2 * v_c / DT(6) * sqrt(grav / lambda)
+  return gamma_9_2 * v_c / FT(6) * sqrt(grav / lambda)
 end
 
 

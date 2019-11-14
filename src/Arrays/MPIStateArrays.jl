@@ -19,7 +19,6 @@ Base.similar(::Type{Array}, ::Type{FT}, dims...) where {FT} = similar(Array{FT},
 end
 
 export MPIStateArray, euclidean_distance, weightedsum
-export global_max, global_min, global_mean
 
 """
     MPIStateArray{FT, DATN<:AbstractArray{FT,3}, DAI1, DAV,
