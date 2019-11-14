@@ -858,13 +858,18 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
 
         step = [0]
         mkpath("./vtk")
-        cbvtk = GenericCallbacks.EveryXSimulationSteps(1200) do (init=false) # (0.025) * 40 * 60 * 1/2
+        cbvtk = GenericCallbacks.EveryXSimulationSteps(1200) do (init=false) # (0.025) * 40 * 60 * 5
             DGBalanceLawDiscretizations.dof_iteration!(postprocessarray, spacedisc, Q) do R, Q, QV, aux
                 @inbounds let
                     DF = eltype(Q)
 
-                    u, v, w, rain_w, ρ, q_tot, q_liq, q_ice, q_rai, e_tot =
-                        preflux(Q, QV, aux)
+                    # unpack model variables
+                    ρ, ρu, ρv, ρw, ρq_tot, ρq_liq, ρq_ice, ρq_rai, ρe_tot =
+                      Q[_ρ], Q[_ρu], Q[_ρv], Q[_ρw], Q[_ρq_tot], Q[_ρq_liq], Q[_ρq_ice],
+                      Q[_ρq_rai], Q[_ρe_tot]
+                    u, v, w, q_tot, q_liq, q_ice, q_rai, e_tot =
+                      ρu / ρ, ρv / ρ, ρw / ρ, ρq_tot / ρ, ρq_liq / ρ, ρq_ice / ρ,
+                      ρq_rai / ρ, ρe_tot / ρ
 
                     e_kin = 1//2 * (u^2 + v^2 + w^2)
                     e_pot = grav * aux[_a_z]
@@ -918,43 +923,6 @@ function run(mpicomm, dim, Ne, N, timeend, DFloat, dt)
 
 @info @sprintf """Starting...
             norm(Q) = %25.16e""" norm(Q)
-
-#
-# Dynamic dt
-#
-cbdt = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
-    DGBalanceLawDiscretizations.dof_iteration!(spacedisc.auxstate, spacedisc,
-                                               Q) do R, Q, QV, aux
-                                                   @inbounds let
-                                                       Npoly2 = (2*Npoly + 1)
-
-                                                       dx, dy, dz = aux[_a_dx], aux[_a_dy], aux[_a_dz]
-                                                       z = aux[_a_z]
-                                                       ρ, U, V, W, E, QT = Q[_ρ], Q[_ρu], Q[_ρv], Q[_ρw], Q[_ρe_tot], Q[_ρq_tot]
-                                                       e_int = (E - (U^2 + V^2+ W^2)/(2*ρ) - ρ * grav * z) / ρ
-                                                       q_tot = QT / ρ
-                                                       u, v, w = U/ρ, V/ρ, W/ρ
-                                                       TS = PhaseEquil(e_int, q_tot, ρ)
-                                                       soundspeed  = soundspeed_air(TS)
-                                                       u_timescale = (abs(u) + soundspeed) * Npoly2/ dx
-                                                       v_timescale = (abs(v) + soundspeed) * Npoly2/ dy
-                                                       w_timescale = (abs(w) + soundspeed) * Npoly2/ dz
-                                                       R[_a_timescale] = max(u_timescale, v_timescale, w_timescale)
-                                                   end
-                                               end
-    cfl_safety_factor = 0.8
-    Courant_max = dt * global_max(spacedisc.auxstate, _a_timescale)
-    if (Courant_max >= 1)
-        dt = dt / Courant_max * cfl_safety_factor
-    else
-        dt = cfl_safety_factor / Courant_max * dt
-    end
-    ODESolvers.updatedt!(lsrk, dt)
-    nothing
-end
-#
-# END Dynamic dt
-#
 
 # Initialise the integration computation. Kernels calculate this at every timestep??
 @timeit to "initial integral" integral_computation(spacedisc, Q, 0)
@@ -1011,7 +979,7 @@ let
     # User defined simulation end time
     # User defined polynomial order
     numelem = (Nex,Ney,Nez)
-    dt = 0.025
+    dt =  0.025
     timeend = 9000 # 2h 30 min
     polynomialorder = Npoly
     DFloat = Float64
