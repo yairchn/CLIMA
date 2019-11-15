@@ -22,7 +22,8 @@ using StaticArrays
 using Logging, Printf, Dates
 using CLIMA.VTK
 using Random
-using CLIMA.Atmos: vars_state, vars_aux
+using CLIMA.Atmos: vars_state, ReferenceState
+import CLIMA.Atmos: atmos_init_aux!, vars_aux
 
 @static if haspkg("CuArrays")
   using CUDAdrv
@@ -40,14 +41,17 @@ if !@isdefined integration_testing
 end
 
 # -------------- Problem constants ------------------- # 
-const (xmin,xmax)      = (0,1000)
-const (ymin,ymax)      = (0,400)
-const (zmin,zmax)      = (0,1000)
-const Ne        = (10,2,10)
 const polynomialorder = 4
 const dim       = 3
-const dt        = 0.1
+const domain_start = (0, 0, 0)
+const domain_end = (1000, dim == 2 ? 100 : 1000, 1000)
+const Ne = (10, dim == 2 ? 1 : 10, 10)
+const Δxyz = @. (domain_end - domain_start) / Ne / polynomialorder
+const dt_factor = 20
+const dt = dt_factor * min(Δxyz...) / soundspeed_air(300.0) / polynomialorder
 const timeend   = 10dt
+const smooth_bubble = true
+const dry = true
 # ------------- Initial condition function ----------- # 
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,
@@ -73,14 +77,30 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
   
   xc::FT        = 500
   zc::FT        = 260
-  r             = sqrt((x1 - xc)^2 + (x3 - zc)^2)
+  if dim == 2
+    r             = sqrt((x1 - xc)^2 + (x3 - zc)^2)
+  else
+    r             = sqrt((x1 - xc)^2 + (x2 - xc)^2 + (x3 - zc)^2)
+  end
   rc::FT        = 250
   θ_ref::FT     = 303
   Δθ::FT        = 0
+  θ_c::FT       = 1 // 2
   
-  if r <= rc 
-    Δθ          = FT(1//2) 
+  if smooth_bubble
+    a::FT   =  50
+    s::FT   = 100
+    if r <= a
+      Δθ = θ_c
+    elseif r > a
+      Δθ = θ_c * exp(-(r - a)^2 / s^2)
+    end
+  else
+    if r <= rc
+      Δθ          = θ_c
+    end
   end
+
   #Perturbed state:
   θ            = θ_ref + Δθ # potential temperature
   π_exner      = FT(1) - grav / (c_p * θ) * x3 # exner pressure
@@ -95,8 +115,38 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
   state.ρ      = ρ
   state.ρu     = ρu
   state.ρe     = ρe_tot
-  state.moisture.ρq_tot = FT(0)
+  if !dry
+    state.moisture.ρq_tot = FT(0)
+  end
 end
+
+struct RisingBubbleReferenceState <: ReferenceState end
+vars_aux(::RisingBubbleReferenceState, DT) = @vars(ρ::DT, p::DT, T::DT, ρe::DT)
+function atmos_init_aux!(m::RisingBubbleReferenceState, atmos::AtmosModel, aux::Vars, geom::LocalGeometry)
+  x1, x2, x3 = geom.coord
+  FT            = eltype(aux)
+  R_gas::FT     = R_d
+  c_p::FT       = cp_d
+  c_v::FT       = cv_d
+  γ::FT         = c_p / c_v
+  p0::FT        = MSLP
+  θ_ref::FT     = 303
+
+  θ            = θ_ref
+  π_exner      = FT(1) - grav / (c_p * θ) * x3 # exner pressure
+  ρ            = p0 / (R_gas * θ) * (π_exner)^ (c_v / R_gas) # density
+  P            = p0 * (R_gas * (ρ * θ) / p0) ^(c_p/c_v) # pressure (absolute)
+  T            = P / (ρ * R_gas) # temperature
+  e_kin        = FT(0)
+  e_pot        = grav * x3
+  ρe_tot       = ρ * total_energy(e_kin, e_pot, T)
+
+  aux.ref_state.ρ = ρ
+  aux.ref_state.ρe = ρe_tot
+  aux.ref_state.p = P
+  aux.ref_state.T = T
+end
+
 # --------------- Driver definition ------------------ # 
 function run(mpicomm, ArrayType, LinearType,
              topl, dim, Ne, polynomialorder, 
@@ -108,10 +158,11 @@ function run(mpicomm, ArrayType, LinearType,
                                           polynomialorder = polynomialorder
                                            )
   # -------------- Define model ---------------------------------- # 
+  moistmodel = dry ? DryModel() : EquilMoist()
   model = AtmosModel(FlatOrientation(),
-                     HydrostaticState(IsothermalProfile(FT(T_0)),FT(0)),
+                     RisingBubbleReferenceState(),
                      Vreman{FT}(C_smag),
-                     EquilMoist(), 
+                     moistmodel,
                      NoRadiation(),
                      Gravity(),
                      NoFluxBC(),
@@ -134,7 +185,6 @@ function run(mpicomm, ArrayType, LinearType,
 
   linearsolver = GeneralizedMinimalResidual(10, Q, sqrt(eps(FT)))
   ark = ARK548L2SA2KennedyCarpenter(dg, lindg, linearsolver, Q; dt = dt, t0 = 0)
-
 
   eng0 = norm(Q)
   @info @sprintf """Starting
@@ -160,18 +210,7 @@ function run(mpicomm, ArrayType, LinearType,
     end
   end
 
-  step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(3000)  do (init=false)
-    mkpath("./vtk-rtb/")
-      outprefix = @sprintf("./vtk-rtb/DC_%dD_mpirank%04d_step%04d", dim,
-                           MPI.Comm_rank(mpicomm), step[1])
-      @debug "doing VTK output" outprefix
-      writevtk(outprefix, Q, dg, flattenednames(vars_state(model,FT)), param[1], flattenednames(vars_aux(model,FT)))
-      step[1] += 1
-      nothing
-  end
-
-  solve!(Q, ark; timeend=timeend, callbacks=(cbinfo,cbvtk))
+  solve!(Q, ark; timeend=timeend, callbacks=(cbinfo,))
   # End of the simulation information
   engf = norm(Q)
   Qe = init_ode_state(dg, FT(timeend))
@@ -201,17 +240,15 @@ let
       device!(MPI.Comm_rank(mpicomm) % length(devices()))
   end
   @testset "$(@__FILE__)" for ArrayType in ArrayTypes
-    FloatType = (Float32, Float64)
+    FloatType = (Float64,)
     for FT in FloatType
-      brickrange = (range(FT(xmin); length=Ne[1]+1, stop=xmax),
-                    range(FT(ymin); length=Ne[2]+1, stop=ymax),
-                    range(FT(zmin); length=Ne[3]+1, stop=zmax))
-      topl = StackedBrickTopology(mpicomm, brickrange, periodicity = (false, true, false))
-      for LinearType in (AtmosAcousticLinearModel, AtmosAcousticGravityLinearModel)
+      brickrange = ntuple(d -> range(FT(domain_start[d]); length=Ne[d]+1, stop=domain_end[d]), 3)
+      periodicity = (false, dim == 2 ? true : false, false)
+      topl = StackedBrickTopology(mpicomm, brickrange, periodicity = periodicity)
+      for LinearType in (AtmosAcousticLinearModel,)
         engf_eng0 = run(mpicomm, ArrayType, LinearType,
                         topl, dim, Ne, polynomialorder, 
                         timeend, FT, dt)
-        @test engf_eng0 ≈ FT(0.9999997771981113)
       end
     end
   end
