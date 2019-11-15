@@ -62,7 +62,9 @@ function atmos_boundary_state!(::Rusanov, bc::NoFluxBC, m::AtmosModel,
                                auxM::Vars, bctype, t, _...)
   FT = eltype(stateM)
   stateP.ρ = stateM.ρ
-  stateP.ρu -= 2 * dot(stateM.ρu, nM) * SVector(nM)
+  stateP.ρe = stateM.ρe
+  #stateP.ρu -= 2 * dot(stateM.ρu, nM) * SVector(nM)
+  stateP.ρu = SVector{3, FT}(0, 0, 0)
 end
 
 function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::NoFluxBC,

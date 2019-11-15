@@ -7,6 +7,7 @@ using GPUifyLoops
 include("AdditiveRungeKuttaMethod_kernels.jl")
 
 using StaticArrays
+using LinearAlgebra
 
 using ..ODESolvers
 ODEs = ODESolvers
@@ -201,8 +202,38 @@ function ODEs.dostep!(Q, ark::AdditiveRungeKutta, p, time::Real, dt::Real,
   threads = 256
   blocks = div(length(rv_Q) + threads - 1, threads)
 
+  hQ = Array(Qstages[1])
+  mxQ = maximum(abs.(hQ))
+  smQ = sum(hQ)
+  ρ  = extrema(@view hQ[:, 1, :])
+  u  = extrema(@view hQ[:, 2, :])
+  v  = extrema(@view hQ[:, 3, :])
+  w  = extrema(@view hQ[:, 4, :])
+  ρe = extrema(@view hQ[:, 5, :])
+  @info "max stage = $mxQ"
+  @info "sum stage = $smQ"
+  @info "stage ρ  = $ρ"
+  @info "stage u  = $u"
+  @info "stage v  = $v"
+  @info "stage w  = $w"
+  @info "stage ρe = $ρe"
   # calculate the rhs at first stage to initialize the stage loop
   rhs!(Rstages[1], Qstages[1], p, time + RKC[1] * dt, increment = false)
+  hR = Array(Rstages[1])
+  mxR = maximum(abs.(hR))
+  smR = sum(hR)
+  ρ  = extrema(@view hR[:, 1, :])
+  u  = extrema(@view hR[:, 2, :])
+  v  = extrema(@view hR[:, 3, :])
+  w  = extrema(@view hR[:, 4, :])
+  ρe = extrema(@view hR[:, 5, :])
+  @info "max rhs = $mxR"
+  @info "sum rhs = $smR"
+  @info "rhs ρ  = $ρ"
+  @info "rhs u  = $u"
+  @info "rhs v  = $v"
+  @info "rhs w  = $w"
+  @info "rhs ρe = $ρe"
 
   if dt != ark.dt
     α = dt * RKA_implicit[2, 2]
@@ -225,7 +256,37 @@ function ODEs.dostep!(Q, ark::AdditiveRungeKutta, p, time::Real, dt::Real,
     #update Qstages
     Qstages[istage] .+= Qtt
 
+    hQ = Array(Qstages[istage])
+    mxQ = maximum(abs.(hQ))
+    smQ = sum(hQ)
+    ρ  = extrema(@view hQ[:, 1, :])
+    u  = extrema(@view hQ[:, 2, :])
+    v  = extrema(@view hQ[:, 3, :])
+    w  = extrema(@view hQ[:, 4, :])
+    ρe = extrema(@view hQ[:, 5, :])
+    @info "max stage = $mxQ"
+    @info "sum stage = $smQ"
+    @info "stage ρ  = $ρ"
+    @info "stage u  = $u"
+    @info "stage v  = $v"
+    @info "stage w  = $w"
+    @info "stage ρe = $ρe"
     rhs!(Rstages[istage], Qstages[istage], p, stagetime, increment = false)
+    hR = Array(Rstages[istage])
+    ρ  = extrema(@view hR[:, 1, :])
+    u  = extrema(@view hR[:, 2, :])
+    v  = extrema(@view hR[:, 3, :])
+    w  = extrema(@view hR[:, 4, :])
+    ρe = extrema(@view hR[:, 5, :])
+    mxR = maximum(abs.(hR))
+    smR = sum(hR)
+    @info "max rhs = $mxR"
+    @info "sum rhs = $smR"
+    @info "rhs ρ  = $ρ"
+    @info "rhs u  = $u"
+    @info "rhs v  = $v"
+    @info "rhs w  = $w"
+    @info "rhs ρe = $ρe"
   end
 
   if split_nonlinear_linear

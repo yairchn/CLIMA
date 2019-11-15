@@ -41,7 +41,7 @@ using ..ParametersType
 @exportparameter T_min             150.0         "Minimum temperature guess in saturation adjustment (K)"
 @exportparameter T_icenuc          233.00        "Homogeneous nucleation temperature (K)"
 @exportparameter T_triple          273.16        "Triple point temperature (K)"
-@exportparameter T_0               T_triple      "Reference temperature (K)"
+@exportparameter T_0               0.0      "Reference temperature (K)"
 @exportparameter LH_v0             2.5008e6      "Latent heat vaporization at T_0 (J/kg)"
 @exportparameter LH_s0             2.8344e6      "Latent heat sublimation at T_0 (J/kg)"
 @exportparameter LH_f0             LH_s0 - LH_v0  "Latent heat of fusion at T_0 (J/kg)"

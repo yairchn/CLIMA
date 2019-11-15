@@ -56,6 +56,12 @@ function atmos_init_aux!(m::HydrostaticState{P,F}, atmos::AtmosModel, aux::Vars,
   e_kin = F(0)
   e_pot = gravitational_potential(atmos.orientation, aux)
   aux.ref_state.ρe = ρ*total_energy(e_kin, e_pot, T, q_pt)
+
+  ρu = SVector{3, F}(0, 0, 0)
+  e_int = MoistThermodynamics.internal_energy(aux.ref_state.ρ, aux.ref_state.ρe, ρu, e_pot)
+  TS = PhaseDry(e_int, aux.ref_state.ρ)
+  aux.ref_state.p = air_pressure(TS)
+  aux.ref_state.ρe = aux.ref_state.ρ * (e_int + e_pot)
 end
 
 

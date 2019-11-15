@@ -55,8 +55,9 @@ function main()
 
   #timeend = 60
   timeend = 33 * 60 * 60 # Full simulation
+  #timeend = 34 * 100
 
-  outputtime = 60 * 60
+  outputtime = 100
   
   for FT in (Float64,)
 
@@ -87,7 +88,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                      Gravity(), 
                      NoFluxBC(),
                      setup)
-  linearmodel = AtmosAcousticLinearModel(model)
+  linearmodel = AtmosAcousticGravityLinearModel(model)
 
   dg = DGModel(model, grid, Rusanov(),
                CentralNumericalFluxDiffusive(), CentralGradPenalty())
@@ -100,10 +101,11 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
   # determine the time step
   element_size = (setup.domain_height / numelem_vert)
   acoustic_speed = soundspeed_air(FT(setup.T_ref))
-  dt_factor = 120
+  dt_factor = 200
   dt = dt_factor * element_size / acoustic_speed / polynomialorder ^ 2
   # Adjust the time step so we exactly hit 1 hour for VTK output
   dt = 60 * 60 / ceil(60 * 60 / dt)
+  dt = 100
   nsteps = ceil(Int, timeend / dt)
 
   Q = init_ode_state(dg, FT(0))
@@ -141,12 +143,29 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
       starttime[] = now()
     else
       energy = norm(Q)
+      hQ = Array(Q)
+      ρ = @view hQ[:, 1, :]
+      u = @view hQ[:, 2, :]
+      v = @view hQ[:, 3, :]
+      w = @view hQ[:, 4, :]
+      ρe= @view hQ[:, 5, :]
+
+      mρ = maximum(abs.(ρ))
+      mu = maximum(abs.(u))
+      mv = maximum(abs.(v))
+      mw = maximum(abs.(w))
+      mρe = maximum(abs.(ρe))
       runtime = Dates.format(convert(DateTime, now() - starttime[]), dateformat"HH:MM:SS")
       @info @sprintf """Update
                         simtime = %.16e
                         runtime = %s
                         norm(Q) = %.16e
-                        """ gettime(odesolver) runtime energy
+                        ρ  = %.16e
+                        u  = %.16e
+                        v  = %.16e
+                        w  = %.16e
+                        ρe = %.16e
+                        """ gettime(odesolver) runtime energy mρ mu mv mw mρe
       flush(stderr)
     end
   end
@@ -154,7 +173,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
 
   if output_vtk
     # create vtk dir
-    vtkdir = "vtk_acousticwave_lsrk" *
+    vtkdir = "vtk_acousticwave_ark_debug" *
       "_poly$(polynomialorder)_horz$(numelem_horz)_vert$(numelem_vert)" *
       "_dt$(dt_factor)x_$(ArrayType)_$(FT)"
     mkpath(vtkdir)
@@ -203,16 +222,25 @@ function (setup::AcousticWaveSetup)(state, aux, coords, t)
   @inbounds φ = asin(coords[3] / r)
   h = r - FT(planet_radius)
 
-  β = min(FT(1), setup.α * acos(cos(φ) * cos(λ)))
-  f = (1 + cos(π * β)) / 2
-  g = sin(setup.nv * π * h / setup.domain_height)
-  Δp = setup.γ * f * g
+  #β = min(FT(1), setup.α * acos(cos(φ) * cos(λ)))
+  β = setup.α * acos(cos(φ) * cos(λ))
+  if β < 1
+    f = (1 + cos(π * β)) / 2
+    g = sin(setup.nv * π * h / setup.domain_height)
+    Δp = setup.γ * f * g
+  else
+    Δp = 0
+  end
   p = aux.ref_state.p + Δp
 
   ρ = air_density(setup.T_ref, p)
+  #state.ρ =  ρ
   state.ρ =  ρ - aux.ref_state.ρ
+  #state.ρ =  0
   state.ρu = SVector{3, FT}(0, 0, 0)
   state.ρe = ρ * (internal_energy(setup.T_ref) + aux.orientation.Φ) - aux.ref_state.ρe
+  #state.ρe =  ρ * (internal_energy(setup.T_ref) + aux.orientation.Φ) 
+  #state.ρe = 0
   nothing
 end
 
