@@ -250,9 +250,9 @@ let
     C_drag = FT(0.0011)
     (Δx, Δy, Δz) = (35,35,5)
     # User defined domain parameters
-    brickrange = (grid1d(0, 3000, elemsize=FT(Δx)*N),
-                  grid1d(0, 3000, elemsize=FT(Δy)*N),
-                  grid1d(0, 1500, InteriorStretching{FT}(840); elemsize=FT(Δz)*N))
+    brickrange = (grid1d(FT(0), FT(3000), elemsize=FT(Δx)*N),
+                  grid1d(FT(0), FT(3000), elemsize=FT(Δy)*N),
+                  grid1d(FT(0), FT(1500), InteriorStretching{FT}(840); elemsize=FT(Δz)*N))
     zmax = brickrange[3][end]
     zsponge = FT(0.75 * zmax)
     topl = StackedBrickTopology(mpicomm, brickrange,
