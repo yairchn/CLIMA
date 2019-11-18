@@ -207,7 +207,10 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
     nothing
   end
 
-  solve!(Q, odesolver; timeend=timeend, callbacks=(cbinfo, cbvtk))
+  nsteps = ceil(Int, timeend / dt)
+
+  solve!(Q, odesolver; numberofsteps=nsteps, adjustfinalstep=false,
+         callbacks=(cbinfo, cbvtk))
 
   # Print some end of the simulation information
   engf = norm(Q)
