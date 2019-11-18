@@ -3,9 +3,13 @@ using CLIMA
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
 using CLIMA.DGmethods
+using CLIMA.DGmethods: VerticalDirection
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.MPIStateArrays
 using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.LinearSolvers
+using CLIMA.ColumnwiseLUSolver
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
 using CLIMA.Atmos
@@ -120,8 +124,14 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
                                           DeviceArray = ArrayType,
                                           polynomialorder = N,
                                          )
+
+  T_min = FT(275)
+  T_s = FT(292)
+  Γ = FT(grav/cp_d)
+  RH = FT(0)
+  T = LinearTemperatureProfile(T_min, T_s, Γ)
   model = AtmosModel(FlatOrientation(),
-                     NoReferenceState(),
+                     HydrostaticState(T, RH),
                      SmagorinskyLilly{FT}(C_smag),
                      EquilMoist(),
                      StevensRadiation{FT}(85, 1, 840, 1.22, 3.75e-6, 70, 22),
@@ -138,9 +148,29 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
                CentralNumericalFluxDiffusive(),
                CentralGradPenalty())
 
+  linearmodel = AtmosAcousticLinearModel(model)
+  lineardg = DGModel(linearmodel,
+                     grid,
+                     Rusanov(),
+                     CentralNumericalFluxDiffusive(),
+                     CentralGradPenalty();
+                     direction=VerticalDirection(),
+                     auxstate=dg.auxstate)
+
   Q = init_ode_state(dg, FT(0))
 
-  lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
+  # odesolver = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
+  # odesolver = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
+
+  # linearsolver = GeneralizedMinimalResidual(10, Q, sqrt(eps(FT)))
+  linearsolver = SingleColumnLU()
+  # odesolver = ARK548L2SA2KennedyCarpenter(dg, lineardg, linearsolver, Q;
+  #                                           dt = dt, t0 = 0,
+  #                                           split_nonlinear_linear=false)
+  odesolver = ARK2GiraldoKellyConstantinescu(dg, lineardg, linearsolver, Q;
+                                              dt = dt, t0 = 0,
+                                              split_nonlinear_linear=false)
+
 
   eng0 = norm(Q)
   @info @sprintf """Starting
@@ -156,7 +186,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
       @info @sprintf("""Update
                      simtime = %.16e
                      runtime = %s
-                     norm(Q) = %.16e""", ODESolvers.gettime(lsrk),
+                     norm(Q) = %.16e""", ODESolvers.gettime(odesolver),
                      Dates.format(convert(Dates.DateTime,
                                           Dates.now()-starttime[]),
                                   Dates.dateformat"HH:MM:SS"),
@@ -177,7 +207,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
     nothing
   end
 
-  solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk))
+  solve!(Q, odesolver; timeend=timeend, callbacks=(cbinfo, cbvtk))
 
   # Print some end of the simulation information
   engf = norm(Q)
