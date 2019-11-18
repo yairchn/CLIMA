@@ -61,6 +61,8 @@ function vars_thermo(FT)
     θ_dry::FT
     θ_v::FT
     e_int::FT
+    h_m::FT
+    h_t::FT
   end
 end
 num_thermo(FT) = varsize(vars_thermo(FT))
@@ -80,16 +82,21 @@ function compute_thermo!(FT, state, i, j, k, ijk, ev, eh, e,
 
     ts = PhaseEquil(convert(FT, e_int), q̅_tot, state.ρ)
     Phpart = PhasePartition(ts)
-
+    
     th = thermo_vars(thermoQ[ijk,e])
     th.q_liq     = Phpart.liq
     th.q_ice     = Phpart.ice
-    th.q_vap     = q̅_tot-Phpart.liq-Phpart.ice
+    th.q_vap     = q̅_tot - Phpart.liq - Phpart.ice
     th.T         = ts.T
     th.θ_liq_ice = liquid_ice_pottemp(ts)
     th.θ_dry     = dry_pottemp(ts)
     th.θ_v       = virtual_pottemp(ts)
     th.e_int     = e_int
+
+    #Moist and total henthalpy
+    R_m          = gas_constant_air(ts)
+    th.h_m       = e_int + R_m*th.T
+    th.h_t       = e̅_tot + R_m*th.T
 end
 
 # horizontal averages
@@ -107,6 +114,8 @@ function vars_horzavg(FT)
     θ_dry::FT
     θ_v::FT
     e_int::FT
+    h_m::FT
+    h_t::FT 
   end
 end
 num_horzavg(FT) = varsize(vars_horzavg(FT))
@@ -162,7 +171,9 @@ function compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
     hs.θ_dry     += rep * th.θ_dry
     hs.θ_v       += rep * th.θ_v
     hs.e_int     += rep * th.e_int
-
+    hs.h_m       += rep * th.h_m
+    hs.h_t       += rep * th.h_t
+    
     # liquid water path
     # this condition is also going to be used to get the number of points that
     # exist on a horizontal plane provided all planes have the same number of
@@ -207,18 +218,22 @@ function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
     ds.θ_liq    += rep * ha.θ_liq_ice
     ds.θ_v      += rep * ha.θ_v
     ds.e_int    += rep * ha.e_int
+    ds.h_m      += rep * ha.h_m
+    ds.h_t      += rep * ha.h_t
 
     # vertical fluxes
     ds.w′ρ′     += rep * (w̅ - w̃) * (state.ρ - ha.ρ)
     ds.w′u′     += rep * (w̅ - w̃) * (u̅ - ha.ρu / ha.ρ)
     ds.w′v′     += rep * (w̅ - w̃) * (v̅ - ha.ρv / ha.ρ)
     ds.w′q_tot′ += rep * (w̅ - w̃) * (q̅_tot - q̃_tot)
+    ds.wq_tot   += rep *  w̅      *  q̅_tot
     ds.w′q_liq′ += rep * (w̅ - w̃) * (th.q_liq - ha.q_liq)
     ds.w′q_vap′ += rep * (w̅ - w̃) * (th.q_vap - ha.q_vap)
     ds.w′θ′     += rep * (w̅ - w̃) * (th.θ_dry - ha.θ_dry)
     ds.w′θ_v′   += rep * (w̅ - w̃) * (th.θ_v - ha.θ_v)
     ds.w′θ_liq′ += rep * (w̅ - w̃) * (th.θ_liq_ice - ha.θ_liq_ice)
 
+    
     # variances
     ds.u′u′     += rep * (u̅ - ũ)^2
     ds.v′v′     += rep * (v̅ - ṽ)^2

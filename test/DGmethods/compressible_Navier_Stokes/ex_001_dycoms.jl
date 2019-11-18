@@ -210,7 +210,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
     end
   end
 
-  #=
+  
   # Setup VTK output callbacks
   step = [0]
   cbvtk = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
@@ -224,18 +224,18 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
     step[1] += 1
     nothing
   end
-  =#
+  
 
   # Get statistics during run
   diagnostics_time_str = string(now())
-  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(50) do (init=false)
+  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
     sim_time_str = string(ODESolvers.gettime(lsrk))
     gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                        xmax, ymax, out_dir)
   end
 
   #solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk, cbdiagnostics))
-  solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbdiagnostics))
+  solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk, cbdiagnostics))
 
   # Get statistics at the end of the run
   sim_time_str = string(ODESolvers.gettime(lsrk))
@@ -311,7 +311,7 @@ let
                                 periodicity = (true, true, false),
                                 boundary=((0,0),(0,0),(1,2)))
     dt = 0.01
-    timeend =  dt
+    timeend = 14400
     @info (ArrayType, dt, FT, dim)
     result = run(mpicomm, ArrayType, dim, topl,
                  N, timeend, FT, dt, C_smag, LHF, SHF, C_drag, xmax, ymax, zmax, zsponge,

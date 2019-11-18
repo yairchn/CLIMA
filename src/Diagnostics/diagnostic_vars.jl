@@ -23,11 +23,15 @@ function vars_diagnostic(FT)
     θ_liq::FT
     θ_v::FT
     e_int::FT
+    h_m::FT
+    h_t::FT
+      
     # vertical fluxes
     w′ρ′::FT
     w′u′::FT
     w′v′::FT
-    w′q_tot′::FT
+    w′q_tot′::FT  #<w'q_tot'>
+    wq_tot::FT    #<w q_tot>
     w′q_liq′::FT
     w′q_vap′::FT
     w′θ′::FT
