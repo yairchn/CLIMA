@@ -26,6 +26,24 @@ function vars_diagnostic(FT)
     h_m::FT
     h_t::FT
       
+    vert_eddy_mass_flx::FT
+    vert_eddy_u_flx::FT
+    vert_eddy_v_flx::FT
+    vert_eddy_qt_flx::FT  #<w'q_tot'>
+    vert_qt_flx::FT    #<w q_tot>
+    vert_eddy_ql_flx::FT
+    vert_eddy_qv_flx::FT
+    vert_eddy_th_flx::FT
+    vert_eddy_thv_flx::FT
+    vert_eddy_thl_flx::FT
+      
+    # variances
+    uvariance::FT
+    vvariance::FT
+    wvariance::FT
+    # skewness
+    wskew::FT
+ #=
     # vertical fluxes
     w′ρ′::FT
     w′u′::FT
@@ -43,6 +61,8 @@ function vars_diagnostic(FT)
     w′w′::FT
     # skewness
     w′w′w′::FT
+=#
+      
     # turbulent kinetic energy
     TKE::FT
   end

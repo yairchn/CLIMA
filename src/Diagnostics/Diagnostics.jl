@@ -82,11 +82,11 @@ function compute_thermo!(FT, state, i, j, k, ijk, ev, eh, e,
 
     ts = PhaseEquil(convert(FT, e_int), q̅_tot, state.ρ)
     Phpart = PhasePartition(ts)
-    
+
     th = thermo_vars(thermoQ[ijk,e])
     th.q_liq     = Phpart.liq
     th.q_ice     = Phpart.ice
-    th.q_vap     = q̅_tot - Phpart.liq - Phpart.ice
+    th.q_vap     = q̅_tot-Phpart.liq-Phpart.ice
     th.T         = ts.T
     th.θ_liq_ice = liquid_ice_pottemp(ts)
     th.θ_dry     = dry_pottemp(ts)
@@ -97,6 +97,7 @@ function compute_thermo!(FT, state, i, j, k, ijk, ev, eh, e,
     R_m          = gas_constant_air(ts)
     th.h_m       = e_int + R_m*th.T
     th.h_t       = e̅_tot + R_m*th.T
+    
 end
 
 # horizontal averages
@@ -153,26 +154,26 @@ function node_adjustment(i, j, Nq, x, xmax, y, ymax)
     return rep
 end
 
-function compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
+function compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                            Nq, xmax, ymax, Nqk, nvertelem, localaux,
                            LWP, thermoQ, horzsums, repdvsr)
-    rep = node_adjustment(i, j, Nq, x, xmax, y, ymax)
+    #rep = node_adjustment(i, j, Nq, x, xmax, y, ymax)
     th = thermo_vars(thermoQ[ijk,e])
     hs = horzavg_vars(horzsums[k,ev])
-    hs.ρ         += rep * state.ρ
-    hs.ρu        += rep * state.ρu[1]
-    hs.ρv        += rep * state.ρu[2]
-    hs.ρw        += rep * state.ρu[3]
-    hs.e_tot     += rep * state.ρe
-    hs.ρq_tot    += rep * state.moisture.ρq_tot
-    hs.q_liq     += rep * th.q_liq
-    hs.q_vap     += rep * th.q_vap
-    hs.θ_liq_ice += rep * th.θ_liq_ice
-    hs.θ_dry     += rep * th.θ_dry
-    hs.θ_v       += rep * th.θ_v
-    hs.e_int     += rep * th.e_int
-    hs.h_m       += rep * th.h_m
-    hs.h_t       += rep * th.h_t
+    hs.ρ         += MH * state.ρ
+    hs.ρu        += MH * state.ρu[1]
+    hs.ρv        += MH * state.ρu[2]
+    hs.ρw        += MH * state.ρu[3]
+    hs.e_tot     += MH * state.ρe
+    hs.ρq_tot    += MH * state.moisture.ρq_tot
+    hs.q_liq     += MH * th.q_liq
+    hs.q_vap     += MH * th.q_vap
+    hs.θ_liq_ice += MH * th.θ_liq_ice
+    hs.θ_dry     += MH * th.θ_dry
+    hs.θ_v       += MH * th.θ_v
+    hs.e_int     += MH * th.e_int
+    hs.h_m       += MH * th.h_m
+    hs.h_t       += MH * th.h_t
     
     # liquid water path
     # this condition is also going to be used to get the number of points that
@@ -182,14 +183,14 @@ function compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
     if ev == floor(nvertelem/2) && k == floor(Nqk/2)
         # TODO: uncomment the line below after rewriting the LWP assignment below using aux.∫dz...?
         # aux = extract_aux(dg, localaux, ijk, e)
-        LWP[1] += rep * (localaux[ijk,1,e] + localaux[ijk,2,e])
-        repdvsr[1] += rep # number of points to be divided by
+        LWP[1] += MH * (localaux[ijk,1,e] + localaux[ijk,2,e])
+        repdvsr[1] += MH # number of points to be divided by
     end
 end
 
-function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
+function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                                  Nq, xmax, ymax, zvals, thermoQ, horzavgs, dsums)
-    rep = node_adjustment(i, j, Nq, x, xmax, y, ymax)
+    #rep = node_adjustment(i, j, Nq, x, xmax, y, ymax)
     th = thermo_vars(thermoQ[ijk,e])
     ha = horzavg_vars(horzavgs[k,ev])
     ds = diagnostic_vars(dsums[k,ev])
@@ -205,45 +206,44 @@ function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
     q̃_tot = ha.ρq_tot / ha.ρ
 
     # vertical coordinate
-    ds.z        += rep * zvals[k,ev]
+    ds.z        += MH * zvals[k,ev]
 
     # state and functions of state
-    ds.u        += rep * ũ
-    ds.v        += rep * ṽ
-    ds.w        += rep * w̃
-    ds.e_tot    += rep * ẽ
-    ds.q_tot    += rep * ha.ρq_tot / ha.ρ
-    ds.q_liq    += rep * ha.q_liq
-    ds.θ        += rep * ha.θ_dry
-    ds.θ_liq    += rep * ha.θ_liq_ice
-    ds.θ_v      += rep * ha.θ_v
-    ds.e_int    += rep * ha.e_int
-    ds.h_m      += rep * ha.h_m
-    ds.h_t      += rep * ha.h_t
+    ds.u        += MH * ũ
+    ds.v        += MH * ṽ
+    ds.w        += MH * w̃
+    ds.e_tot    += MH * ẽ
+    ds.q_tot    += MH * ha.ρq_tot / ha.ρ
+    ds.q_liq    += MH * ha.q_liq
+    ds.th       += MH * ha.θ_dry
+    ds.thl      += MH * ha.θ_liq_ice
+    ds.thv      += MH * ha.θ_v
+    ds.e_int    += MH * ha.e_int
+    ds.h_m      += MH * ha.h_m
+    ds.h_t      += MH * ha.h_t
 
     # vertical fluxes
-    ds.w′ρ′     += rep * (w̅ - w̃) * (state.ρ - ha.ρ)
-    ds.w′u′     += rep * (w̅ - w̃) * (u̅ - ha.ρu / ha.ρ)
-    ds.w′v′     += rep * (w̅ - w̃) * (v̅ - ha.ρv / ha.ρ)
-    ds.w′q_tot′ += rep * (w̅ - w̃) * (q̅_tot - q̃_tot)
-    ds.wq_tot   += rep *  w̅      *  q̅_tot
-    ds.w′q_liq′ += rep * (w̅ - w̃) * (th.q_liq - ha.q_liq)
-    ds.w′q_vap′ += rep * (w̅ - w̃) * (th.q_vap - ha.q_vap)
-    ds.w′θ′     += rep * (w̅ - w̃) * (th.θ_dry - ha.θ_dry)
-    ds.w′θ_v′   += rep * (w̅ - w̃) * (th.θ_v - ha.θ_v)
-    ds.w′θ_liq′ += rep * (w̅ - w̃) * (th.θ_liq_ice - ha.θ_liq_ice)
-
+    ds.vert_eddy_mass_flx+= MH * (w̅ - w̃) * (state.ρ - ha.ρ)
+    ds.vert_eddy_u_flx   += MH * (w̅ - w̃) * (u̅ - ha.ρu / ha.ρ)
+    ds.vert_eddy_v_flx   += MH * (w̅ - w̃) * (v̅ - ha.ρv / ha.ρ)
+    ds.vert_eddy_qt_flx  += MH * (w̅ - w̃) * (q̅_tot - q̃_tot)
+    ds.vert_qt_flx       += MH *  w̅      *  q̅_tot
+    ds.vert_eddy_ql_flx  += MH * (w̅ - w̃) * (th.q_liq - ha.q_liq)
+    ds.vert_eddy_qv_flx  += MH * (w̅ - w̃) * (th.q_vap - ha.q_vap)
+    ds.vert_eddy_th_flx  += MH * (w̅ - w̃) * (th.θ_dry - ha.θ_dry)
+    ds.vert_eddy_thv_flx += MH * (w̅ - w̃) * (th.θ_v - ha.θ_v)
+    ds.vert_eddy_thl_flx += MH * (w̅ - w̃) * (th.θ_liq_ice - ha.θ_liq_ice)
     
     # variances
-    ds.u′u′     += rep * (u̅ - ũ)^2
-    ds.v′v′     += rep * (v̅ - ṽ)^2
-    ds.w′w′     += rep * (w̅ - w̃)^2
+    ds.uvariance += MH * (u̅ - ũ)^2
+    ds.vvariance += MH * (v̅ - ṽ)^2
+    ds.wvariance += MH * (w̅ - w̃)^2
 
     # skewness
-    ds.w′w′w′   += rep * (w̅ - w̃)^3
+    ds.wskew += MH * (w̅ - w̃)^3
 
     # turbulent kinetic energy
-    ds.TKE      += rep * 0.5 * (ds.u′u′ + ds.v′v′ + ds.w′w′)
+    ds.TKE   += MH * 0.5 * (ds.uvariance + ds.vvariance + ds.wvariance)
 end
 
 # TODO: make this a single reduction
@@ -315,8 +315,9 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                             x = localvgeo[ijk,grid.x1id,e]
                             y = localvgeo[ijk,grid.x2id,e]
                             z = localvgeo[ijk,grid.x3id,e]
+                            MH = localvgeo[ijk,grid.MHid,e]
                             for f in funs
-                                f(FT, state, i, j, k, ijk, ev, eh, e, x, y, z)
+                                f(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH)
                             end
                         end
                     end
@@ -328,7 +329,7 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
     # record the vertical coordinates and compute thermo variables
     zvals = zeros(Nqk, nvertelem)
     thermoQ = [zeros(FT, num_thermo(FT)) for _ in 1:npoints, _ in 1:nrealelem]
-    thermo_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z) =
+    thermo_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
         compute_thermo!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
                         zvals, thermoQ)
 
@@ -338,8 +339,8 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
     # compute the horizontal sums and the liquid water path
     l_LWP = zeros(FT, 1)
     horzsums = [zeros(FT, num_horzavg(FT)) for _ in 1:Nqk, _ in 1:nvertelem]
-    horzsum_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z) =
-        compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
+    horzsum_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
+        compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                           Nq, xmax, ymax, Nqk, nvertelem, localaux,
                           l_LWP, thermoQ, horzsums, l_repdvsr)
 
@@ -349,7 +350,7 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
     # compute the full number of points on a slab
     repdvsr = zero(FT)
     repdvsr = MPI.Reduce(l_repdvsr[1], +, 0, mpicomm)
-
+    @info repdvsr 
     # compute the horizontal and LWP averages
     horzavgs = horz_average_all(FT, mpicomm, num_horzavg(FT), (Nqk, nvertelem),
                                 horzsums, repdvsr)
@@ -361,8 +362,8 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
 
     # compute the diagnostics with the previous computed variables
     dsums = [zeros(FT, num_diagnostic(FT)) for _ in 1:Nqk, _ in 1:nvertelem]
-    dsum_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z) =
-        compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
+    dsum_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
+        compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                                 Nq, xmax, ymax, zvals, thermoQ, horzavgs, dsums)
 
     # another grid traversal
