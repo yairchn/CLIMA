@@ -19,9 +19,9 @@ function vars_diagnostic(FT)
     q_tot::FT
     e_tot::FT
     q_liq::FT
-    θ::FT
-    θ_liq::FT
-    θ_v::FT
+    thd::FT
+    thl::FT
+    thv::FT
     e_int::FT
     h_m::FT
     h_t::FT
@@ -33,7 +33,7 @@ function vars_diagnostic(FT)
     vert_qt_flx::FT    #<w q_tot>
     vert_eddy_ql_flx::FT
     vert_eddy_qv_flx::FT
-    vert_eddy_th_flx::FT
+    vert_eddy_thd_flx::FT
     vert_eddy_thv_flx::FT
     vert_eddy_thl_flx::FT
       

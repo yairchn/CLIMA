@@ -215,7 +215,7 @@ function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH
     ds.e_tot    += MH * ẽ
     ds.q_tot    += MH * ha.ρq_tot / ha.ρ
     ds.q_liq    += MH * ha.q_liq
-    ds.th       += MH * ha.θ_dry
+    ds.thd      += MH * ha.θ_dry
     ds.thl      += MH * ha.θ_liq_ice
     ds.thv      += MH * ha.θ_v
     ds.e_int    += MH * ha.e_int
@@ -230,7 +230,7 @@ function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH
     ds.vert_qt_flx       += MH *  w̅      *  q̅_tot
     ds.vert_eddy_ql_flx  += MH * (w̅ - w̃) * (th.q_liq - ha.q_liq)
     ds.vert_eddy_qv_flx  += MH * (w̅ - w̃) * (th.q_vap - ha.q_vap)
-    ds.vert_eddy_th_flx  += MH * (w̅ - w̃) * (th.θ_dry - ha.θ_dry)
+    ds.vert_eddy_thd_flx += MH * (w̅ - w̃) * (th.θ_dry - ha.θ_dry)
     ds.vert_eddy_thv_flx += MH * (w̅ - w̃) * (th.θ_v - ha.θ_v)
     ds.vert_eddy_thl_flx += MH * (w̅ - w̃) * (th.θ_liq_ice - ha.θ_liq_ice)
     
@@ -350,7 +350,7 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
     # compute the full number of points on a slab
     repdvsr = zero(FT)
     repdvsr = MPI.Reduce(l_repdvsr[1], +, 0, mpicomm)
-    @info repdvsr 
+    
     # compute the horizontal and LWP averages
     horzavgs = horz_average_all(FT, mpicomm, num_horzavg(FT), (Nqk, nvertelem),
                                 horzsums, repdvsr)
