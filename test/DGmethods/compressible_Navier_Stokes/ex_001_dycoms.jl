@@ -213,7 +213,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   
   # Setup VTK output callbacks
   step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(500) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
     fprefix = @sprintf("dycoms_%dD_mpirank%04d_step%04d", dim,
                        MPI.Comm_rank(mpicomm), step[1])
     outprefix = joinpath(out_dir, fprefix)
@@ -228,7 +228,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
 
   # Get statistics during run
   diagnostics_time_str = string(now())
-  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(500) do (init=false)
+  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
     sim_time_str = string(ODESolvers.gettime(lsrk))
     gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                        xmax, ymax, out_dir)

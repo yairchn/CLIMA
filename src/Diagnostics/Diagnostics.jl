@@ -53,6 +53,7 @@ end
 
 function extract_diffusion(dg, localdiff, ijk, e)
     bl = dg.balancelaw
+    #bl = dg.diffstate
     FT = eltype(localdiff)
     ndiff = num_diffusive(bl, FT)
     l_diff = MArray{Tuple{ndiff},FT}(undef)
@@ -188,8 +189,8 @@ function compute_horzsums!(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x,
     hs.e_int     += MH * th.e_int
     hs.h_m       += MH * th.h_m
     hs.h_t       += MH * th.h_t
-    hs.qt_sgs    += MH * diffusive_flx.moisture.q_tot
-    hs.ht_sgs    += MH * diffusive_flx.h_tot
+    hs.qt_sgs    += MH * diffusive_flx.moisture.ρd_q_tot[end] #diffusive_flx.moisture.q_tot
+    hs.ht_sgs    += MH * diffusive_flx.ρd_h_tot[end] #diffusive_flx.h_tot
     
     repdvsr[Nqk * (ev - 1) + k] += MH
 
