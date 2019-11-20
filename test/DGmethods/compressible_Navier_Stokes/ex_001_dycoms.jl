@@ -287,8 +287,8 @@ let
     N = 4
     # SGS Filter constants
     C_smag = FT(0.15)
-    LHF    = FT(130)
-    SHF    = FT(15)
+    LHF    = FT(-115)
+    SHF    = FT(-15)
     C_drag = FT(0.0011)
     # User defined domain parameters
     Δx, Δy, Δz = 50, 50, 20
