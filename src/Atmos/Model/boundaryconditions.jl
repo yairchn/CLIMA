@@ -1,5 +1,5 @@
 using CLIMA.PlanetParameters
-export PeriodicBC, NoFluxBC, InitStateBC, DYCOMS_BC, RayleighBenardBC
+export PeriodicBC, NoFluxBC, InitStateBC, DYCOMS_BC, RayleighBenardBC, BC_DYCOMS
 
 #TODO: figure out a better interface for this.
 # at the moment we can just pass a function, but we should do something better
@@ -187,7 +187,9 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::DYCOMS_BC,
     # Assign diffusive momentum and moisture fluxes
     # (i.e. ρ𝛕 terms)  
     stateP.ρu = -stateM.ρu # Dirichlet on u
-    diffP.ρτ = -diffM.ρτ + 2 .* SHermitianCompact{3,FT,6}(SVector(ρτM[1,1],ρτM[2,1],ρτ13P, ρτM[2,2], ρτ23P,-ρτM[3,3]))
+    
+    #diffP.ρτ = -diffM.ρτ + 2 .* SHermitianCompact{3,FT,6}(SVector(ρτM[1,1],ρτM[2,1],ρτ13P, ρτM[2,2], ρτ23P,-ρτM[3,3]))
+    diffP.ρτ = diffM.ρτ 
 
     # ----------------------------------------------------------
     # Boundary moisture fluxes
@@ -254,5 +256,70 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::RayleighBena
     stateP.ρe = (E_intP + ρP * auxP.coord[3] * grav)
     diffP.ρd_h_tot = SVector(diffP.ρd_h_tot[1], diffP.ρd_h_tot[2], FT(0))
     nothing
+  end
+end
+
+
+
+
+"""
+  BC_DYCOMS 
+ 
+"""
+struct BC_DYCOMS{FT} <: BoundaryCondition
+  C_drag::FT
+  LHF::FT
+  SHF::FT
+end
+function atmos_boundary_state!(::Rusanov, bc::BC_DYCOMS, m::AtmosModel,
+                               stateP::Vars, auxP::Vars, nM, stateM::Vars,
+                               auxM::Vars, bctype, t, state1::Vars, aux1::Vars)
+  FT = eltype(state)
+  if bctype == 1 
+    # Bottom wall 
+    # Dirichlet Condition on velocity
+    stateP.ρ      = stateM.ρ
+    stateP.ρu     = -stateM.ρu
+    stateP.ρe     = stateM.ρe
+    stateP.ρq_tot = stateM.ρq_tot
+  else
+    # Top wall 
+    stateP.ρ      = stateM.ρ
+    stateP.ρu     = -stateM.ρu + 2 * dot(stateM.ρu, nM) * SVector(nM)
+    stateP.ρe     = stateM.ρe
+    stateP.ρq_tot = stateM.ρq_tot
+  end
+  # Else lateral periodic boundaries. Implied fluxes through NumericalFluxes.jl
+end
+function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::BC_DYCOMS,
+                               m::AtmosModel, stateP::Vars, diffP::Vars,
+                               auxP::Vars, nM, stateM::Vars, diffM::Vars,
+                               auxM::Vars, bctype, t, state1::Vars, diff1::Vars,
+                               aux1::Vars)
+  FT = eltype(diffP)
+  if bctype == 1 
+    # Bottom wall 
+    # Dirichlet Condition on velocity
+    stateP.ρ      = stateM.ρ
+    stateP.ρu     = -stateM.ρu
+    stateP.ρe     = stateM.ρe
+    stateP.ρq_tot = stateM.ρq_tot
+  else
+    # Top wall 
+    stateP.ρ      = stateM.ρ
+    stateP.ρu     = -stateM.ρu + 2 * dot(stateM.ρu, nM) * SVector(nM)
+    stateP.ρe     = stateM.ρe
+    stateP.ρq_tot = stateM.ρq_tot
+  end
+  if bctype == 1
+    # Gradient boundary conditions
+    diffP.moisture.ρd_q_tot = -diffM.moisture.ρd_q_tot + 2 .* SVector{3,FT}(0,0,bc.LHF/LH_v0)
+    diffP.ρd_h_tot          = -diffM.ρd_h_tot + 2 .* SVector{3,FT}(0,0,bc.LHF + bc.SHF) 
+    diffP.ρτ                = diffM.ρτ
+  else
+    # Gradient boundary conditions
+    diffP.moisture.ρd_q_tot = -diffM.moisture.ρd_q_tot + 2 .* SVector{3,FT}(0,0,bc.LHF/LH_v0)
+    diffP.ρd_h_tot          = -diffM.ρd_h_tot + 2 .* SVector{3,FT}(0,0,bc.LHF + bc.SHF) 
+    diffP.ρτ                = diffM.ρτ
   end
 end

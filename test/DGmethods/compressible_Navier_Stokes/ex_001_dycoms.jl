@@ -192,7 +192,7 @@ function run(mpicomm,
                       Subsidence(),
                       GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic),
                       ),
-                     DYCOMS_BC{FT}(C_drag, LHF, SHF),
+                     BC_DYCOMS{FT}(C_drag, LHF, SHF),
                      Initialise_DYCOMS!)
   
   # Balancelaw description
