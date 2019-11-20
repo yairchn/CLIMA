@@ -161,7 +161,6 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::DYCOMS_BC,
 
   # Assign scalar values at the boundaries 
   stateP.ρ = ρM
-  stateP.moisture.ρq_tot = QTM
   # Assign diffusive fluxes at boundaries
   diffP = diffM
   xvert = auxM.coord[3]

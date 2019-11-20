@@ -251,7 +251,7 @@ function run(mpicomm,
   # Setup VTK output callbacks
   step = [0]
   cbvtk = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
-    fprefix = @sprintf("dycoms_%dD_mpirank%04d_step%04d", dim,
+    fprefix = @sprintf("dycomsLR_%dD_mpirank%04d_step%04d", dim,
                        MPI.Comm_rank(mpicomm), step[1])
     outprefix = joinpath(out_dir, fprefix)
     @debug "doing VTK output" outprefix
@@ -324,7 +324,7 @@ let
     SHF    = FT(15)
     C_drag = FT(0.0011)
     # User defined domain parameters
-    Δh, Δv = 35, 5
+    Δh, Δv = 50,20
     xmin, xmax = 0, 1500
     ymin, ymax = 0, 1500
     zmin, zmax = 0, 1500
@@ -342,7 +342,7 @@ let
     topl = StackedBrickTopology(mpicomm, brickrange,
                                 periodicity = (true, true, false),
                                 boundary=((0,0),(0,0),(1,2)))
-    safety_fac = FT(0.5)
+    safety_fac = FT(0.8)
     dt_exp = min(Δh/soundspeed_air(FT(330))/N * safety_fac,Δv/soundspeed_air(FT(330))/N * safety_fac)
     dt_imex = Δh/soundspeed_air(FT(330))/N * safety_fac
     timeend = 14400
