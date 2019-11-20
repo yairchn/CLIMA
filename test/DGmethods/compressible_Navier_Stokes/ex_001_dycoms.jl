@@ -233,7 +233,7 @@ function run(mpicomm,
   
   # Set up the information callback
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(60, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(30, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else

@@ -16,7 +16,7 @@ using MPI
 using StaticArrays
 
 using ..Atmos
-using ..DGmethods: num_state, vars_state, num_aux, vars_aux
+using ..DGmethods: num_state, vars_state, num_aux, vars_aux, vars_diffusive, num_diffusive
 using ..Mesh.Topologies
 using ..Mesh.Grids
 using ..MoistThermodynamics
@@ -28,6 +28,7 @@ export gather_diagnostics
 
 include("diagnostic_vars.jl")
 
+ #, vars_diffusive, num_diffusive
 function extract_state(dg, localQ, ijk, e)
     bl = dg.balancelaw
     FT = eltype(localQ)
@@ -44,10 +45,22 @@ function extract_aux(dg, auxstate, ijk, e)
     FT = eltype(auxstate)
     nauxstate = num_aux(bl, FT)
     l_aux = MArray{Tuple{nauxstate},FT}(undef)
-    for s in 1:naux
+    for s in 1:nauxstate
         l_aux[s] = auxstate[ijk,s,e]
     end
     return Vars{vars_aux(bl, FT)}(l_aux)
+end
+
+function extract_diffusion(dg, localdiff, ijk, e)
+    bl = dg.balancelaw
+    #bl = dg.diffstate
+    FT = eltype(localdiff)
+    ndiff = num_diffusive(bl, FT)
+    l_diff = MArray{Tuple{ndiff},FT}(undef)
+    for s in 1:ndiff
+        l_diff[s] = localdiff[ijk,s,e]
+    end
+    return Vars{vars_diffusive(bl, FT)}(l_diff)
 end
 
 # thermodynamic variables of interest
@@ -68,7 +81,7 @@ end
 num_thermo(FT) = varsize(vars_thermo(FT))
 thermo_vars(array) = Vars{vars_thermo(eltype(array))}(array)
 
-function compute_thermo!(FT, state, i, j, k, ijk, ev, eh, e,
+function compute_thermo!(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e,
                          x, y, z, zvals, thermoQ)
     zvals[k,ev] = z
 
@@ -116,7 +129,9 @@ function vars_horzavg(FT)
     θ_v::FT
     e_int::FT
     h_m::FT
-    h_t::FT 
+    h_t::FT
+    qt_sgs::FT
+    ht_sgs::FT      
   end
 end
 num_horzavg(FT) = varsize(vars_horzavg(FT))
@@ -154,7 +169,7 @@ function node_adjustment(i, j, Nq, x, xmax, y, ymax)
     return rep
 end
 
-function compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
+function compute_horzsums!(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                            Nq, xmax, ymax, Nqk, nvertelem, localaux,
                            LWP, thermoQ, horzsums, repdvsr)
     #rep = node_adjustment(i, j, Nq, x, xmax, y, ymax)
@@ -174,7 +189,11 @@ function compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
     hs.e_int     += MH * th.e_int
     hs.h_m       += MH * th.h_m
     hs.h_t       += MH * th.h_t
+    hs.qt_sgs    += MH * diffusive_flx.moisture.ρd_q_tot[end] #diffusive_flx.moisture.q_tot
+    hs.ht_sgs    += MH * diffusive_flx.ρd_h_tot[end] #diffusive_flx.h_tot
     
+    repdvsr[Nqk * (ev - 1) + k] += MH
+
     # liquid water path
     # this condition is also going to be used to get the number of points that
     # exist on a horizontal plane provided all planes have the same number of
@@ -184,11 +203,11 @@ function compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
         # TODO: uncomment the line below after rewriting the LWP assignment below using aux.∫dz...?
         # aux = extract_aux(dg, localaux, ijk, e)
         LWP[1] += MH * (localaux[ijk,1,e] + localaux[ijk,2,e])
-        repdvsr[1] += MH # number of points to be divided by
+        #repdvsr[1] += MH # number of points to be divided by
     end
 end
 
-function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
+function compute_diagnosticsums!(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                                  Nq, xmax, ymax, zvals, thermoQ, horzavgs, dsums)
     #rep = node_adjustment(i, j, Nq, x, xmax, y, ymax)
     th = thermo_vars(thermoQ[ijk,e])
@@ -221,6 +240,8 @@ function compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH
     ds.e_int    += MH * ha.e_int
     ds.h_m      += MH * ha.h_m
     ds.h_t      += MH * ha.h_t
+    ds.qt_sgs   += MH * ha.qt_sgs
+    ds.ht_sgs   += MH * ha.ht_sgs
 
     # vertical fluxes
     ds.vert_eddy_mass_flx+= MH * (w̅ - w̃) * (state.ρ - ha.ρ)
@@ -256,7 +277,7 @@ function horz_average_all(FT, mpicomm, num, (Nqk, nvertelem), sums, repdvsr)
             for n in 1:num
                 avgs[k,ev][n] = MPI.Reduce(sums[k,ev][n], +, 0, mpicomm)
                 if mpirank == 0
-                    avgs[k,ev][n] /= repdvsr
+                    avgs[k,ev][n] /= repdvsr[Nqk *(ev - 1) + k] 
                 end
             end
         end
@@ -289,18 +310,21 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
 
     # get the state, auxiliary and geo variables onto the host if needed
     if Array ∈ typeof(Q).parameters
-        localQ = Q.realdata
-        localaux = dg.auxstate.realdata
+        localQ    = Q.realdata
+        localaux  = dg.auxstate.realdata
         localvgeo = grid.vgeo
+        localdiff = dg.diffstate.realdata
     else
-        localQ = Array(Q.realdata)
-        localaux = Array(dg.auxstate.realdata)
+        localQ    = Array(Q.realdata)
+        localaux  = Array(dg.auxstate.realdata)
         localvgeo = Array(grid.vgeo)
+        localdiff = Array(dg.diffstate.realdata)
     end
     FT = eltype(localQ)
 
-    nstate = num_state(bl, FT)
+    nstate    = num_state(bl, FT)
     nauxstate = num_aux(bl, FT)
+    ndiff     = num_diffusive(bl, FT)
 
     # traverse the grid, running each of `funs` on each node
     function visitQ(FT, funs::Vector{Function})
@@ -310,14 +334,18 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                 for k in 1:Nqk
                     for j in 1:Nq
                         for i in 1:Nq
-                            ijk = i + Nq * ((j-1) + Nq * (k-1)) 
-                            state = extract_state(dg, localQ, ijk, e)
+                            
+                            ijk = i + Nq * ((j-1) + Nq * (k-1))
+                            
+                            state        = extract_state(dg, localQ, ijk, e)
+                            diffusive_flx = extract_diffusion(dg, localdiff, ijk, e)
                             x = localvgeo[ijk,grid.x1id,e]
                             y = localvgeo[ijk,grid.x2id,e]
                             z = localvgeo[ijk,grid.x3id,e]
                             MH = localvgeo[ijk,grid.MHid,e]
+                            #state = cat![qstate, diffusive_flx]
                             for f in funs
-                                f(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH)
+                                f(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH)
                             end
                         end
                     end
@@ -329,18 +357,18 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
     # record the vertical coordinates and compute thermo variables
     zvals = zeros(Nqk, nvertelem)
     thermoQ = [zeros(FT, num_thermo(FT)) for _ in 1:npoints, _ in 1:nrealelem]
-    thermo_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
-        compute_thermo!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z,
+    thermo_visitor(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
+        compute_thermo!(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z,
                         zvals, thermoQ)
 
     # divisor for horizontal averages
-    l_repdvsr = zeros(FT, 1) 
+    l_repdvsr = zeros(FT, Nqk * nvertelem) 
 
     # compute the horizontal sums and the liquid water path
     l_LWP = zeros(FT, 1)
     horzsums = [zeros(FT, num_horzavg(FT)) for _ in 1:Nqk, _ in 1:nvertelem]
-    horzsum_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
-        compute_horzsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
+    horzsum_visitor(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
+        compute_horzsums!(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                           Nq, xmax, ymax, Nqk, nvertelem, localaux,
                           l_LWP, thermoQ, horzsums, l_repdvsr)
 
@@ -348,8 +376,8 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
     visitQ(FT, Function[thermo_visitor, horzsum_visitor])
     
     # compute the full number of points on a slab
-    repdvsr = zero(FT)
-    repdvsr = MPI.Reduce(l_repdvsr[1], +, 0, mpicomm)
+    repdvsr = zeros(FT, Nqk * nvertelem)
+    repdvsr = MPI.Reduce(l_repdvsr, +, 0, mpicomm)
     
     # compute the horizontal and LWP averages
     horzavgs = horz_average_all(FT, mpicomm, num_horzavg(FT), (Nqk, nvertelem),
@@ -362,8 +390,8 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
 
     # compute the diagnostics with the previous computed variables
     dsums = [zeros(FT, num_diagnostic(FT)) for _ in 1:Nqk, _ in 1:nvertelem]
-    dsum_visitor(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
-        compute_diagnosticsums!(FT, state, i, j, k, ijk, ev, eh, e, x, y, z, MH,
+    dsum_visitor(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH) =
+        compute_diagnosticsums!(FT, state, diffusive_flx, i, j, k, ijk, ev, eh, e, x, y, z, MH,
                                 Nq, xmax, ymax, zvals, thermoQ, horzavgs, dsums)
 
     # another grid traversal
