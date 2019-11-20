@@ -1,5 +1,5 @@
 using CLIMA.PlanetParameters: Omega
-export Gravity, RayleighSponge, Subsidence, GeostrophicForcing, Coriolis
+export Gravity, RayleighSponge, Subsidence, GeostrophicForcing, Coriolis, BulkDrag
 
 # kept for compatibility
 # can be removed if no functions are using this
@@ -23,9 +23,11 @@ function atmos_source!(::Gravity, m::AtmosModel, source::Vars, state::Vars, aux:
 end
 
 struct Subsidence <: Source
+  "Large scale divergence [s^(-1)]"
+  Divergence::FT
 end
 function atmos_source!(::Subsidence, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
-  source.ρu -= state.ρ * m.radiation.D_subsidence
+  source.ρu -= state.ρu * m.radiation.D_subsidence * SVector{3,FT}(0,0,1)
 end
 
 struct Coriolis <: Source
@@ -59,6 +61,8 @@ struct RayleighSponge{FT} <: Source
   zsponge::FT
   "Sponge Strength 0 ⩽ c_sponge ⩽ 1"
   c_sponge::FT
+  "Ref vel"
+  u_ref::SVector{3,FT}
 end
 function atmos_source!(s::RayleighSponge, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
   FT = eltype(state)
@@ -68,5 +72,25 @@ function atmos_source!(s::RayleighSponge, m::AtmosModel, source::Vars, state::Va
     coeff_top = s.c_sponge * (sinpi(FT(1/2)*(z - s.zsponge)/(s.zmax-s.zsponge)))^FT(4)
     coeff = min(coeff_top, 1.0)
   end
-  source.ρu -= state.ρu * coeff
+  source.ρu -= (state.ρu - state.ρ * s.u_ref) .* coeff 
 end
+
+"""
+  Bulk Drag
+Testing Parameterisation for DYCOMS with additional momentum reduction term via bulk drag coefficient
+"""
+struct BulkDrag{FT} <: Source
+  "Bulk aerodynamic drag coefficient"
+  C_drag::FT
+end
+function atmos_source!(s::BulkDrag, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
+  FT = eltype(state)
+  u = state.ρu / state.ρ
+  z = aux.coord[3]
+  if z <= FT(25)
+    source.ρu -= state.ρ * s.C_drag * sqrt(sum(abs2.(u))) .* u * (exp(-z/FT(5)))
+    source.ρe -= u' * (state.ρ * s.C_drag * sqrt(sum(abs2.(u))) .* u)
+  end
+end
+
+

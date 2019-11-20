@@ -131,7 +131,6 @@ function atmos_boundary_state!(::Rusanov, bc::DYCOMS_BC, m::AtmosModel,
 
   # Assign scalar values at the boundaries 
   stateP.ρ = ρM
-  stateP.moisture.ρq_tot = QTM
   
   if bctype == 1 # bctype identifies bottom wall 
     stateP.ρu = SVector(0,0,0)
@@ -171,32 +170,13 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::DYCOMS_BC,
     # ------------------------------------------------------------------------
     # (<var>_FN) First node values (First interior node from bottom wall)
     # ------------------------------------------------------------------------
-    z_FN             = aux1.coord[3]
-    ρ_FN             = state1.ρ
+    ρ_FN = state1.ρ
     U_FN, V_FN, W_FN = state1.ρu
-    E_FN             = state1.ρe
     u_FN, v_FN, w_FN = U_FN/ρ_FN, V_FN/ρ_FN, W_FN/ρ_FN
     windspeed_FN     = sqrt(u_FN^2 + v_FN^2 + w_FN^2)
-    q_tot_FN         = state1.moisture.ρq_tot / ρ_FN
-    e_int_FN         = E_FN/ρ_FN - windspeed_FN^2/2 - grav*z_FN
-    TS_FN            = PhaseEquil(e_int_FN, q_tot_FN, ρ_FN) 
-    T_FN             = air_temperature(TS_FN)
-    q_vap_FN         = q_tot_FN - PhasePartition(TS_FN).liq
-    # --------------------------
-    # Bottom boundary quantities 
-    # --------------------------
-    zM          = auxM.coord[3] 
-    q_totM      = QTM/ρM
-    windspeed   = sqrt(uM^2 + vM^2 + wM^2)
-    e_intM      = EM/ρM - windspeed^2/2 - grav*zM
-    TSM         = PhaseEquil(e_intM, q_totM, ρM) 
-    q_vapM      = q_totM - PhasePartition(TSM).liq
-    TM          = air_temperature(TSM)
-    # ----------------------------------------------------------
     # Extract components of diffusive momentum flux (minus-side)
     # ----------------------------------------------------------
     ρτM = diffM.ρτ
-
     # ----------------------------------------------------------
     # Boundary momentum fluxes
     # ----------------------------------------------------------
@@ -207,22 +187,22 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::DYCOMS_BC,
     ρτ23P  = -ρM * C_drag * windspeed_FN * v_FN 
     # Assign diffusive momentum and moisture fluxes
     # (i.e. ρ𝛕 terms)  
-    stateP.ρu = SVector(0,0,0)
-    diffP.ρτ = SHermitianCompact{3,FT,6}(SVector(FT(0),ρτM[2,1],ρτ13P, FT(0), ρτ23P,FT(0)))
+    stateP.ρu = -stateM.ρu # Dirichlet on u
+    diffP.ρτ = -diffM.ρτ + 2 .* SHermitianCompact{3,FT,6}(SVector(ρτM[1,1],ρτM[2,1],ρτ13P, ρτM[2,2], ρτ23P,-ρτM[3,3]))
 
     # ----------------------------------------------------------
     # Boundary moisture fluxes
     # ----------------------------------------------------------
-    diffP.moisture.ρd_q_tot  = SVector(FT(0),
-                                       FT(0),
-                                       bc.LHF/(LH_v0))
+    diffP.moisture.ρd_q_tot  = -diffM.moisture.ρd_q_tot + 2 .* SVector(FT(0),
+                                                                       FT(0),
+                                                                       bc.LHF/(LH_v0))
     # ----------------------------------------------------------
     # Boundary energy fluxes
     # ----------------------------------------------------------
     # Assign diffusive enthalpy flux (i.e. ρ(J+D) terms) 
-    diffP.ρd_h_tot  = SVector(FT(0),
-                              FT(0),
-                              bc.LHF + bc.SHF)
+    diffP.ρd_h_tot  = -diffM.ρd_h_tot + 2 .* SVector(diffM.ρd_h_tot[1],
+                                                     diffM.ρd_h_tot[1],
+                                                     bc.LHF + bc.SHF)
   end
 end
 

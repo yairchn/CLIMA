@@ -188,9 +188,10 @@ function run(mpicomm,
                      EquilMoist(),
                      StevensRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1),
                      (Gravity(),
-                      RayleighSponge{FT}(zmax, zsponge, 1),
+                      RayleighSponge{FT}(zmax, zsponge, 1, SVector{3,FT}(u_geostrophic,v_geostrophic,FT(0))),
                       Subsidence(),
-                      GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic)),
+                      GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic),
+                      ),
                      DYCOMS_BC{FT}(C_drag, LHF, SHF),
                      Initialise_DYCOMS!)
   
@@ -211,7 +212,7 @@ function run(mpicomm,
                 auxstate=dg.auxstate,
                 direction=VerticalDirection())
   Q = init_ode_state(dg, FT(0))
-  
+  eng0 = norm(Q)
   @info @sprintf """
   Starting
   -----------------
@@ -268,7 +269,7 @@ function run(mpicomm,
                        xmax, ymax, out_dir)
   end
   
-  callbacks = (cbdiagnostics, cbinfo)
+  callbacks = (cbdiagnostics, cbinfo, cbvtk)
   solve!(Q, solver; 
          numberofsteps=numberofsteps, 
          callbacks=callbacks,
@@ -322,7 +323,7 @@ let
     SHF    = FT(15)
     C_drag = FT(0.0011)
     # User defined domain parameters
-    Δh, Δv = 50, 50, 20
+    Δh, Δv = 35, 5
     xmin, xmax = 0, 1500
     ymin, ymax = 0, 1500
     zmin, zmax = 0, 1500
