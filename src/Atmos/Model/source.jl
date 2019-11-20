@@ -25,7 +25,8 @@ end
 struct Subsidence <: Source
 end
 function atmos_source!(::Subsidence, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
-  source.ρu -= state.ρ * m.radiation.D_subsidence
+    n = aux.orientation.∇Φ ./ norm(aux.orientation.∇Φ)
+    source.ρu -= m.radiation.D_subsidence * dot(state.ρu, n) * n
 end
 
 struct Coriolis <: Source
@@ -59,6 +60,8 @@ struct RayleighSponge{FT} <: Source
   zsponge::FT
   "Sponge Strength 0 ⩽ c_sponge ⩽ 1"
   c_sponge::FT
+  "Relaxtion velocity components"
+  u_relaxation::SVector{3,FT}  
 end
 function atmos_source!(s::RayleighSponge, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
   FT = eltype(state)
@@ -66,7 +69,10 @@ function atmos_source!(s::RayleighSponge, m::AtmosModel, source::Vars, state::Va
   coeff = FT(0)
   if z >= s.zsponge
     coeff_top = s.c_sponge * (sinpi(FT(1/2)*(z - s.zsponge)/(s.zmax-s.zsponge)))^FT(4)
-    coeff = min(coeff_top, 1.0)
+    coeff = min(coeff_top, FT(1))
   end
-  source.ρu -= state.ρu * coeff
+
+    u = state.ρu / state.ρ
+    source.ρu -= state.ρ * coeff * (u - s.u_relaxation)
+    
 end

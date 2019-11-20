@@ -69,7 +69,7 @@ function Initialise_DYCOMS!(state::Vars, aux::Vars, (x,y,z), t)
   q_pt_sfc      = PhasePartition(q_tot_sfc)
   Rm_sfc::FT    = 461.5 #gas_constant_air(q_pt_sfc)
   T_sfc::FT     = 292.5
-  P_sfc::FT     = 101780 #MSLP
+  P_sfc::FT     = MSLP
   ρ_sfc::FT     = P_sfc / Rm_sfc / T_sfc
   # Specify moisture profiles
   q_liq::FT      = 0
@@ -166,7 +166,9 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   f_coriolis    = FT(7.62e-5)
   u_geostrophic = FT(7.0)
   v_geostrophic = FT(-5.5)
-
+  w_ref         = FT(0.0)
+  u_relaxation  = SVector(u_geostrophic, v_geostrophic, w_ref)
+    
   # Model definition
   model = AtmosModel(FlatOrientation(),
                      NoReferenceState(),
@@ -174,7 +176,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
                      EquilMoist(),
                      StevensRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1),
                      (Gravity(),
-                      RayleighSponge{FT}(zmax, zsponge, 1),
+                      RayleighSponge{FT}(zmax, zsponge, 1, u_relaxation),
                       Subsidence(),
                       GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic)),
                      DYCOMS_BC{FT}(C_drag, LHF, SHF),
@@ -213,7 +215,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   
   # Setup VTK output callbacks
   step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(50) do (init=false)
     fprefix = @sprintf("dycoms_%dD_mpirank%04d_step%04d", dim,
                        MPI.Comm_rank(mpicomm), step[1])
     outprefix = joinpath(out_dir, fprefix)
@@ -225,10 +227,9 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
     nothing
   end
   
-
   # Get statistics during run
   diagnostics_time_str = string(now())
-  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
+  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(50) do (init=false)
     sim_time_str = string(ODESolvers.gettime(lsrk))
     gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                        xmax, ymax, out_dir)
@@ -286,7 +287,7 @@ let
     N = 4
     # SGS Filter constants
     C_smag = FT(0.15)
-    LHF    = FT(115)
+    LHF    = FT(130)
     SHF    = FT(15)
     C_drag = FT(0.0011)
     # User defined domain parameters
@@ -311,7 +312,7 @@ let
                                 periodicity = (true, true, false),
                                 boundary=((0,0),(0,0),(1,2)))
     dt = 0.01
-    timeend = 14400
+    timeend = 10dt
     @info (ArrayType, dt, FT, dim)
     result = run(mpicomm, ArrayType, dim, topl,
                  N, timeend, FT, dt, C_smag, LHF, SHF, C_drag, xmax, ymax, zmax, zsponge,
