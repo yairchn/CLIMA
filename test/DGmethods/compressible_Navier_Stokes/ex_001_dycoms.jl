@@ -216,7 +216,8 @@ function run(mpicomm,
   @info @sprintf """
   Starting
   -----------------
-  """ 
+  eng0 = %.16e
+  """ eng0
   
   if explicit == 1
     solver = LSRK54CarpenterKennedy(dg, Q; dt = dt_exp, t0 = 0)
@@ -341,7 +342,7 @@ let
     topl = StackedBrickTopology(mpicomm, brickrange,
                                 periodicity = (true, true, false),
                                 boundary=((0,0),(0,0),(1,2)))
-    safety_fac = FT(0.8)
+    safety_fac = FT(0.5)
     dt_exp = min(Δh/soundspeed_air(FT(330))/N * safety_fac,Δv/soundspeed_air(FT(330))/N * safety_fac)
     dt_imex = Δh/soundspeed_air(FT(330))/N * safety_fac
     timeend = 14400

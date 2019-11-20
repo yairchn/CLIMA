@@ -23,11 +23,9 @@ function atmos_source!(::Gravity, m::AtmosModel, source::Vars, state::Vars, aux:
 end
 
 struct Subsidence <: Source
-  "Large scale divergence [s^(-1)]"
-  Divergence::FT
 end
 function atmos_source!(::Subsidence, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
-  source.ρu -= state.ρu * m.radiation.D_subsidence * SVector{3,FT}(0,0,1)
+  source.ρu -= state.ρu * m.radiation.D_subsidence .* SVector{3,eltype(state)}(0,0,1)
 end
 
 struct Coriolis <: Source
