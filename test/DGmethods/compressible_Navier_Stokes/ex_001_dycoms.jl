@@ -195,7 +195,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
  =#
   # Set up the information callback
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(60, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(30, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -213,7 +213,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   
   # Setup VTK output callbacks
   step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(500) do (init=false)
     fprefix = @sprintf("dycoms_%dD_mpirank%04d_step%04d", dim,
                        MPI.Comm_rank(mpicomm), step[1])
     outprefix = joinpath(out_dir, fprefix)
@@ -228,7 +228,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
 
   # Get statistics during run
   diagnostics_time_str = string(now())
-  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
+  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(500) do (init=false)
     sim_time_str = string(ODESolvers.gettime(lsrk))
     gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                        xmax, ymax, out_dir)
@@ -311,7 +311,7 @@ let
                                 periodicity = (true, true, false),
                                 boundary=((0,0),(0,0),(1,2)))
     dt = 0.01
-    timeend = 14400
+    timeend = 1000
     @info (ArrayType, dt, FT, dim)
     result = run(mpicomm, ArrayType, dim, topl,
                  N, timeend, FT, dt, C_smag, LHF, SHF, C_drag, xmax, ymax, zmax, zsponge,
