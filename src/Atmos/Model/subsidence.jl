@@ -21,9 +21,10 @@ function flux_dry_subsidence!(::MoistureModel,flux::Grad, state::Vars, aux::Vars
   u_sub = - D * z
   ρ = state.ρ
   u = state.ρu / state.ρ
-  flux.ρ   += ρ * -D * z
-  flux.ρu  += ρ * (-D*z) * (-D*z)'
-  flux.ρe  += -D*z * state.ρe
+  u_sub = SVector{3,FT}(0,0,-D * z)
+  flux.ρ   += ρ * u_sub
+  flux.ρu  += ρ * (u_sub) * (u_sub)'
+  flux.ρe  += u_sub * state.ρe
 end
 
 function flux_moist_subsidence!(moist::EquilMoist, flux::Grad, state::Vars, aux::Vars, t::Real)
@@ -33,5 +34,5 @@ function flux_moist_subsidence!(moist::EquilMoist, flux::Grad, state::Vars, aux:
   u_sub = - D * z
   ρ = state.ρ
   u = state.ρu / state.ρ
-  flux.moisture.ρq_tot += -D*z * state.moisture.ρq_tot * ρ
+  flux.moisture.ρq_tot += u_sub * state.moisture.ρq_tot * ρ
 end
