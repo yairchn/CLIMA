@@ -32,7 +32,15 @@ A `BalanceLaw` for atmosphere modeling.
 
     AtmosModel(orientation, ref_state, turbulence, moisture, radiation, source,
                boundarycondition, init_state)
-
+# Types
+ O      : (O)rientation: FlatOrientation, SphericalOrientation
+ RS     : (R)eference(S)tate: HydrostaticState
+ T      : (T)urbulence: ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss
+ M      : (M)oisture: EquilMoist, DryModel
+ R      : (R)adiation: StevensRadiation, NoRadiation
+ S      : Gravity, RayleighSponge, GeostrophicForcing
+ BC     : BoundaryConditions (specific to each driver) 
+ IS     : InitialConditions (specific to each driver)
 """
 struct AtmosModel{O,RS,T,M,R,S,BC,IS} <: BalanceLaw
   orientation::O
@@ -124,7 +132,15 @@ Where
   p = pressure(m.moisture, m.orientation, state, aux)
   flux.ρu += p*I
   flux.ρe += u*p
+  
+  z  = aux.orientation.Φ / grav
+  D_sub = eltype(state)(3.75e-6)
+  flux.ρ   += state.ρ * -D_sub * z
+  flux.ρu  += state.ρ * (-D_sub*z) * (-D_sub*z)'
+  flux.ρe  += -D_sub*z * state.ρe
+
   flux_radiation!(m.radiation, flux, state, aux, t)
+  flux_moisture!(m.moisture, flux, state, aux, t)
 end
 
 @inline function flux_diffusive!(m::AtmosModel, flux::Grad, state::Vars,

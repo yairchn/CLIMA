@@ -274,7 +274,7 @@ end
 function atmos_boundary_state!(::Rusanov, bc::BC_DYCOMS, m::AtmosModel,
                                stateP::Vars, auxP::Vars, nM, stateM::Vars,
                                auxM::Vars, bctype, t, state1::Vars, aux1::Vars)
-  FT = eltype(state)
+  FT = eltype(stateM)
   if bctype == 1 
     # Bottom wall 
     # Dirichlet Condition on velocity
