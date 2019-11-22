@@ -189,7 +189,6 @@ function run(mpicomm,
                      StevensRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1),
                      (Gravity(),
                       RayleighSponge{FT}(zmax, zsponge, 1, SVector{3,FT}(u_geostrophic,v_geostrophic,FT(0))),
-                      Subsidence(),
                       GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic),
                       ),
                      DYCOMS_BC{FT}(C_drag, LHF, SHF),
@@ -233,7 +232,7 @@ function run(mpicomm,
   
   # Set up the information callback
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(30, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -250,7 +249,7 @@ function run(mpicomm,
 
   # Setup VTK output callbacks
   step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
     fprefix = @sprintf("dycomsLR_%dD_mpirank%04d_step%04d", dim,
                        MPI.Comm_rank(mpicomm), step[1])
     outprefix = joinpath(out_dir, fprefix)
@@ -264,7 +263,7 @@ function run(mpicomm,
 
   # Get statistics during run
   diagnostics_time_str = string(now())
-  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
+  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
     sim_time_str = string(ODESolvers.gettime(solver))
     gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                        xmax, ymax, out_dir)

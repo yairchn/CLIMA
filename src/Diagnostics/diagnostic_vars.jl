@@ -27,6 +27,8 @@ function vars_diagnostic(FT)
     h_t::FT
     qt_sgs::FT
     ht_sgs::FT
+    Ri::FT
+    SGS::FT
       
     vert_eddy_mass_flx::FT
     vert_eddy_u_flx::FT
