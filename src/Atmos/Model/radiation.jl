@@ -54,7 +54,7 @@ function flux_radiation!(m::StevensRadiation, flux::Grad, state::Vars,
   z = aux.orientation.Φ/grav
   Δz_i = max(z - m.z_i, -zero(FT))
   # Constants
-  cloud_top_cooling = m.F_0 * exp(-aux.∫dnz.radiation.∂κLWP)
+  cloud_top_cooling  = m.F_0 * exp(-aux.∫dnz.radiation.∂κLWP)
   cloud_base_warming = m.F_1 * exp(-aux.∫dz.radiation.∂κLWP)
   free_troposphere_cooling = m.ρ_i * FT(cp_d) * m.D_subsidence * m.α_z * ((cbrt(Δz_i))^4 / 4 + m.z_i * cbrt(Δz_i))
   F_rad = cloud_base_warming + cloud_base_warming + free_troposphere_cooling

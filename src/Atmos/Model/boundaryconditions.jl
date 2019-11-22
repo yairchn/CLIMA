@@ -1,5 +1,5 @@
 using CLIMA.PlanetParameters
-export PeriodicBC, NoFluxBC, InitStateBC, DYCOMS_BC, RayleighBenardBC
+export PeriodicBC, NoFluxBC, InitStateBC, DYCOMS_BC, RayleighBenardBC, RayleighBenardFluxBC
 
 #TODO: figure out a better interface for this.
 # at the moment we can just pass a function, but we should do something better
@@ -207,22 +207,22 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::DYCOMS_BC,
     ρτ23P  = -ρM * C_drag * windspeed_FN * v_FN 
     # Assign diffusive momentum and moisture fluxes
     # (i.e. ρ𝛕 terms)  
-    stateP.ρu = SVector(0,0,0)
-    diffP.ρτ = SHermitianCompact{3,FT,6}(SVector(FT(0),ρτM[2,1],ρτ13P, FT(0), ρτ23P,FT(0)))
+    stateP.ρu = -stateM.ρu
+    diffP.ρτ = -diffM.ρτ + 2 .* SHermitianCompact{3,FT,6}(SVector(FT(0),ρτM[2,1],ρτ13P, FT(0), ρτ23P,FT(0)))
 
     # ----------------------------------------------------------
     # Boundary moisture fluxes
     # ----------------------------------------------------------
-    diffP.moisture.ρd_q_tot  = SVector(FT(0),
-                                       FT(0),
-                                       bc.LHF/(LH_v0))
+    diffP.moisture.ρd_q_tot  = -diffM.moisture.ρd_q_tot + 2 .* SVector(FT(0),
+                                                              FT(0),
+                                                              (bc.LHF/(LH_v0)))
     # ----------------------------------------------------------
     # Boundary energy fluxes
     # ----------------------------------------------------------
     # Assign diffusive enthalpy flux (i.e. ρ(J+D) terms) 
-    diffP.ρd_h_tot  = SVector(FT(0),
-                              FT(0),
-                              bc.LHF + bc.SHF)
+    diffP.ρd_h_tot  = -diffM.ρd_h_tot + 2 .* SVector(FT(0),
+                                                     FT(0),
+                                                     (bc.LHF + bc.SHF))
   end
 end
 
@@ -274,6 +274,44 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::RayleighBena
     end
     stateP.ρe = (E_intP + ρP * auxP.coord[3] * grav)
     diffP.ρd_h_tot = SVector(diffP.ρd_h_tot[1], diffP.ρd_h_tot[2], FT(0))
+    nothing
+  end
+end
+
+"""
+  RayleighBenardFluxBC <: BoundaryCondition
+
+# Fields
+$(DocStringExtensions.FIELDS)
+"""
+struct RayleighBenardFluxBC{FT} <: BoundaryCondition
+  "Prescribed bottom wall heat flux [W/m^2]"
+  F_wall::FT
+end
+# Rayleigh-Benard problem with two fixed walls (prescribed temperatures)
+function atmos_boundary_state!(::Rusanov, bc::RayleighBenardFluxBC, m::AtmosModel,
+                               stateP::Vars, auxP::Vars, nM, stateM::Vars,
+                               auxM::Vars, bctype, t,_...)
+  # Dry Rayleigh Benard Convection
+  @inbounds begin
+    FT = eltype(stateP)
+    ρP = stateM.ρ
+    stateP.ρ = ρP
+    stateP.ρu = SVector{3,FT}(0,0,0)
+    nothing
+  end
+end
+function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::RayleighBenardFluxBC,
+                               m::AtmosModel, stateP::Vars, diffP::Vars,
+                               auxP::Vars, nM, stateM::Vars, diffM::Vars,
+                               auxM::Vars, bctype, t, _...)
+  # Dry Rayleigh Benard Convection
+  @inbounds begin
+    FT = eltype(stateM)
+    ρP = stateM.ρ
+    stateP.ρ = ρP
+    stateP.ρu = -stateM.ρu
+    diffP.ρd_h_tot = SVector(FT(0),FT(0), FT(bc.F_wall))
     nothing
   end
 end

@@ -23,7 +23,8 @@ using StaticArrays
 using Logging
 using Printf
 using Dates
-
+using GPUifyLoops
+      
 @static if haspkg("CuArrays")
   using CUDAdrv
   using CUDAnative
@@ -38,6 +39,8 @@ if !@isdefined integration_testing
   const integration_testing =
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
 end
+
+const seed = MersenneTwister(0)
 
 """
   Initial Condition for DYCOMS_RF01 LES
@@ -172,12 +175,11 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   # Model definition
   model = AtmosModel(FlatOrientation(),
                      NoReferenceState(),
-                     SmagorinskyLilly{FT}(C_smag),
+                     Vreman{FT}(C_smag),
                      EquilMoist(),
                      StevensRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1),
                      (Gravity(),
-                      RayleighSponge{FT}(zmax, zsponge, 1, u_relaxation),
-                      Subsidence(),
+                      RayleighSponge{FT}(zmax, zsponge, 1.0, u_relaxation),
                       GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic)),
                      DYCOMS_BC{FT}(C_drag, LHF, SHF),
                      Initialise_DYCOMS!)
@@ -187,6 +189,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
                Rusanov(),
                CentralNumericalFluxDiffusive(),
                CentralGradPenalty())
+    
   #Q = init_ode_state(dg, FT(0); device=CPU())
   Q = init_ode_state(dg, FT(0))
   lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
@@ -215,7 +218,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   
   # Setup VTK output callbacks
   step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(50) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
     fprefix = @sprintf("dycoms_%dD_mpirank%04d_step%04d", dim,
                        MPI.Comm_rank(mpicomm), step[1])
     outprefix = joinpath(out_dir, fprefix)
@@ -229,13 +232,12 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   
   # Get statistics during run
   diagnostics_time_str = string(now())
-  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(50) do (init=false)
+  cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(5000) do (init=false)
     sim_time_str = string(ODESolvers.gettime(lsrk))
     gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                        xmax, ymax, out_dir)
   end
 
-  #solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk, cbdiagnostics))
   solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo, cbvtk, cbdiagnostics))
 
   # Get statistics at the end of the run
@@ -286,9 +288,9 @@ let
     # DG polynomial order
     N = 4
     # SGS Filter constants
-    C_smag = FT(0.15)
-    LHF    = FT(-115)
-    SHF    = FT(-15)
+    C_smag = FT(0.12)
+    LHF    = FT(115)
+    SHF    = FT(15)
     C_drag = FT(0.0011)
     # User defined domain parameters
     Δx, Δy, Δz = 50, 50, 20
@@ -306,13 +308,13 @@ let
                   grid1d(ymin, ymax, elemsize=FT(grid_resolution[2])*N),
                   grid1d(zmin, zmax, elemsize=FT(grid_resolution[end])*N))
     zmax = brickrange[dim][end]
-    zsponge = FT(1200.0)
+    zsponge = FT(1000.0)
 
     topl = StackedBrickTopology(mpicomm, brickrange,
                                 periodicity = (true, true, false),
                                 boundary=((0,0),(0,0),(1,2)))
     dt = 0.01
-    timeend = 10dt
+    timeend = 14400
     @info (ArrayType, dt, FT, dim)
     result = run(mpicomm, ArrayType, dim, topl,
                  N, timeend, FT, dt, C_smag, LHF, SHF, C_drag, xmax, ymax, zmax, zsponge,
@@ -320,4 +322,3 @@ let
 
   end
 end
-
