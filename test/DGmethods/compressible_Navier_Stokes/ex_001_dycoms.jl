@@ -232,7 +232,7 @@ function run(mpicomm,
   
   # Set up the information callback
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(60, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -336,7 +336,7 @@ let
                   grid1d(ymin, ymax, elemsize=FT(grid_resolution[2])*N),
                   grid1d(zmin, zmax, elemsize=FT(grid_resolution[end])*N))
     zmax = brickrange[dim][end]
-    zsponge = FT(1200.0)
+    zsponge = FT(1000.0)
 
     topl = StackedBrickTopology(mpicomm, brickrange,
                                 periodicity = (true, true, false),
@@ -344,7 +344,7 @@ let
     safety_fac = FT(0.8)
     dt_exp = min(Δh/soundspeed_air(FT(330))/N * safety_fac,Δv/soundspeed_air(FT(330))/N * safety_fac)
     dt_imex = Δh/soundspeed_air(FT(330))/N * safety_fac
-    timeend = 14400
+    timeend = 10 #14400
     explicit = 0
     result = run(mpicomm, 
                  ArrayType, 
