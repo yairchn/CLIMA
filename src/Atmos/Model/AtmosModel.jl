@@ -1,8 +1,6 @@
 module Atmos
 
-export AtmosModel,
-       AtmosAcousticLinearModel, AtmosAcousticGravityLinearModel,
-       RemainderModel
+export AtmosModel
 
 using LinearAlgebra, StaticArrays
 using ..VariableTemplates
@@ -113,19 +111,25 @@ Where
                                     aux::Vars, t::Real)
   ρinv = 1/state.ρ
   ρu = state.ρu
+
+  # primitive variable u⃗ velocity
   u = ρinv * ρu
 
-  # advective terms
+  # advective terms (ρu⃗, ρu⃗⊗u⃗, ρu⃗e_tot)ᵀ
   flux.ρ   = ρu
   flux.ρu  = ρu .* u'
   flux.ρe  = u * state.ρe
 
-  # pressure terms
+  # moisture flux  (ρu⃗q_tot)
+  flux_moisture!(m.moisture, flux, state, aux, t)
+
+  # pressure terms (p𝐈, pu⃗)ᵀ
   p = pressure(m.moisture, m.orientation, state, aux)
   flux.ρu += p*I
   flux.ρe += u*p
+  
+  # radiation flux (ρFᵣ)
   flux_radiation!(m.radiation, flux, state, aux, t)
-  flux_moisture!(m.moisture, flux, state, aux, t)
 end
 
 @inline function flux_diffusive!(m::AtmosModel, flux::Grad, state::Vars,
@@ -133,26 +137,36 @@ end
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
   
-  # diffusive
+  # (see `turbulence.jl` for shear stress tensor)
   ρτ = diffusive.ρτ
   ρd_h_tot = diffusive.ρd_h_tot
   flux.ρu += ρτ
+  # diffusive momentum flux ρτ⃗
   flux.ρe += ρτ*u
+  # diffusive enthalpy flux
   flux.ρe += ρd_h_tot
+  # diffusive moisture fluxes (see `moisture.jl` for contributions)
   flux_diffusive!(m.moisture, flux, state, diffusive, aux, t)
 end
 
 @inline function wavespeed(m::AtmosModel, nM, state::Vars, aux::Vars, t::Real)
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
+  # maximum wavespeed = |n⃗⋅u⃗| + soundspeed
   return abs(dot(nM, u)) + soundspeed(m.moisture, m.orientation, state, aux)
 end
 
 function gradvariables!(atmos::AtmosModel, transform::Vars, state::Vars, aux::Vars, t::Real)
   ρinv = 1/state.ρ
+  # specify variables for which gradients are required 
+  
+  # primitive velocity vector u⃗ 
   transform.u = ρinv * state.ρu
+
+  # total specific enthalpy  (h_tot = e_int + gz + 0.5(u⃗⋅u⃗) + RₘT)
   transform.h_tot = total_specific_enthalpy(atmos.moisture, atmos.orientation, state, aux)
 
+  # subcomponent gradient terms 
   gradvariables!(atmos.moisture, transform, state, aux, t)
   gradvariables!(atmos.turbulence, transform, state, aux, t)
 end
@@ -176,11 +190,13 @@ function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::V
   diag_ρν = ρν isa Real ? ρν : diag(ρν) # either a scalar or matrix
   # Diffusivity ρD_t = ρν/Prandtl_turb
   ρD_t = diag_ρν * inv_Pr_turb
-  # diffusive flux of total energy
+
+  # diffusive flux of total enthalpy (ρ𝐝h_tot)
   diffusive.ρd_h_tot = -ρD_t .* ∇transform.h_tot
 
-  # diffusivity of moisture components
+  # diffusive flux of total moisture (ρ𝐝q_tot)
   diffusive!(m.moisture, diffusive, ∇transform, state, aux, t, ρD_t)
+  
   # diffusion terms required for SGS turbulence computations
   diffusive!(m.turbulence, diffusive, ∇transform, state, aux, t, ρD_t)
 end
@@ -199,12 +215,14 @@ end
 
 function atmos_nodal_update_aux!(m::AtmosModel, state::Vars, aux::Vars,
                                  diff::Vars, t::Real)
+  # Update aux variables per timestep
   atmos_nodal_update_aux!(m.moisture, m, state, aux, t)
   atmos_nodal_update_aux!(m.radiation, m, state, aux, t)
   atmos_nodal_update_aux!(m.turbulence, m, state, aux, t)
 end
 
 function integrate_aux!(m::AtmosModel, integ::Vars, state::Vars, aux::Vars)
+  # Integration step (vertical integration of specified aux variables. see aux.∫<vars>)
   integrate_aux!(m.radiation, integ, state, aux)
 end
 
@@ -228,7 +246,7 @@ end
 
 """
     source!(m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
-Computes flux `S(Y)` in:
+Computes source terms `S(Y)` in:
 ```
 ∂Y
 -- = - ∇ • F + S(Y)

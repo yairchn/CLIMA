@@ -62,6 +62,8 @@ thermo_state(moist::DryModel, orientation::Orientation, state::Vars, aux::Vars) 
     EquilMoist
 
 Assumes the moisture components are computed via thermodynamic equilibrium.
+state.moisture.ρq_tot is the prognostic variable. Phase partitioning, i.e. 
+(ρq_liq and ρq_ice) is determined via saturation adjustment. 
 """
 struct EquilMoist <: MoistureModel
 end
@@ -80,6 +82,7 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT)
   nothing
 end
 
+
 function thermo_state(moist::EquilMoist, orientation::Orientation, state::Vars, aux::Vars)
   e_int = internal_energy(moist, orientation, state, aux)
   PhaseEquil(e_int, state.moisture.ρq_tot/state.ρ, state.ρ, aux.moisture.temperature)
@@ -95,6 +98,11 @@ function diffusive!(moist::EquilMoist, diffusive::Vars, ∇transform::Grad, stat
   diffusive.moisture.ρd_q_tot = (-ρD_t) .* ∇transform.moisture.q_tot
 end
 
+"""
+  flux_moisture!(moist::EquilMoist, flux::Grad, state::Vars, aux::Vars, t::Real)
+Computes the non-diffusive (advective) moisture flux using ρq_tot as the prognostic variable.
+Assumes thermodynamic equilibrium and phase partitioning using saturation adjustment 
+"""
 function flux_moisture!(moist::EquilMoist, flux::Grad, state::Vars, aux::Vars, t::Real)
   u = state.ρu / state.ρ
   flux.moisture.ρq_tot += state.moisture.ρq_tot * u 

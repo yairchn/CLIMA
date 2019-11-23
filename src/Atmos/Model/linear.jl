@@ -1,3 +1,6 @@
+
+export AtmosAcousticLinearModel, AtmosAcousticGravityLinearModel
+
 abstract type AtmosLinearModel <: BalanceLaw
 end
 
