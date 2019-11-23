@@ -24,17 +24,17 @@ end
 
 struct Subsidence <: Source
 end
-#function atmos_source!(::Subsidence, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
-#    n = aux.orientation.∇Φ ./ norm(aux.orientation.∇Φ)
-#    source.ρu -= m.radiation.D_subsidence * dot(state.ρu, n) * n
-#
+function atmos_source!(::Subsidence, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
+    n = aux.orientation.∇Φ ./ norm(aux.orientation.∇Φ)
+    source.ρu -= m.radiation.D_subsidence * dot(state.ρu, n) * n
+
 #    source.ρqt
-#end
+end
 
 struct Coriolis <: Source
 end
 function atmos_source!(::Coriolis, m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
-  # note: this assumes a SphericalOrientation
+  # note: this assumes a SphericalOrientation 
   source.ρu -= SVector(0, 0, 2*Omega) × state.ρu
 end
 
@@ -82,7 +82,17 @@ function atmos_source!(s::RayleighSponge, m::AtmosModel, source::Vars, state::Va
 #	  #coeff = min(coeff_top, FT(1))
 #  end
 
-  u = state.ρu / state.ρ
-  source.ρu -= state.ρ * coeff * (u - s.u_relaxation)
+    u = state.ρu / state.ρ
+    source.ρu -= state.ρ * coeff * (u - s.u_relaxation)
 
+    ##
+    #=
+    D = FT(3.75e-6)
+    u_ref = s.u_relaxation[1]
+    v_ref = s.u_relaxation[2]    
+    w_ref = -D*z
+    u_relaxation = SVector{3,FT}(u_ref, v_ref, w_ref)
+    source.ρu -= state.ρ * coeff * (u - u_relaxation)
+    =#
+    ##
 end

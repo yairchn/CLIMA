@@ -137,8 +137,6 @@ function squared_buoyancy_correction(normS, ∇transform::Grad, aux::Vars)
   N² = ∂θ∂Φ / aux.moisture.θ_v
   Richardson = N² / (normS^2 + eps(normS))
   sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
-
-  aux.turbulence.Ri = Richardson
 end
 
 function strain_rate_magnitude(S::SHermitianCompact{3,FT,6}) where {FT}
@@ -153,7 +151,6 @@ function dynamic_viscosity_tensor(m::SmagorinskyLilly, S, state::Vars, diffusive
   @inbounds normS = strain_rate_magnitude(S)
   f_b² = squared_buoyancy_correction(normS, ∇transform, aux)
     # Return Buoyancy-adjusted Smagorinsky Coefficient (ρ scaled)
-    aux.turbulence.SGS = 
   return state.ρ * normS * f_b² * FT(m.C_smag * aux.turbulence.Δ)^2
 end
 function scaled_momentum_flux_tensor(m::SmagorinskyLilly, ρν, S)

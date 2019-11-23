@@ -112,16 +112,17 @@ Where
 @inline function flux_nondiffusive!(m::AtmosModel, flux::Grad, state::Vars,
                                     aux::Vars, t::Real)
   FT = eltype(state)
-  D = m.radiation.D_subsidence
-  n = aux.orientation.∇Φ ./ norm(aux.orientation.∇Φ)
+  D = FT(3.75e-6)
   z = aux.orientation.Φ / grav
     
   ρinv = 1/state.ρ
   ρu = state.ρu
   u = ρinv * ρu
-#  u += SVector(0, 0, -D*z)
-#  state.ρu = state.ρ*u
-#  u = ρinv * ρu
+
+    ###
+#    u += SVector(0, 0, -D*z)
+#    ρu = state.ρ*u
+    ###
     
   # advective terms
   flux.ρ   = ρu

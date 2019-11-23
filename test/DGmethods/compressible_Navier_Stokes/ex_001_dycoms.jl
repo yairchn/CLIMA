@@ -175,7 +175,7 @@ function run(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt, C_smag, LHF, SHF
   # Model definition
   model = AtmosModel(FlatOrientation(),
                      NoReferenceState(),
-                     Vreman{FT}(C_smag),
+                     SmagorinskyLilly{FT}(C_smag),
                      EquilMoist(),
                      StevensRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1),
                      (Gravity(),
@@ -288,7 +288,7 @@ let
     # DG polynomial order
     N = 4
     # SGS Filter constants
-    C_smag = FT(0.12)
+    C_smag = FT(0.0)
     LHF    = FT(115)
     SHF    = FT(15)
     C_drag = FT(0.0011)
@@ -296,8 +296,8 @@ let
     Δx, Δy, Δz = 50, 50, 20
     #xmin, xmax = 0, 3200
     #ymin, ymax = 0, 3200
-    xmin, xmax = 0, 1500
-    ymin, ymax = 0, 1500
+    xmin, xmax = 0, 1000
+    ymin, ymax = 0, 1000
     zmin, zmax = 0, 1500
 
     grid_resolution = [Δx, Δy, Δz]
@@ -308,7 +308,7 @@ let
                   grid1d(ymin, ymax, elemsize=FT(grid_resolution[2])*N),
                   grid1d(zmin, zmax, elemsize=FT(grid_resolution[end])*N))
     zmax = brickrange[dim][end]
-    zsponge = FT(1000.0)
+    zsponge = FT(1200.0)
 
     topl = StackedBrickTopology(mpicomm, brickrange,
                                 periodicity = (true, true, false),
