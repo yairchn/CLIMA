@@ -6,6 +6,7 @@ export ThermodynamicState,
        PhaseNonEquil,
        TemperatureSHumEquil,
        LiquidIcePotTempSHumEquil,
+       LiquidIcePotTempSHumEquil_given_pressure,
        LiquidIcePotTempSHumNonEquil,
        LiquidIcePotTempSHumNonEquil_given_pressure
 
@@ -113,6 +114,7 @@ function LiquidIcePotTempSHumEquil(θ_liq_ice::FT, q_tot::FT, ρ::FT) where {FT<
     return PhaseEquil(e_int, q_tot, ρ, T)
 end
 
+
 """
     TemperatureSHumEquil(T, q_tot, p)
 
@@ -183,3 +185,4 @@ function LiquidIcePotTempSHumNonEquil_given_pressure(θ_liq_ice::FT, q_pt::Phase
     e_int = internal_energy(T, q_pt)
     PhaseNonEquil(e_int, q_pt, ρ)
 end
+
