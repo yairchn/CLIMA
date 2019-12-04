@@ -173,9 +173,6 @@ function run(mpicomm,
              zsponge,
              dt,
              dt_factor,
-             explicit, 
-             LinearModel,
-             SolverMethod,
              out_dir)
     
   # Grid setup (topl contains brickrange information)
@@ -211,7 +208,7 @@ function run(mpicomm,
   # Model definition
   model = AtmosModel(FlatOrientation(),
                      HydrostaticState(Temp,RelHum),
-                     ConstantViscosityWithDivergence(FT(0)),
+                     SmagorinskyLilly{FT}(C_smag),
                      EquilMoist(),
                      StevensRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1),
                      (Gravity(),
@@ -284,12 +281,19 @@ function run(mpicomm,
                                             split_nonlinear_linear=false, 
                                             version = ARK2PresentationVersion())
 
-    filterorder = 14
+#=    filterorder = 14
     filter = ExponentialFilter(grid, 0, filterorder)
-    cbfilter = EveryXSimulationSteps(1) do
+    cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do
         Filters.apply!(Q, 1:size(Q, 2), grid, filter)
         nothing
     end
+    =#
+    
+    cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
+        Filters.apply!(Q, 6, dg.grid, TMARFilter())
+        nothing
+    end 
+
     
     # Get statistics during run
     diagnostics_time_str = string(now())
@@ -300,12 +304,7 @@ function run(mpicomm,
     end
     
     solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter, cbinfo, cbdiagnostics), adjustfinalstep=false)
-    
-    
-    cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
-        Filters.apply!(Q, 6, dg.grid, TMARFilter())
-        nothing
-    end 
+
 end
 
 using Test
@@ -329,88 +328,68 @@ let
 
   # @testset "$(@__FILE__)" for ArrayType in ArrayTypes
   for ArrayType in ArrayTypes
-      #aspectratios = (1,3.5,7,)
-      exp_step = 0
-      linearmodels      = (AtmosAcousticGravityLinearModel,)
-      IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,) #(ARK2GiraldoKellyConstantinescu,) 
-      for SolverMethod in IMEXSolverMethods
-          for LinearModel in linearmodels 
-              for explicit in exp_step
-
-                  # Problem type
-                  FT = Float32
-                  
-                  # DG polynomial order
-                  N = 4
-                  
-                  # SGS Filter constants
-                  C_smag = FT(0.23)
-                  LHF    = FT(115)
-                  SHF    = FT(15)
-                  C_drag = FT(0.0011)
-                  
-                  # User defined domain parameters
-                  Δh, Δv = 50, 1.5
-                  aspectratio = Δh/Δv
-                  xmin, xmax  = 0, 5000
-                  ymin, ymax  = 0, 5000
-                  zmin, zmax  = 0, 1500
-                  
-                  grid_resolution = [Δh, Δh, Δv]
-                  domain_size     = [xmin, xmax, ymin, ymax, zmin, zmax]
-                  dim             = length(grid_resolution)
-                  
-                  brickrange = (grid1d(xmin, xmax, elemsize=FT(grid_resolution[1])*N),
-                                grid1d(ymin, ymax, elemsize=FT(grid_resolution[2])*N),
-                                grid1d(zmin, zmax, elemsize=FT(grid_resolution[end])*N))
-                  zmax = brickrange[dim][end]
-                  
-                  zsponge = FT(1000.0)
-                  topl = StackedBrickTopology(mpicomm, brickrange,
-                                              periodicity = (true, true, false),
-                                              boundary=((0,0),(0,0),(1,2)))
-
-                  dt      = Δv / soundspeed_air(FT(289)) / N ^ 2
-                  timeend = 14400
-                  dt_factor = aspectratio
-                  
-                  @info @sprintf """Starting
-                          ArrayType                 = %s
-                          ODE_Solver                = %s
-                          LinearModel               = %s
-                          dt                        = %.5e
-                          Δhoriz/Δvert              = %.5e
-                          """ ArrayType SolverMethod LinearModel dt aspectratio
-                  
-                  result = run(mpicomm,
-                               ArrayType,
-                               dim,
-                               topl,
-                               N,
-                               timeend,
-                               FT,
-                               C_smag,
-                               LHF,
-                               SHF,
-                               C_drag,
-                               xmax, ymax, zmax,
-                               zsponge,
-                               dt,
-                               dt_factor,
-                               explicit, 
-                               LinearModel,
-                               SolverMethod,
-                               out_dir)
-                  
-              end
-          end
-      end
+      
+      # Problem type
+      FT = Float32
+      
+      # DG polynomial order
+      N = 4
+      
+      # SGS Filter constants
+      C_smag = FT(0.23)
+      LHF    = FT(115)
+      SHF    = FT(15)
+      C_drag = FT(0.0011)
+      
+      # User defined domain parameters
+      Δh, Δv = 50, 5
+      aspectratio = Δh/Δv
+      xmin, xmax  = 0, 3000
+      ymin, ymax  = 0, 3000
+      zmin, zmax  = 0, 1500
+      
+      grid_resolution = [Δh, Δh, Δv]
+      domain_size     = [xmin, xmax, ymin, ymax, zmin, zmax]
+      dim             = length(grid_resolution)
+      
+      brickrange = (grid1d(xmin, xmax, elemsize=FT(grid_resolution[1])*N),
+                    grid1d(ymin, ymax, elemsize=FT(grid_resolution[2])*N),
+                    grid1d(zmin, zmax, elemsize=FT(grid_resolution[end])*N))
+      zmax = brickrange[dim][end]
+      
+      zsponge = FT(1000.0)
+      topl = StackedBrickTopology(mpicomm, brickrange,
+                                  periodicity = (true, true, false),
+                                  boundary=((0,0),(0,0),(1,2)))
+      
+      dt      = Δv / soundspeed_air(FT(289)) / N ^ 2
+      timeend = 14400
+      dt_factor = aspectratio
+      
+      @info @sprintf """Starting
+                              ArrayType                 = %s
+                              dt                        = %.5e
+                              Δhoriz/Δvert              = %.5e
+                              """ ArrayType dt aspectratio
+      
+      result = run(mpicomm,
+                   ArrayType,
+                   dim,
+                   topl,
+                   N,
+                   timeend,
+                   FT,
+                   C_smag,
+                   LHF,
+                   SHF,
+                   C_drag,
+                   xmax, ymax, zmax,
+                   zsponge,
+                   dt,
+                   dt_factor,
+                   out_dir)                  
   end
 
-#  @show LH_v0
-#  @show R_d
-#  @show MSLP
-#  @show cp_d
 end
 
 ###include(joinpath("..","..","..","src","Diagnostics","graph_diagnostic.jl"))
