@@ -232,6 +232,24 @@ function init_ode_state(dg::DGModel, args...;
   return state
 end
 
+function restart_ode_state(
+    dg::DGModel,
+    s_state;
+    init_on_cpu=false,
+    commtag=888
+)
+    bl = dg.balancelaw
+    grid = dg.grid
+
+    state = create_state(bl, grid, commtag)
+    state .= s_state
+
+    MPIStateArrays.start_ghost_exchange!(state)
+    MPIStateArrays.finish_ghost_exchange!(state)
+
+    return state
+end
+
 # fallback
 function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
   return false

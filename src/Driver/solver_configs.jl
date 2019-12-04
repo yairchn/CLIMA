@@ -92,17 +92,47 @@ function setup_solver(
     gradnumflux = driver_config.gradnumflux
 
     # create DG model, initialize ODE state
-    dg = DGModel(
-        bl,
-        grid,
-        numfluxnondiff,
-        numfluxdiff,
-        gradnumflux,
-        modeldata = modeldata,
-        diffusion_direction = diffdir,
-    )
-    @info @sprintf("Initializing %s", driver_config.name)
-    Q = init_ode_state(dg, FT(0), init_args...; init_on_cpu = init_on_cpu)
+    if Settings.restart_from > 0
+        s_Q, s_aux, t0 = read_checkpoint(
+            driver_config.name,
+            driver_config.mpicomm,
+            Settings.restart_from,
+        )
+
+        dg = DGModel(
+            bl,
+            grid,
+            numfluxnondiff,
+            numfluxdiff,
+            gradnumflux,
+            auxstate = aux,
+            diffusion_direction = diffdir,
+            modeldata = modeldata,
+        )
+
+        @info @sprintf(
+            "Restarting %s from time %8.2f",
+            driver_config.name,
+            t
+        )
+        Q = restart_ode_state(dg, s_Q; init_on_cpu = init_on_cpu)
+    else
+        dg = DGModel(
+            bl,
+            grid,
+            numfluxnondiff,
+            numfluxdiff,
+            gradnumflux,
+            diffusion_direction = diffdir,
+            modeldata = modeldata,
+        )
+
+        @info @sprintf(
+            "Initializing %s",
+            driver_config.name,
+        )
+        Q = init_ode_state(dg, FT(0), init_args...; init_on_cpu = init_on_cpu)
+    end
     update_aux!(dg, bl, Q, FT(0))
 
     # create the linear model for IMEX solvers
@@ -156,7 +186,7 @@ function setup_solver(
         slow_solver = ode_solver_type.slow_method(slow_dg, Q; dt = ode_dt)
         fast_dt = ode_dt / ode_solver_type.timestep_ratio
         fast_solver = ode_solver_type.fast_method(fast_dg, Q; dt = fast_dt)
-        solver = ode_solver_type.solver_method((slow_solver, fast_solver))
+        solver = ode_solver_type.solver_method((slow_solver, fast_solver), t0 = t0)
     else # solver_type === IMEXSolverType
         vdg = DGModel(
             linmodel,
