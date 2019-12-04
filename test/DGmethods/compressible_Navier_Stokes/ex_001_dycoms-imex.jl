@@ -412,7 +412,7 @@ let
                                               boundary=((0,0),(0,0),(1,2)))
 
                   safety_fac = FT(0.5)
-
+                  safety_fac_impl = FT(1.1)
                   #mnd  = min_node_distance(grid, EveryDirection())
                   #hmnd = min_node_distance(grid, HorizontalDirection())
                   #vmnd = min_node_distance(grid, VerticalDirection())
@@ -421,7 +421,7 @@ let
                   #dt_imex = hmnd/soundspeed_air(FT(330)) * safety_fac
                   
                   dt_exp  = min(Δv/soundspeed_air(FT(289))/N, Δh/soundspeed_air(FT(289))/N) * safety_fac
-                  dt_imex = Δh/soundspeed_air(FT(289))/N * safety_fac
+                  dt_imex = Δv/soundspeed_air(FT(289))/N * safety_fac_impl
                   timeend = 14400
                   
                   @info @sprintf """Starting

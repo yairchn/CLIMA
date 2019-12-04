@@ -308,11 +308,11 @@ let
  # @testset "$(@__FILE__)" for ArrayType in ArrayTypes
   for ArrayType in ArrayTypes
     # Problem type
-    FT = Float64
+    FT = Float32
     # DG polynomial order
     N = 4
     # SGS Filter constants
-    C_smag = FT(0.23)
+    C_smag = FT(0.21)
     LHF    = FT(115)
     SHF    = FT(15)
     C_drag = FT(0.0011)
@@ -320,8 +320,8 @@ let
     Δh, Δv = 35, 5
     #xmin, xmax = 0, 3200
     #ymin, ymax = 0, 3200
-    xmin, xmax = 0, 1000
-    ymin, ymax = 0, 1000
+    xmin, xmax = 0, 3000
+    ymin, ymax = 0, 3000
     zmin, zmax = 0, 1500
 
     grid_resolution = [Δh, Δh, Δv]
@@ -338,8 +338,8 @@ let
                                 periodicity = (true, true, false),
                                 boundary=((0,0),(0,0),(1,2)))
     #dt = 0.001
-    safety_fac = FT(0.5)
-    dt = min(Δv/soundspeed_air(FT(330))/N, Δh/soundspeed_air(FT(330))/N) * safety_fac
+    safety_fac = FT(0.85)
+    dt = min(Δv/soundspeed_air(FT(289))/N, Δh/soundspeed_air(FT(289))/N) * safety_fac
     timeend = 14400
     @info (ArrayType, dt, FT, dim)
     result = run(mpicomm, ArrayType, dim, topl,
