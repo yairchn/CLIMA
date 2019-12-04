@@ -309,11 +309,17 @@ function run(mpicomm,
         @info "1DIMEX timestepper" dt_imex numberofsteps dt_imex*numberofsteps timeend
 
                 
-        solver = SolverMethod(dg, vdg, SingleColumnLU(), Q;
+#=        solver = SolverMethod(dg, vdg, SingleColumnLU(), Q;
                               dt = dt_imex, t0 = 0,
                               split_nonlinear_linear=false)
+=#
         #@timeit to "solve! IMEX DYCOMS - $LinearModel $SolverMethod $aspectratio $dt_imex $timeend" solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter,),adjustfinalstep=false)
 
+         solver = ARK2GiraldoKellyConstantinescu(dg, vdg, linearsolvertype(), Q; 
+                                          dt=dt*dt_factor, t0=0,
+                                          split_nonlinear_linear=false, 
+                                          version = ARK2PresentationVersion())
+        
         # Get statistics during run
         diagnostics_time_str = string(now())
         cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(out_interval) do (init=false)

@@ -11,6 +11,8 @@ using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
 using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.AdditiveRungeKuttaMethod: ARK2PresentationVersion
+using CLIMA.LinearSolvers
 using CLIMA.Atmos
 using CLIMA.VariableTemplates
 using CLIMA.MoistThermodynamics
@@ -155,6 +157,7 @@ function Initialise_DYCOMS!(state::Vars, aux::Vars, (x,y,z), t)
 
 end
 
+
 function run(mpicomm,
              ArrayType,
              dim,
@@ -168,8 +171,6 @@ function run(mpicomm,
              C_drag,
              xmax, ymax, zmax,
              zsponge,
-             dt_exp, 
-             dt_imex,
              dt,
              dt_factor,
              explicit, 
@@ -369,13 +370,9 @@ let
                                               periodicity = (true, true, false),
                                               boundary=((0,0),(0,0),(1,2)))
 
-                  safety_fac = FT(0.5)
-                  safety_fac_impl = FT(1.1)
-                  
-                  #dt_exp  = min(Δv/soundspeed_air(FT(289))/N, Δh/soundspeed_air(FT(289))/N) * safety_fac
-                  #dt_imex = Δv/soundspeed_air(FT(289))/N * safety_fac_impl
                   dt      = Δv / soundspeed_air(FT(289)) / N ^ 2
                   timeend = 14400
+                  dt_factor = aspectratio
                   
                   @info @sprintf """Starting
                           ArrayType                 = %s
@@ -393,12 +390,11 @@ let
                                timeend,
                                FT,
                                C_smag,
-                               LHF, SHF,
+                               LHF,
+                               SHF,
                                C_drag,
                                xmax, ymax, zmax,
                                zsponge,
-                               dt_exp, 
-                               dt_imex,
                                dt,
                                dt_factor,
                                explicit, 
