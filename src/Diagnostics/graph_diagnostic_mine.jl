@@ -56,9 +56,9 @@ function start(args::Vector{String})
     #
     # USER INPUTS:
     #
-    time_average = "yes"
-    isimex = "yes"
-    if isimex == "yes" || isimes == "y"
+    time_average = "n"
+    isimex = "y"
+    if isimex == "yes" || isimex == "y"
         data = load("../../output/diagnostics-2019-12-06T11:18:27.152.jld2") # 1D IMEX
         integrator_method = string("1D IMEX ")
     else       
@@ -71,7 +71,7 @@ function start(args::Vector{String})
                 "qt_sgs",
                 "h_m",
                 "h_t",
-                "vert_qt_flx",
+                "vert_eddy_qt_flx",
                 "q_tot",
                 "q_liq",
                 "wvariance",
@@ -82,9 +82,12 @@ function start(args::Vector{String})
                 "w",
                 "N",                
                 "uvariance",
-                "vvariance",]
+                "vvariance",
+                "vert_eddy_thv_flx",
+                "u",
+                "v"]
     
-    zvertical = 1500
+    zvertical = 1200
     
     #
     # END USER INPUTS:
@@ -110,8 +113,6 @@ function start(args::Vector{String})
     timeend = maximum(times)
     ntimes = length(times)
     @show(ntimes)
-
-    
     
     time_data = string(timeend)
     Nqk = size(data[time_data], 1)
@@ -140,6 +141,9 @@ function start(args::Vector{String})
     V14 = zeros(Nqk * nvertelem)
     V15 = zeros(Nqk * nvertelem)
     V16 = zeros(Nqk * nvertelem)
+    V17 = zeros(Nqk * nvertelem)
+    V18 = zeros(Nqk * nvertelem)
+    V19 = zeros(Nqk * nvertelem)
     if time_average == "yes" || time_average == "y"
 
         time_str = string(integrator_method, ". Time averaged from 0 to ", ceil(timeend), " s")
@@ -165,15 +169,18 @@ function start(args::Vector{String})
                     V14[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[14]))
                     V15[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[15]))
                     V16[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[16]))
+                    V17[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[17]))
+                    V18[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[18]))
+                    V19[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[19]))
                 end
             end
         end
     else
 
         time_str = string(integrator_method, ". Instantaneous at t= ", ceil(timeend), " s")
-
         
-        key = time_data
+        key = time_data #this is a string
+        #key = "1027.098642480827"
         ntimes = 1
         for ev in 1:nvertelem
             for k in 1:Nqk
@@ -194,6 +201,9 @@ function start(args::Vector{String})
                 V14[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[14]))
                 V15[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[15]))
                 V16[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[16]))
+                V17[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[17]))
+                V18[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[18]))
+                V19[k+(ev-1)*Nqk] += getproperty(dv, Symbol(out_vars[19]))
             end
         end
     end
@@ -220,7 +230,7 @@ function start(args::Vector{String})
               label=labels,
               )
     
-    p4 = plot(V5*1e+3/ntimes, Z,
+    pwqt = plot(V5*1e+3/ntimes, Z,
               linewidth=3,
               xaxis=("<w qt> (m/s g/kg)"), #(0, 0.), 0:0.:1),
               yaxis=("Altitude[m]", (0, zvertical)),
@@ -241,8 +251,6 @@ function start(args::Vector{String})
                markercolor = :black,
                label=("<qt experimental>"))
     ##
-
-    
     
     pql = plot(V7*1e+3/ntimes, Z,
               linewidth=3,
@@ -257,9 +265,23 @@ function start(args::Vector{String})
                markersize = 10,
                markercolor = :black,
                label=("<ql experimental>"))
-    ##
 
-     
+    puu = plot(V15/ntimes, Z,
+              linewidth=3,
+              xaxis=("<u'u'>"),# (-0.1, 0.6), -0.1:0.1:0.6),
+              yaxis=("Altitude[m]", (0, zvertical)),
+              label=("<u'u'>"),
+               )
+
+    pvv = plot(V16/ntimes, Z,
+              linewidth=3,
+              xaxis=("<v'v'>"),# (-0.1, 0.6), -0.1:0.1:0.6),
+              yaxis=("Altitude[m]", (0, zvertical)),
+              label=("<v'v'>"),
+              )
+
+
+
     pww = plot(V8/ntimes, Z,
               linewidth=3,
               xaxis=("<w'w'>"),# (-0.1, 0.6), -0.1:0.1:0.6),
@@ -268,7 +290,7 @@ function start(args::Vector{String})
               )
 
   tke = 0.5*(V8.*V8 + V15.*V15 + V16.*V16)
-  ptke = plot(tke/ntimes, Z,
+  ptke = plot(tke/ntimes^2, Z,
               linewidth=3,
               xaxis=("TKE"),# (-0.1, 0.6), -0.1:0.1:0.6),
               yaxis=("Altitude[m]", (0, zvertical)),
@@ -292,26 +314,56 @@ function start(args::Vector{String})
     
     data = [V10/ntimes V11/ntimes V12/ntimes]
     labels = ["θ" "θv" "θl"]
+    pthl = plot(data, Z,
+              linewidth=3,
+              xaxis=("<θ>"), #, (-0.15, 0.15), -0.15:0.05:0.15),
+              yaxis=("Altitude[m]", (0, zvertical)),
+              label=labels,
+               )
+
+    thl_rf01 = thl_stevens[:,1]
+    z_rf01  = thl_stevens[:,2]
+    pthl = plot!(thl_rf01,z_rf01,seriestype=:scatter,
+               markersize = 10,
+               markercolor = :black,
+              label=("<thl experimental>"))
+
     pth = plot(data, Z,
               linewidth=3,
               xaxis=("<θ>"), #, (-0.15, 0.15), -0.15:0.05:0.15),
               yaxis=("Altitude[m]", (0, zvertical)),
               label=labels,
               )
-    thl_rf01 = thl_stevens[:,1]
-    z_rf01  = thl_stevens[:,2]
-    p9= plot!(thl_rf01,z_rf01,seriestype=:scatter,
-               markersize = 10,
-               markercolor = :black,
-               label=("<thl experimental>"))
-    ##
+##
 
+    B = 9.81*V17/289.0
+    pB = plot(B/ntimes, Z,
+              linewidth=3,
+              xaxis=("g<w'θv>/θ_0"), #, (-0.15, 0.15), -0.15:0.05:0.15),
+              yaxis=("Altitude[m]", (0, zvertical)),
+              label=("g<w'θv>/θ_0"),
+               )
+
+
+    pu = plot(V18/ntimes, Z,
+              linewidth=3,
+              xaxis=("u", (0, 10), 0:2:10),
+              yaxis=("Altitude[m]", (0, zvertical)),
+              label=("u (m/s)"),
+              )
+
+    pv = plot(V19/ntimes, Z,
+              linewidth=3,
+              xaxis=("v", (-10, 0), -10:2:0),
+              yaxis=("Altitude[m]", (0, zvertical)),
+              label=("v (m/s)"),
+              )
 
     pw = plot(V13/ntimes, Z,
               linewidth=3,
-              xaxis=("<w>"), #, (-0.15, 0.15), -0.15:0.05:0.15),
+              xaxis=("w"), #, (-0.15, 0.15), -0.15:0.05:0.15),
               yaxis=("Altitude[m]", (0, zvertical)),
-              label=("<w>"),
+              label=("w (m/s)"),
                )
 
     p11 = plot(V14/ntimes, Z,
@@ -321,13 +373,14 @@ function start(args::Vector{String})
               label=("dθv/dz"),
               )
 
-  
-
     
     f=font(14,"courier")
-    plot(pqt, pql, pth, ptke, pww, pwww, layout = (2,3), titlefont=f, tickfont=f, legendfont=f, guidefont=f, title=time_str)
+    #plot(pqt, pql, pth, ptke, pww, pwww, layout = (2,3), titlefont=f, tickfont=f, legendfont=f, guidefont=f, title=time_str)
+    plot(pu,  pv,  pthl, pth,
+         pqt, pql, pwqt, pB,
+         puu, pww, pwww, ptke, layout = (3,4), titlefont=f, tickfont=f, legendfont=f, guidefont=f, title=time_str)
 
-    plot!(size=(1000,800))
+    plot!(size=(900,1200))
 end
 
 #if length(ARGS) != 3 || !endswith(ARGS[1], ".jld2")
