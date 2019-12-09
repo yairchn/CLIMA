@@ -575,7 +575,7 @@ Compute the saturation specific humidity, given
  - `p_v_sat` saturation vapor pressure
 """
 q_vap_saturation_from_pressure(T::FT, ρ::FT, p_v_sat::FT) where {FT<:Real} =
-  min(1, p_v_sat / (ρ * FT(R_v) * T))
+  p_v_sat / (ρ * FT(R_v) * T)
 
 """
     saturation_excess(T, ρ, q::PhasePartition)
@@ -691,22 +691,19 @@ using Newtons method with analytic gradients.
 
 See also [`saturation_adjustment`](@ref).
 """
-function saturation_adjustment_NewtonsMethod(e_int::FT, ρ::FT, q_tot::FT) where {FT<:Real}
+function saturation_adjustment_NewtonsMethod(e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT<:Real}
   T_1 = max(FT(T_min), air_temperature(e_int, PhasePartition(q_tot))) # Assume all vapor
   q_v_sat = q_vap_saturation(T_1, ρ)
   unsaturated = q_tot <= q_v_sat
   if unsaturated && T_1 > FT(T_min)
-    return T_1
+    return RootSolvers.SolutionResults(VerboseSolution(), T_1, true, FT(0), 0, FT[T_1], [FT(0)]), 0
   else
     sol = find_zero(
       T -> internal_energy_sat(T, ρ, q_tot) - e_int,
       T_ -> ∂e_int_∂T(T_, e_int, ρ, q_tot),
       T_1,
-      NewtonsMethod(), CompactSolution(), FT(1e-3), 10)
-      if !sol.converged
-        error("saturation_adjustment_NewtonsMethod did not converge")
-      end
-    return sol.root
+      NewtonsMethod(), VerboseSolution(), tol, maxiter)
+    return sol, 1
   end
 end
 
@@ -725,22 +722,26 @@ by finding the root of
 
 See also [`saturation_adjustment_q_tot_θ_liq_ice`](@ref).
 """
-function saturation_adjustment(e_int::FT, ρ::FT, q_tot::FT) where {FT<:Real}
+function saturation_adjustment(e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT<:Real}
   T_1 = max(FT(T_min), air_temperature(e_int, PhasePartition(q_tot))) # Assume all vapor
   q_v_sat = q_vap_saturation(T_1, ρ)
   unsaturated = q_tot <= q_v_sat
   if unsaturated
-    return T_1
+    return RootSolvers.SolutionResults(VerboseSolution(), T_1, true, FT(0), 0, FT[T_1], [FT(0)]), 0
   else
     # FIXME here: need to revisit bounds for saturation adjustment to guarantee bracketing of zero.
-    T_2 = air_temperature(e_int, PhasePartition(q_tot, FT(0), q_tot)) # Assume all ice
+    ΔT = FT(10)
+    T_2 = max(FT(T_min)+ΔT, air_temperature(e_int, PhasePartition(q_tot, FT(0), q_tot))) # Assume all ice
+    if T_1>T_2
+      @show T_1, T_2
+      error("Bad bracketing")
+    end
     sol = find_zero(
       T -> internal_energy_sat(T, ρ, q_tot) - e_int,
-      T_1, T_2, SecantMethod(), CompactSolution(), FT(1e-3), 10)
-      if !sol.converged
-        error("saturation_adjustment did not converge")
-      end
-    return sol.root
+      # T_1, NewtonsMethodAD(), VerboseSolution(), tol, maxiter)
+      # T_1, T_2, RegulaFalsiMethod(), VerboseSolution(), tol, maxiter)
+      T_1, T_2, SecantMethod(), VerboseSolution(), tol, maxiter)
+    return sol, 1
   end
 end
 
@@ -761,7 +762,7 @@ by finding the root of
 
 See also [`saturation_adjustment`](@ref).
 """
-function saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice::FT, q_tot::FT, ρ::FT) where {FT<:Real}
+function saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice::FT, q_tot::FT, ρ::FT, maxiter::Int, tol::FT) where {FT<:Real}
   T_1 = air_temperature_from_liquid_ice_pottemp(θ_liq_ice, ρ, PhasePartition(q_tot)) # Assume all vapor
   q_v_sat = q_vap_saturation(T_1, ρ)
   unsaturated = q_tot <= q_v_sat
@@ -771,7 +772,7 @@ function saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice::FT, q_tot::FT, ρ::F
     T_2 = air_temperature_from_liquid_ice_pottemp(θ_liq_ice, ρ, PhasePartition(q_tot, FT(0), q_tot)) # Assume all ice
     sol = find_zero(
       T -> liquid_ice_pottemp_sat(T, ρ, q_tot) - θ_liq_ice,
-      T_1, T_2, SecantMethod(), CompactSolution(), FT(1e-5), 40)
+      T_1, T_2, SecantMethod(), CompactSolution(), tol, maxiter)
       if !sol.converged
         error("saturation_adjustment_q_tot_θ_liq_ice did not converge")
       end
@@ -796,22 +797,19 @@ by finding the root of
 
 See also [`saturation_adjustment`](@ref).
 """
-function saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice::FT, q_tot::FT, p::FT) where {FT<:Real}
+function saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice::FT, q_tot::FT, p::FT, maxiter::Int, tol::FT) where {FT<:Real}
   T_1 = air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice, p, PhasePartition(q_tot)) # Assume all vapor
   ρ = air_density(T_1, p, PhasePartition(q_tot))
   q_v_sat = q_vap_saturation(T_1, ρ)
   unsaturated = q_tot <= q_v_sat
   if unsaturated && T_1 > FT(T_min)
-    return T_1
+    return RootSolvers.SolutionResults(VerboseSolution(), T_1, true, FT(0), 0, FT[T_1], [FT(0)])
   else
     T_2 = air_temperature_from_liquid_ice_pottemp(θ_liq_ice, p, PhasePartition(q_tot, FT(0), q_tot)) # Assume all ice
     sol = find_zero(
       T -> liquid_ice_pottemp_sat(T, air_density(T, p, PhasePartition(q_tot)), q_tot) - θ_liq_ice,
-      T_1, T_2, SecantMethod(), CompactSolution(), FT(1e-5), 40)
-      if !sol.converged
-        error("saturation_adjustment_q_tot_θ_liq_ice_given_pressure did not converge")
-      end
-    return sol.root
+      T_1, T_2, SecantMethod(), VerboseSolution(), tol, maxiter)
+    return sol
   end
 end
 

@@ -3,6 +3,7 @@ export PhasePartition
 export ThermodynamicState,
        PhaseDry,
        PhaseEquil,
+       PhaseEquil_NewtonMethod,
        PhaseNonEquil,
        TemperatureSHumEquil,
        LiquidIcePotTempSHumEquil,
@@ -75,8 +76,14 @@ struct PhaseEquil{FT} <: ThermodynamicState{FT}
   "temperature: computed via [`saturation_adjustment`](@ref)"
   T::FT
 end
-PhaseEquil(e_int::FT, q_tot::FT, ρ::FT) where {FT<:Real} =
-  PhaseEquil(e_int, q_tot, ρ, saturation_adjustment(e_int, ρ, q_tot))
+function PhaseEquil(e_int::FT, q_tot::FT, ρ::FT, maxiter::Int, tol::FT) where {FT<:Real}
+  sol, sa_called = saturation_adjustment(e_int, ρ, q_tot, maxiter, tol)
+  return PhaseEquil(e_int, q_tot, ρ, sol.root), sol, sa_called
+end
+function PhaseEquil_NewtonMethod(e_int::FT, q_tot::FT, ρ::FT, maxiter::Int, tol::FT) where {FT<:Real}
+  sol, sa_called = saturation_adjustment_NewtonsMethod(e_int, ρ, q_tot, maxiter, tol)
+  return PhaseEquil(e_int, q_tot, ρ, sol.root), sol, sa_called
+end
 
 """
     PhaseDry{FT} <: ThermodynamicState
@@ -107,11 +114,12 @@ Constructs a [`PhaseEquil`](@ref) thermodynamic state from:
  - `q_tot` - total specific humidity
  - `ρ` - density
 """
-function LiquidIcePotTempSHumEquil(θ_liq_ice::FT, q_tot::FT, ρ::FT) where {FT<:Real}
-    T = saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice, q_tot, ρ)
+function LiquidIcePotTempSHumEquil(θ_liq_ice::FT, q_tot::FT, ρ::FT, maxiter::Int, tol::FT) where {FT<:Real}
+    sol = saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice, q_tot, ρ, maxiter, tol)
+    T = sol.root
     q_pt = PhasePartition_equil(T, ρ, q_tot)
     e_int = internal_energy(T, q_pt)
-    return PhaseEquil(e_int, q_tot, ρ, T)
+    return PhaseEquil(e_int, q_tot, ρ, T), sol
 end
 
 """
@@ -123,12 +131,13 @@ Constructs a [`PhaseEquil`](@ref) thermodynamic state from:
  - `q_tot` - total specific humidity
  - `p` - pressure
 """
-function LiquidIcePotTempSHumEquil_given_pressure(θ_liq_ice::FT, q_tot::FT, p::FT) where {FT<:Real}
-    T = saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice, q_tot, p)
+function LiquidIcePotTempSHumEquil_given_pressure(θ_liq_ice::FT, q_tot::FT, p::FT, maxiter::Int, tol::FT) where {FT<:Real}
+    sol = saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice, q_tot, p, maxiter, tol)
+    T = sol.root
     ρ = air_density(T, p, PhasePartition(q_tot))
     q = PhasePartition_equil(T, ρ, q_tot)
     e_int = internal_energy(T, q)
-    return PhaseEquil(e_int, q.tot, ρ, T)
+    return PhaseEquil(e_int, q.tot, ρ, T), sol
 end
 
 """

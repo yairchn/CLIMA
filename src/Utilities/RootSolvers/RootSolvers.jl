@@ -139,7 +139,11 @@ function find_zero(f::F, x0::FT, x1::FT, ::RegulaFalsiMethod, soltype::SolutionT
                    maxiters=10_000) where {F, FT<:AbstractFloat}
   y0 = f(x0)
   y1 = f(x1)
-  @assert y0 * y1 < 0
+  if !(y0 * y1 < 0)
+    @show x0, x1
+    @show y0, y1
+    @assert y0 * y1 < 0
+  end
   x_history = init_history(soltype, x0)
   y_history = init_history(soltype, y0)
   lastside = 0
