@@ -338,8 +338,8 @@ let
           aspectratio = FT(7)
           Δv = Δh/aspectratio=#
           #aspectratio = Δh/Δv
-          Δv = FT(5)
-          aspectratio = FT(50)
+          Δv = FT(30)
+          aspectratio = FT(150)
           Δh = Δv * aspectratio
           
           ztop = 1500
@@ -349,13 +349,17 @@ let
           
           zsponge = FT(planet_radius + 1000.0)
           
-          #                  SingleExponentialStretching(2), 
-          #                  vert_range = grid1d(FT(planet_radius), 
+          #                  SingleExponentialStretching(2),
+          #                  vert_range = grid1d(FT(planet_radius),
           #                      FT(planet_radius + setup.domain_height),
           #                                      nelem = numelem_vert)
-          
-          numelem_vert = 10
-          numelem_horz = 16
+          #Lh = ...
+          #ratioh       = (Lh/Δh - 1)/N
+          ratiov       = (ztop/Δv - 1)/N
+          numelem_horz = 12 #ceil(Int64, ratioh)
+          numelem_vert = ceil(Int64, ratiov)
+          #numelem_vert = 10
+          #numelem_horz = 16
           vert_range = grid1d(FT(planet_radius), 
                               FT(planet_radius + ztop),
                               nelem = numelem_vert)

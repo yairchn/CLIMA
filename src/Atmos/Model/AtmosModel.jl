@@ -153,11 +153,6 @@ end
     
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
-
-  ###
-    #  u += SVector(0, 0, -D*z)
-    usub = SVector(0, 0, -D*z)
-  ###
     
   # diffusive
   ρτ = diffusive.ρτ
