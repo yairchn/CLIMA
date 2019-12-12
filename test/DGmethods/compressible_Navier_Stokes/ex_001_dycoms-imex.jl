@@ -263,7 +263,7 @@ function run(mpicomm,
   end
   
   # Setup VTK output callbacks
- out_interval = 5000
+ out_interval = 10000
   step = [0]
   cbvtk = GenericCallbacks.EveryXSimulationSteps(out_interval) do (init=false)
     fprefix = @sprintf("dycoms_%dD_mpirank%04d_step%04d", dim,
@@ -304,7 +304,7 @@ function run(mpicomm,
                               split_nonlinear_linear=false)
         #@timeit to "solve! IMEX DYCOMS - $LinearModel $SolverMethod $aspectratio $dt_imex $timeend" solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter,),adjustfinalstep=false)
 
-        solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter, cbdiagnostics, cbinfo), adjustfinalstep=false)
+        solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter, cbdiagnostics, cbinfo, cbvtk), adjustfinalstep=false)
     end
 
 end
@@ -334,6 +334,7 @@ let
       exp_step = 0
       linearmodels      = (AtmosAcousticGravityLinearModel,)
       IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,) #(ARK2GiraldoKellyConstantinescu,) 
+      #IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
       for SolverMethod in IMEXSolverMethods
           for LinearModel in linearmodels 
               for explicit in exp_step
@@ -351,13 +352,13 @@ let
                   C_drag = FT(0.0011)
                   
                   # User defined domain parameters
-                  Δh = FT(35)
+                  Δh = FT(40)
                   aspectratio = FT(7)
-                  Δv = Δh/aspectratio
-                  #aspectratio = Δh/Δv
+                  Δv = FT(5) #Δh/aspectratio
+                  aspectratio = Δh/Δv
                   
-                  xmin, xmax = 0, 2000
-                  ymin, ymax = 0, 2000
+                  xmin, xmax = 0, 1000
+                  ymin, ymax = 0, 1000
                   zmin, zmax = 0, 1500
                   
                   grid_resolution = [Δh, Δh, Δv]
