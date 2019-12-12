@@ -124,6 +124,7 @@ Where
   ###
     #u += SVector(0, 0, -D*z)
   usub = SVector(0, 0, -D*z)
+  #usub = SVector(0, 0, 0)
   ###
     
   # advective terms

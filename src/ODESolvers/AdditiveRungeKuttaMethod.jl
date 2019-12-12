@@ -12,6 +12,7 @@ using ..ODESolvers
 ODEs = ODESolvers
 using ..SpaceMethods
 using ..LinearSolvers
+using ..Mesh.Filters
 using ..MPIStateArrays: device, realview
 
 
@@ -202,6 +203,7 @@ function ODEs.dostep!(Q, ark::AdditiveRungeKutta, p, time::Real, dt::Real,
   blocks = div(length(rv_Q) + threads - 1, threads)
 
   # calculate the rhs at first stage to initialize the stage loop
+  Filters.apply!(Qstages[1], 6, rhs!.grid, TMARFilter())
   rhs!(Rstages[1], Qstages[1], p, time + RKC[1] * dt, increment = false)
 
   if dt != ark.dt
@@ -225,6 +227,7 @@ function ODEs.dostep!(Q, ark::AdditiveRungeKutta, p, time::Real, dt::Real,
     #update Qstages
     Qstages[istage] .+= Qtt
 
+    Filters.apply!(Qstages[istage], 6, rhs!.grid, TMARFilter())
     rhs!(Rstages[istage], Qstages[istage], p, stagetime, increment = false)
   end
 
@@ -299,7 +302,8 @@ function ARK2GiraldoKellyConstantinescu(F, L,
   T = eltype(Q)
   RT = real(T)
   
-  a32 = RT(version.a32)
+  #a32 = RT(version.a32)
+  a32 = RT(1 // 2)
   RKA_explicit = [RT(0)           RT(0)   RT(0);
                   RT(2 - sqrt(2)) RT(0)   RT(0);
                   RT(1 - a32)     RT(a32) RT(0)]

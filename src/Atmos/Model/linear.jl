@@ -38,7 +38,8 @@ function flux_nondiffusive!(lm::AtmosAcousticLinearModel, flux::Grad, state::Var
   flux.ρ = state.ρu
   # TODO: use MoistThermodynamics.linearized_air_pressure 
   # need to avoid dividing then multiplying by ρ
-  pL = state.ρ * FT(R_d) * FT(T_0) + FT(R_d) / FT(cv_d) * (state.ρe - state.ρ * e_pot)
+  #pL = state.ρ * FT(R_d) * FT(T_0) + FT(R_d) / FT(cv_d) * (state.ρe - state.ρ * e_pot)
+  pL = state.ρ * FT(R_d) * FT(T_0) + FT(R_d) / FT(cv_d) * (state.ρe - state.ρ * e_pot - state.moisture.ρq_tot * FT(e_int_v0))
   flux.ρu += pL*I
   flux.ρe = ((ref.ρe + ref.p)/ref.ρ - e_pot)*state.ρu
   nothing
@@ -56,7 +57,8 @@ function flux_nondiffusive!(lm::AtmosAcousticGravityLinearModel, flux::Grad, sta
   e_pot = gravitational_potential(lm.atmos.orientation, aux)
 
   flux.ρ = state.ρu
-  pL = state.ρ * FT(R_d) * FT(T_0) + FT(R_d) / FT(cv_d) * (state.ρe - state.ρ * e_pot)
+  #pL = state.ρ * FT(R_d) * FT(T_0) + FT(R_d) / FT(cv_d) * (state.ρe - state.ρ * e_pot)
+  pL = state.ρ * FT(R_d) * FT(T_0) + FT(R_d) / FT(cv_d) * (state.ρe - state.ρ * e_pot - state.moisture.ρq_tot * FT(e_int_v0))
   flux.ρu += pL*I
   flux.ρe = ((ref.ρe + ref.p)/ref.ρ)*state.ρu
   nothing

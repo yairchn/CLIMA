@@ -101,6 +101,7 @@ function flux_moisture!(moist::EquilMoist, flux::Grad, state::Vars, aux::Vars, t
   #flux.moisture.ρq_tot += u * state.moisture.ρq_tot
   #u += SVector(0, 0, -D*z)
   usub = SVector(0, 0, -D*z)
+  #usub = SVector(0, 0, 0)
   flux.moisture.ρq_tot += (u + usub) * state.moisture.ρq_tot
 end
 
