@@ -214,7 +214,8 @@ function run(mpicomm,
                      (Gravity(),
                       RayleighSponge{FT}(zmax, zsponge, c_sponge, u_relaxation),
                       GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic)),
-                     DYCOMS_BC{FT}(C_drag, LHF, SHF),
+		     DYCOMS_BC{FT}(C_drag, LHF, SHF),
+                     #NoFluxBC(),
                      Initialise_DYCOMS!)
   
   # Balancelaw description
@@ -239,8 +240,9 @@ function run(mpicomm,
   #Q = init_ode_state(dg, FT(0); device=CPU())
   Q = init_ode_state(dg, FT(0))
 
-  cbfilter = GenericCallbacks.EveryXSimulationSteps(2) do (init=false)
-      Filters.apply!(Q, 6, dg.grid, TMARFilter())
+  cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
+      #Filters.apply!(Q, 6, dg.grid, TMARFilter())
+      Filters.apply!(Q, 1:size(Q, 2), dg.grid, CutoffFilter(dg.grid))
       nothing
   end
     
@@ -250,6 +252,19 @@ function run(mpicomm,
     if s
       starttime[] = now()
     else
+      hQ = Array(Q)
+      q1 = view(hQ, :, 1, :)
+      q2 = view(hQ, :, 2, :)
+      q3 = view(hQ, :, 3, :)
+      q4 = view(hQ, :, 4, :)
+      q5 = view(hQ, :, 5, :)
+      q6 = view(hQ, :, 6, :)
+      e1 = extrema(q1)
+      e2 = extrema(q2)
+      e3 = extrema(q3)
+      e4 = extrema(q4)
+      e5 = extrema(q5)
+      e6 = extrema(q6)
       energy = norm(Q)
       @info @sprintf("""Update
                      simtime = %.16e
@@ -259,17 +274,29 @@ function run(mpicomm,
                                           Dates.now()-starttime[]),
                                   Dates.dateformat"HH:MM:SS"),
                      energy)
+      @info """Extrema
+            rho  = $e1
+            u    = $e2
+            v    = $e3
+            w    = $e4
+            eng  = $e5
+            qtot = $e6"""
+      flush(stdin)
+      flush(stderr)
     end
   end
   
   # Setup VTK output callbacks
  out_interval = 5000
   step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(out_interval) do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
+    if step[1] <= 34444
+     return nothing
+    end
     fprefix = @sprintf("dycoms_%dD_mpirank%04d_step%04d", dim,
                        MPI.Comm_rank(mpicomm), step[1])
     outprefix = joinpath(out_dir, fprefix)
-    @debug "doing VTK output" outprefix
+    @info "doing VTK output" outprefix
     writevtk(outprefix, Q, dg, flattenednames(vars_state(model,FT)),
              dg.auxstate, flattenednames(vars_aux(model,FT)))
 
@@ -292,7 +319,8 @@ function run(mpicomm,
         solver = LSRK54CarpenterKennedy(dg, Q; dt = dt_exp, t0 = 0)
         #@timeit to "solve! EX DYCOMS- $LinearModel $SolverMethod $aspectratio $dt_exp $timeend" solve!(Q, solver; timeend=timeend, callbacks=(cbfilter,))
           
-        solve!(Q, solver; timeend=timeend, callbacks=(cbfilter, cbinfo, cbdiagnostics))
+        elap = @CUDAdrv.elapsed solve!(Q, solver; timeend=timeend, callbacks=(cbfilter, cbinfo))
+        @info "Elapsed time = $elap"
         
     else
         numberofsteps = convert(Int64, cld(timeend, dt_imex))
@@ -304,7 +332,8 @@ function run(mpicomm,
                               split_nonlinear_linear=false)
         #@timeit to "solve! IMEX DYCOMS - $LinearModel $SolverMethod $aspectratio $dt_imex $timeend" solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter,),adjustfinalstep=false)
 
-        solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter, cbdiagnostics, cbinfo), adjustfinalstep=false)
+        elap = @CUDAdrv.elapsed solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbfilter, cbinfo,), adjustfinalstep=false)
+        @info "Elapsed time = $elap"
     end
 
 end
@@ -333,7 +362,7 @@ let
       #aspectratios = (1,3.5,7,)
       exp_step = 0
       linearmodels      = (AtmosAcousticGravityLinearModel,)
-      IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,) #(ARK2GiraldoKellyConstantinescu,) 
+      IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
       for SolverMethod in IMEXSolverMethods
           for LinearModel in linearmodels 
               for explicit in exp_step
@@ -380,7 +409,7 @@ let
                   #dt_exp  =  mnd/soundspeed_air(FT(330)) * safety_fac
                   #dt_imex = hmnd/soundspeed_air(FT(330)) * safety_fac
                   
-                  safety_fac = FT(0.5)
+                  safety_fac = FT(1.0)
                   dt_exp  = min(Δv/soundspeed_air(FT(289))/N, Δh/soundspeed_air(FT(289))/N) * safety_fac
                   dt_imex = Δh/soundspeed_air(FT(289))/N * safety_fac
                   timeend = 14400
