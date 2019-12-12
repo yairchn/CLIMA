@@ -175,6 +175,8 @@ function knl_apply_TMAR_filter!(::Val{nreduce}, ::Val{dim}, ::Val{N}, Q,
 
   nelemperblock = 1
 
+  smallvalue = 1e-10
+
   @inbounds @loop for e in (elems; blockIdx().x)
     @loop for j in (1:Nqj; threadIdx().y)
       @loop for i in (1:Nq; threadIdx().x)
@@ -200,7 +202,7 @@ function knl_apply_TMAR_filter!(::Val{nreduce}, ::Val{dim}, ::Val{N}, Q,
           @unroll for k in 1:Nq
             MJ = l_MJ[k, i, j]
             Qs = l_Q[sf, k, i, j]
-            Qsclipped = Qs ≥ 0 ? Qs : zero(Qs)
+            Qsclipped = Qs ≥ 0 ? Qs : smallvalue
 
             MJQ += MJ * Qs
             MJQclipped += MJ * Qsclipped
@@ -240,14 +242,14 @@ function knl_apply_TMAR_filter!(::Val{nreduce}, ::Val{dim}, ::Val{N}, Q,
           qs_average = s_MJQ[1, sf]
           qs_clipped_average = s_MJQclipped[1, sf]
 
-          r = qs_average > 0 ? qs_average / qs_clipped_average : zero(FT)
+          r = qs_average > 0 ? qs_average / qs_clipped_average : smallvalue
 
           s = filterstates[sf]
           @unroll for k in 1:Nq
             ijk = i + Nq * ((j-1) + Nqj * (k-1))
 
             Qs = l_Q[sf, k, i, j]
-            Q[ijk, s, e] = Qs ≥ 0 ? r*Qs : zero(Qs)
+            Q[ijk, s, e] = Qs ≥ 0 ? r*Qs : smallvalue
           end
         end
       end

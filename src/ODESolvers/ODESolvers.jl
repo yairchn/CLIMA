@@ -67,6 +67,8 @@ function solve!(Q, solver::AbstractODESolver, p=nothing; timeend::Real=Inf,
   while time < timeend
     step += 1
     @info "Step = $step"
+    flush(stderr)
+    flush(stdin)
 
     time = dostep!(Q, solver, p, timeend, adjustfinalstep)
 
