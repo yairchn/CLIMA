@@ -342,7 +342,7 @@ function gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
                             
                             ijk = i + Nq * ((j-1) + Nq * (k-1))
                             
-                            state        = extract_state(dg, localQ, ijk, e)
+                            state         = extract_state(dg, localQ, ijk, e)
                             diffusive_flx = extract_diffusion(dg, localdiff, ijk, e)
                             x = localvgeo[ijk,grid.x1id,e]
                             y = localvgeo[ijk,grid.x2id,e]

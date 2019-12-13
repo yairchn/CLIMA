@@ -68,27 +68,6 @@ function extract_state(dg, localQ, ijk, e)
     return Vars{vars_state(bl, FT)}(l_Q)
 end
 
-#=
-function courant(state::MPIStateArray) #, aux::Vars, (x,y,z), t)
-
-    u = state.ρu/state.ρ
-    umax = global_max(u)
-    @show "size(UMAX(: ", size(umax)
-    #=
-    lucas_magic_factor = 5
-    dt = lucas_magic_factor * min_node_distance(grid) / acoustic_speed
-
-
-
-    
-    dx=maxval(x(:))-minval(x(:))
-    dy=maxval(y(:))-minval(y(:))
-    dz=maxval(z(:))-minval(z(:))
-    ds = sqrt(dx*dx + dy*dy + dz*dz)
-    vel=sqrt( u*u + v*v + w*w )
-=#
-end
-=#
 
 """
   Initial Condition for DYCOMS_RF01 LES
@@ -304,7 +283,7 @@ function run(mpicomm,
         maxρv = global_max(Q, 3)
         maxρw = global_max(Q, 4)
         
-        sound_speed = dg.auxstate.model.soundspeed_air
+        sound_speed = dg.auxstate.moisture.soundspeed_air
         
 #        maxsound = global_max_scalar(sound_speed, mpicomm)
 
@@ -315,6 +294,8 @@ function run(mpicomm,
         #
 
         
+        
+       
       energy = norm(Q)
       @info @sprintf("""Update
                      simtime = %.16e
