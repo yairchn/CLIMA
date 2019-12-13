@@ -44,6 +44,52 @@ if !@isdefined integration_testing
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
 end
 
+
+function global_max(A::MPIStateArray, states=1:size(A, 2))
+  host_array = Array ∈ typeof(A).parameters
+  h_A = host_array ? A : Array(A)
+  locmax = maximum(view(h_A, :, states, A.realelems)) 
+  MPI.Allreduce([locmax], MPI.MAX, A.mpicomm)[1]
+end
+
+function global_max_scalar(A, mpicomm)
+  MPI.Allreduce(A, MPI.MAX, mpicomm)[1]
+end
+
+
+function extract_state(dg, localQ, ijk, e)
+    bl = dg.balancelaw
+    FT = eltype(localQ)
+    nstate = num_state(bl, FT)
+    l_Q = MArray{Tuple{nstate},FT}(undef)
+    for s in 1:nstate
+        l_Q[s] = localQ[ijk,s,e]
+    end
+    return Vars{vars_state(bl, FT)}(l_Q)
+end
+
+#=
+function courant(state::MPIStateArray) #, aux::Vars, (x,y,z), t)
+
+    u = state.ρu/state.ρ
+    umax = global_max(u)
+    @show "size(UMAX(: ", size(umax)
+    #=
+    lucas_magic_factor = 5
+    dt = lucas_magic_factor * min_node_distance(grid) / acoustic_speed
+
+
+
+    
+    dx=maxval(x(:))-minval(x(:))
+    dy=maxval(y(:))-minval(y(:))
+    dz=maxval(z(:))-minval(z(:))
+    ds = sqrt(dx*dx + dy*dy + dz*dz)
+    vel=sqrt( u*u + v*v + w*w )
+=#
+end
+=#
+
 """
   Initial Condition for DYCOMS_RF01 LES
 @article{doi:10.1175/MWR2930.1,
@@ -179,8 +225,10 @@ function run(mpicomm,
   grid = DiscontinuousSpectralElementGrid(topl,
                                           FloatType = FT,
                                           DeviceArray = ArrayType,
-                                          polynomialorder = N,
-                                         )
+                                          polynomialorder = N
+                                          )
+                                          
+                                         
   # Problem constants
   # Radiation model
   κ             = FT(85)
@@ -234,9 +282,7 @@ function run(mpicomm,
                 CentralGradPenalty(),
                 auxstate=dg.auxstate,
                 direction=VerticalDirection())
-
     
-  #Q = init_ode_state(dg, FT(0); device=CPU())
   Q = init_ode_state(dg, FT(0))
 
   cbfilter = GenericCallbacks.EveryXSimulationSteps(2) do (init=false)
@@ -250,6 +296,27 @@ function run(mpicomm,
     if s
       starttime[] = now()
     else
+
+        #
+        # COURANT
+        #
+        maxρu = global_max(Q, 2)
+        maxρv = global_max(Q, 3)
+        maxρw = global_max(Q, 4)
+
+        #e_int = Q[:,5,:]/Q[:,1,:] - 0.5*Q[:,5,:] - 
+        #TS = PhaseEquil(e_int::FT, q_tot::FT, ρ::FT)
+        maxsound = global_max_scalar(soundspeed_air(FT(330)), mpicomm)
+        #z = dg.grid.coords.z
+        z = aux.coord.z
+        maxz = global_max_scalar(z, mpicomm)
+        
+        @info @sprintf(""" max(ρ) = %.16e""", maxz)
+        # 
+        # End courant 
+        #
+
+        
       energy = norm(Q)
       @info @sprintf("""Update
                      simtime = %.16e
@@ -354,7 +421,7 @@ let
                   # User defined domain parameters
                   Δh = FT(40)
                   aspectratio = FT(7)
-                  Δv = FT(5) #Δh/aspectratio
+                  Δv = FT(20) #Δh/aspectratio
                   aspectratio = Δh/Δv
                   
                   xmin, xmax = 0, 1000
