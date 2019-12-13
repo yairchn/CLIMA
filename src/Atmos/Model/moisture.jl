@@ -72,6 +72,8 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT, θ_l::FT
                                          state::Vars, aux::Vars, t::Real)
   e_int = internal_energy(moist, atmos.orientation, state, aux)
   TS = PhaseEquil(e_int, state.moisture.ρq_tot/state.ρ, state.ρ)
+
+  aux.moisture.soundspeed_air = soundspeed_air(TS)
   aux.moisture.temperature = air_temperature(TS)
   aux.moisture.θ_v = virtual_pottemp(TS)
   aux.moisture.q_liq = PhasePartition(TS).liq
@@ -79,7 +81,7 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT, θ_l::FT
   aux.moisture.θ_l = liquid_ice_pottemp(TS)
   aux.moisture.h_m = e_int + gas_constant_air(TS) * air_temperature(TS)
   aux.moisture.h_tot = state.ρe / state.ρ + gas_constant_air(TS) * air_temperature(TS)
-    
+
   nothing
 end
 

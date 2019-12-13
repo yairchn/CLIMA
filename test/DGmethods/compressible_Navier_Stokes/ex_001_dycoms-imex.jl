@@ -303,15 +303,13 @@ function run(mpicomm,
         maxρu = global_max(Q, 2)
         maxρv = global_max(Q, 3)
         maxρw = global_max(Q, 4)
-
-        #e_int = Q[:,5,:]/Q[:,1,:] - 0.5*Q[:,5,:] - 
-        #TS = PhaseEquil(e_int::FT, q_tot::FT, ρ::FT)
-        maxsound = global_max_scalar(soundspeed_air(FT(330)), mpicomm)
-        #z = dg.grid.coords.z
-        z = aux.coord.z
-        maxz = global_max_scalar(z, mpicomm)
         
-        @info @sprintf(""" max(ρ) = %.16e""", maxz)
+        sound_speed = dg.auxstate.model.soundspeed_air
+        
+#        maxsound = global_max_scalar(sound_speed, mpicomm)
+
+        
+        @info @sprintf(""" max(ρ) = %.16e""", maxsound)
         # 
         # End courant 
         #
