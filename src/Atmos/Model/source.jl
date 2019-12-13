@@ -64,7 +64,7 @@ function atmos_source!(s::GeostrophicForcing, m::AtmosModel, source::Vars, state
     
   umome = state.ρ * s.f_coriolis * (u[2]     - u_geo[2])
   vmome = state.ρ * s.f_coriolis * (u_geo[1] - u[1])
-  source.ρu += SVector(umome, vmome, 0)
+  source.ρu -= SVector(umome, vmome, 0)
   #source.ρu -= state.ρ * cross(fkvector, (u - u_geo))
   #source.ρu -= state.ρ * fkvector × (u - u_geo)
 
