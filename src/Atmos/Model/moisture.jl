@@ -51,6 +51,8 @@ vars_aux(::DryModel,FT) = @vars(θ_v::FT)
   e_int = internal_energy(moist, atmos.orientation, state, aux)
   TS = PhaseDry(e_int, state.ρ)
   aux.moisture.θ_v = virtual_pottemp(TS)
+  aux.moisture.soundspeed_air = soundspeed_air(TS)
+    
   nothing
 end
 
@@ -66,12 +68,14 @@ end
 vars_state(::EquilMoist,FT) = @vars(ρq_tot::FT)
 vars_gradient(::EquilMoist,FT) = @vars(q_tot::FT, h_tot::FT)
 vars_diffusive(::EquilMoist,FT) = @vars(ρd_q_tot::SVector{3,FT}, ρd_h_tot::SVector{3,FT})
-vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT, θ_l::FT, h_m::FT, h_tot::FT)
+vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT, θ_l::FT, h_m::FT, h_tot::FT, soundspeed_air::FT)
 
 @inline function atmos_nodal_update_aux!(moist::EquilMoist, atmos::AtmosModel,
                                          state::Vars, aux::Vars, t::Real)
   e_int = internal_energy(moist, atmos.orientation, state, aux)
   TS = PhaseEquil(e_int, state.moisture.ρq_tot/state.ρ, state.ρ)
+
+  aux.moisture.soundspeed_air = soundspeed_air(TS)
   aux.moisture.temperature = air_temperature(TS)
   aux.moisture.θ_v = virtual_pottemp(TS)
   aux.moisture.q_liq = PhasePartition(TS).liq
@@ -79,7 +83,7 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT, θ_l::FT
   aux.moisture.θ_l = liquid_ice_pottemp(TS)
   aux.moisture.h_m = e_int + gas_constant_air(TS) * air_temperature(TS)
   aux.moisture.h_tot = state.ρe / state.ρ + gas_constant_air(TS) * air_temperature(TS)
-    
+
   nothing
 end
 

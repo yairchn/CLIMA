@@ -59,10 +59,12 @@ function start(args::Vector{String})
     time_average = "n"
     isimex = "y"
     if isimex == "yes" || isimex == "y"
-        data = load("../../output/diagnostics-2019-12-06T11:18:27.152.jld2") # 1D IMEX
+        data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-12T16:27:38.751.jld2") # 1D IMEX
+        #data = load("../../output/diagnostics-2019-12-06T11:18:27.152.jld2") # 1D IMEX
         integrator_method = string("1D IMEX ")
     else       
-        data = load("../../output/diagnostics-2019-12-06T11:18:37.054.jld2") # EXPL
+        data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-12T16:27:38.751.jld2") # EXPL
+        #data = load("../../output/diagnostics-2019-12-06T11:18:37.054.jld2") # EXPL
         integrator_method = string("EXPL")
     end
     #data = load("../../output/diagnostics-2019-12-06T17:21:36.343.jld2")  #sphere

@@ -148,7 +148,7 @@ end
     
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
-    
+  
   # diffusive
   ρτ = diffusive.ρτ
   ρd_h_tot = diffusive.ρd_h_tot
