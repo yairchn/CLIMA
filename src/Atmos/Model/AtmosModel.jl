@@ -116,26 +116,21 @@ Where
   FT = eltype(state)
   D  = FT(3.75e-6)
   z  = aux.orientation.Φ / grav
+  usub = SVector(0, 0, -D*z)
     
   ρinv = 1/state.ρ
   ρu = state.ρu
   u = ρinv * ρu
-    
-  ###
-    #u += SVector(0, 0, -D*z)
-  usub = SVector(0, 0, -D*z)
-  ###
-    
+      
   # advective terms
   #flux.ρ   = ρu
-  #flux.ρu  = ρu .* u' 
-  flux.ρ   = state.ρ * (u + usub)
-  flux.ρu  = state.ρ * (u + usub) .*(u + usub)'
-  flux.ρe  = (u + usub) * state.ρe
+  flux.ρ   = state.ρ  * (u + usub)
+  flux.ρu  = state.ρ  * (u + usub) .* (u + usub)'
+  flux.ρe  = state.ρe * (u + usub)
 
   # pressure terms
   p = pressure(m.moisture, m.orientation, state, aux)
-  flux.ρu += p*I
+  flux.ρu += p*I 
   flux.ρe += u*p
   flux_radiation!(m.radiation, flux, state, aux, t)
   
