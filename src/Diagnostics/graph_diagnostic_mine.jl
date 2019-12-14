@@ -56,15 +56,15 @@ function start(args::Vector{String})
     #
     # USER INPUTS:
     #
+    user_specified_time = 2347.654637996573 # set it to -1 if you want the plotter to detect and show the last time step data only
     time_average = "n"
     isimex = "y"
     if isimex == "yes" || isimex == "y"
-        data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-12T16:27:38.751.jld2") # 1D IMEX
-        #data = load("../../output/diagnostics-2019-12-06T11:18:27.152.jld2") # 1D IMEX
+        #data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-14T16:48:05.227.jld2")
+        data = load("../../output/GCLOUD/julia-sm/geostrophic-positive-sign/diagnostics-2019-12-12T16:27:38.751.jld2")
         integrator_method = string("1D IMEX ")
-    else       
-        data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-12T16:27:38.751.jld2") # EXPL
-        #data = load("../../output/diagnostics-2019-12-06T11:18:37.054.jld2") # EXPL
+    else
+        data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-14T16:48:05.227.jld2")
         integrator_method = string("EXPL")
     end
     #data = load("../../output/diagnostics-2019-12-06T17:21:36.343.jld2")  #sphere
@@ -106,13 +106,18 @@ function start(args::Vector{String})
     tkeupper_stevens = readdlm("../../output/Stevens2005Data/upper_limit_tke_time_stevens2005.csv", ',', Float64)
 #    ww_stevens = readdlm("../../output/Stevens2005Data/.csv", ',', Float64)
     
-@show keys(data)
+    @show keys(data)
     println("data for $(length(data)) time steps in file")
     
     diff = 100
 
     times = parse.(Float64,keys(data))
-    timeend = maximum(times)
+
+    if user_specified_time < 0   
+        timeend = maximum(times)
+    else
+        timeend = user_specified_time
+    end
     ntimes = length(times)
     @show(ntimes)
     
@@ -149,7 +154,6 @@ function start(args::Vector{String})
     if time_average == "yes" || time_average == "y"
 
         time_str = string(integrator_method, ". Time averaged from 0 to ", ceil(timeend), " s")
-
         
         for key in keys(data)
             for ev in 1:nvertelem
@@ -179,10 +183,9 @@ function start(args::Vector{String})
         end
     else
 
+        key = time_data #this is a string
         time_str = string(integrator_method, ". Instantaneous at t= ", ceil(timeend), " s")
         
-        key = time_data #this is a string
-        #key = "1027.098642480827"
         ntimes = 1
         for ev in 1:nvertelem
             for k in 1:Nqk
