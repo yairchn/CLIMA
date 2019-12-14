@@ -176,9 +176,9 @@ function scaled_momentum_flux_tensor(m::SmagorinskyLilly, ρν, S)
 end
 
 function atmos_nodal_update_aux!(::SmagorinskyLilly, ::AtmosModel, state::Vars, aux::Vars, diff::Vars, t::Real)
-aux.turbulence.ρν = diff.ρν
-aux.turbulence.BR = diff.turbulence.BR
-aux.turbulence.Freq = diff.turbulence.Freq
+  aux.turbulence.ρν = diff.ρν
+  aux.turbulence.BR = diff.turbulence.BR
+  aux.turbulence.Freq = diff.turbulence.Freq
 end
 
 """
@@ -213,9 +213,9 @@ struct Vreman{FT} <: TurbulenceClosure
   "Smagorinsky Coefficient [dimensionless]"
   C_smag::FT
 end
-vars_aux(::Vreman,FT) = @vars(Δ::FT,ρν::FT,BR::FT)
+vars_aux(::Vreman,FT) = @vars(Δ::FT,ρν::FT,BR::FT,Freq::FT)
 vars_gradient(::Vreman,FT) = @vars(θ_v::FT)
-vars_diffusive(::Vreman,FT) = @vars(BR::FT)
+vars_diffusive(::Vreman,FT) = @vars(BR::FT,Freq::FT)
 
 function atmos_init_aux!(::Vreman, ::AtmosModel, aux::Vars, geom::LocalGeometry)
   aux.turbulence.Δ = lengthscale(geom)
@@ -232,6 +232,8 @@ function dynamic_viscosity_tensor(m::Vreman, S, state::Vars, diffusive::Vars, �
   @inbounds normS = strain_rate_magnitude(S)
   f_b² = squared_buoyancy_correction(normS, ∇transform, aux)
   diffusive.turbulence.BR = f_b²
+  ∂θ∂Φ = dot(∇transform.turbulence.θ_v, aux.orientation.∇Φ)
+  diffusive.turbulence.Freq = ∂θ∂Φ/grav #N²
   βij = f_b² * (aux.turbulence.Δ)^2 * (∇u' * ∇u)
   Bβinvariants = compute_principal_invariants(βij)
   @inbounds Bβ = Bβinvariants.second
@@ -242,8 +244,9 @@ function scaled_momentum_flux_tensor(m::Vreman, ρν, S)
 end
 
 function atmos_nodal_update_aux!(::Vreman, ::AtmosModel, state::Vars, aux::Vars, diff::Vars, t::Real)
-aux.turbulence.ρν = diff.ρν
-aux.turbulence.BR = diff.turbulence.BR
+  aux.turbulence.ρν = diff.ρν
+  aux.turbulence.BR = diff.turbulence.BR
+  aux.turbulence.Freq = diff.turbulence.Freq
 end
 
 """
@@ -303,9 +306,11 @@ function dynamic_viscosity_tensor(m::AnisoMinDiss, S, state::Vars, diffusive::Va
   αijαij = dot(∇u,∇u)
   coeff = (aux.turbulence.Δ * m.C_poincare)^2
   βij = -(∇u' * ∇u)
-    diffusive.turbulence.BR = FT(1) #There is no BR term in AMD, but we need this line here
+  diffusive.turbulence.BR = FT(1) #There is no BR term in AMD, but we need this line here
                                     #because the diagnostics function expects a value for
-                                    #diffusive.turbulence.BR
+  #diffusive.turbulence.BR
+  diffusive.turbulence.Freq = FT(1)
+    
   ν_e = max(0,coeff * (dot(βij, S) / (αijαij + eps(FT))))
   return state.ρ * ν_e
 end
@@ -316,4 +321,5 @@ end
 function atmos_nodal_update_aux!(::AnisoMinDiss, ::AtmosModel, state::Vars, aux::Vars, diff::Vars, t::Real)
   aux.turbulence.ρν = diff.ρν
   aux.turbulence.BR = diff.turbulence.BR
+  aux.turbulence.Freq = diff.turbulence.Freq 
 end

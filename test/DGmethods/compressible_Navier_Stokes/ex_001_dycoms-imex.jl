@@ -56,16 +56,6 @@ function global_max_scalar(A, mpicomm)
   MPI.Allreduce(A, MPI.MAX, mpicomm)[1]
 end
 
-function extract_aux(dg, auxstate, ijk, e)
-    bl = dg.balancelaw
-    FT = eltype(auxstate)
-    nauxstate = num_aux(bl, FT)
-    l_aux = MArray{Tuple{nauxstate},FT}(undef)
-    for s in 1:nauxstate
-        l_aux[s] = auxstate[ijk,s,e]
-    end
-    return Vars{vars_aux(bl, FT)}(l_aux)
-end
 
 function extract_state(dg, localQ, ijk, e)
     bl = dg.balancelaw
@@ -228,7 +218,7 @@ function run(mpicomm,
   F_0           = FT(70)
   F_1           = FT(22)
   # Geostrophic forcing
-  f_coriolis    = FT(7.62e-5)
+  f_coriolis    = FT(1.03e-4) #FT(7.62e-5)
   u_geostrophic = FT(7.0)
   v_geostrophic = FT(-5.5)
   w_ref         = FT(0)
@@ -289,29 +279,18 @@ function run(mpicomm,
         #
         # COURANT
         #
-        maxρu = global_max(Q/ρ, 2)
-        maxρv = global_max(Q/ρ, 3)
-        maxρw = global_max(Q/ρ, 4)
+        maxρu = global_max(Q, 2)
+        maxρv = global_max(Q, 3)
+        maxρw = global_max(Q, 4)
         
-#=        sound_speed = dg.auxstate.moisture.soundspeed_air
-         # get the state, auxiliary and geo variables onto the host if needed
-        if Array ∈ typeof(Q).parameters
-            localaux  = dg.auxstate.realdata
-        else
-            localaux  = Array(dg.auxstate.realdata)
-        end=#      
-#        maxsound = global_max_scalar(sound_speed, mpicomm)
-
-        
-        @info @sprintf(""" max(ρ) = %.16e""", maxsound)
+        #sound_speed = dg.auxstate.moisture.soundspeed_air
+        #maxsound = global_max_scalar(sound_speed, mpicomm)
+        #@info @sprintf(""" max(ρ) = %.16e""", maxsound)
         # 
         # End courant 
         #
 
-        
-        
-       
-      energy = norm(Q)
+        energy = norm(Q)
       @info @sprintf("""Update
                      simtime = %.16e
                      runtime = %s
