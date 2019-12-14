@@ -213,9 +213,9 @@ struct Vreman{FT} <: TurbulenceClosure
   "Smagorinsky Coefficient [dimensionless]"
   C_smag::FT
 end
-vars_aux(::Vreman,FT) = @vars(Δ::FT,ρν::FT,BR::FT,Freq::T)
+vars_aux(::Vreman,FT) = @vars(Δ::FT,ρν::FT,BR::FT,Freq::FT)
 vars_gradient(::Vreman,FT) = @vars(θ_v::FT)
-vars_diffusive(::Vreman,FT) = @vars(BR::FT,Freq::T)
+vars_diffusive(::Vreman,FT) = @vars(BR::FT,Freq::FT)
 
 function atmos_init_aux!(::Vreman, ::AtmosModel, aux::Vars, geom::LocalGeometry)
   aux.turbulence.Δ = lengthscale(geom)
