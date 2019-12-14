@@ -56,6 +56,16 @@ function global_max_scalar(A, mpicomm)
   MPI.Allreduce(A, MPI.MAX, mpicomm)[1]
 end
 
+function extract_aux(dg, auxstate, ijk, e)
+    bl = dg.balancelaw
+    FT = eltype(auxstate)
+    nauxstate = num_aux(bl, FT)
+    l_aux = MArray{Tuple{nauxstate},FT}(undef)
+    for s in 1:nauxstate
+        l_aux[s] = auxstate[ijk,s,e]
+    end
+    return Vars{vars_aux(bl, FT)}(l_aux)
+end
 
 function extract_state(dg, localQ, ijk, e)
     bl = dg.balancelaw
@@ -279,12 +289,17 @@ function run(mpicomm,
         #
         # COURANT
         #
-        maxρu = global_max(Q, 2)
-        maxρv = global_max(Q, 3)
-        maxρw = global_max(Q, 4)
+        maxρu = global_max(Q/ρ, 2)
+        maxρv = global_max(Q/ρ, 3)
+        maxρw = global_max(Q/ρ, 4)
         
-        sound_speed = dg.auxstate.moisture.soundspeed_air
-        
+#=        sound_speed = dg.auxstate.moisture.soundspeed_air
+         # get the state, auxiliary and geo variables onto the host if needed
+        if Array ∈ typeof(Q).parameters
+            localaux  = dg.auxstate.realdata
+        else
+            localaux  = Array(dg.auxstate.realdata)
+        end=#      
 #        maxsound = global_max_scalar(sound_speed, mpicomm)
 
         
