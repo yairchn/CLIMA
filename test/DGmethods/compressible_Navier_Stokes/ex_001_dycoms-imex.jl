@@ -283,20 +283,14 @@ function run(mpicomm,
         maxρv = global_max(Q, 3)
         maxρw = global_max(Q, 4)
         
-        sound_speed = dg.auxstate.moisture.soundspeed_air
-        
-#        maxsound = global_max_scalar(sound_speed, mpicomm)
-
-        
-        @info @sprintf(""" max(ρ) = %.16e""", maxsound)
+        #sound_speed = dg.auxstate.moisture.soundspeed_air
+        #maxsound = global_max_scalar(sound_speed, mpicomm)
+        #@info @sprintf(""" max(ρ) = %.16e""", maxsound)
         # 
         # End courant 
         #
 
-        
-        
-       
-      energy = norm(Q)
+        energy = norm(Q)
       @info @sprintf("""Update
                      simtime = %.16e
                      runtime = %s
