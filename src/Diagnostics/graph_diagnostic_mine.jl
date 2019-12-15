@@ -42,7 +42,10 @@ using VegaLite
 using DataFrames, FileIO
 using DelimitedFiles
 
-include("./diagnostic_vars.jl")
+
+clima_path = "/Users/simone/Work/CLIMA"
+out_plot_dir = "/Users/simone/Work/CLIMA/output"
+include(string(clima_path,"/src/Diagnostics/diagnostic_vars.jl"))
 
 function usage()
     println("""
@@ -56,18 +59,60 @@ function start(args::Vector{String})
     #
     # USER INPUTS:
     #
-    user_specified_time = 2347.654637996573 # set it to -1 if you want the plotter to detect and show the last time step data only
-    time_average = "n"
+    user_specified_time = -2494.383052871388 # set it to -1 if you want the plotter to detect and show the last time step data only
+    time_average = "y"
     isimex = "y"
-    if isimex == "yes" || isimex == "y"
-        #data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-14T16:48:05.227.jld2")
-        data = load("../../output/GCLOUD/julia-sm/geostrophic-positive-sign/diagnostics-2019-12-12T16:27:38.751.jld2")
+
+    gcloud_VM = ["julia-sm", "julia-sm1", "julia-sm2", "julia-002", "clima-test-01"]
+    #gcloud = "julia-sm"
+    #gcloud = "julia-002"
+    #gcloud = "clima-test-01"
+    #gcloud = "julia-sm1"
+    #gcloud = "julia-sm2"
+    #
+    #
+    #
+    for gcloud in gcloud_VM
+        if isimex == "yes" || isimex == "y"
+
+        if gcloud == "julia-sm"
+            SGS = "Smago"
+            radiation = "-rad"
+            geostrophic = "+geostr"
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T18:38:31.103.jld2"))
+            #data = load(string(clima_path, "/output/GCLOUD", gcloud, "/geostrophic-positive-sign/diagnostics-2019-12-12T16:27:38.751.jld2"))
+            
+        elseif gcloud == "julia-002"
+            SGS = "Vreman"
+            radiation = "-rad"
+            geostrophic = "+geostr"
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T18:38:45.378.jld2"))
+    
+        elseif gcloud == "clima-test-01"
+            SGS = "Smago"
+            radiation = "+rad"
+            geostrophic = "+geostr"
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T20:29:41.456.jld2"))
+            
+        elseif gcloud == "julia-sm1"
+            SGS = "Smago"
+            radiation = "-rad"
+            geostrophic = "-geostr"
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T23:17:56.839.jld2"))
+
+        elseif gcloud == "julia-sm2"
+            SGS = "Smago"
+            radiation = "-rad"
+            geostrophic = "-geostr"
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T23:14:01.398.jld2"))
+        end
+        
         integrator_method = string("1D IMEX ")
     else
-        data = load("../../output/GCLOUD/julia-sm/diagnostics-2019-12-14T16:48:05.227.jld2")
+        data = load(string(clima_path, "/output/GCLOUD/julia-sm/diagnostics-2019-12-14T16:48:05.227.jld2"))
         integrator_method = string("EXPL")
     end
-    #data = load("../../output/diagnostics-2019-12-06T17:21:36.343.jld2")  #sphere
+    info_str = string(SGS, " ", radiation, " ", geostrophic)
     
     out_vars = ["ht_sgs",
                 "qt_sgs",
@@ -89,7 +134,7 @@ function start(args::Vector{String})
                 "u",
                 "v"]
     
-    zvertical = 1200
+    zvertical = 1500
     
     #
     # END USER INPUTS:
@@ -99,12 +144,12 @@ function start(args::Vector{String})
     #
     # Stevens et al. 2005 measurements:
     #
-    qt_stevens  = readdlm("../../output/Stevens2005Data/experimental_qt_stevens2005.csv", ',', Float64)
-    ql_stevens  = readdlm("../../output/Stevens2005Data/experimental_ql_stevens2005.csv", ',', Float64)
-    thl_stevens = readdlm("../../output/Stevens2005Data/experimental_thetal_stevens2005.csv", ',', Float64)
-    tkelower_stevens = readdlm("../../output/Stevens2005Data/lower_limit_tke_time_stevens2005.csv", ',', Float64)
-    tkeupper_stevens = readdlm("../../output/Stevens2005Data/upper_limit_tke_time_stevens2005.csv", ',', Float64)
-#    ww_stevens = readdlm("../../output/Stevens2005Data/.csv", ',', Float64)
+    qt_stevens  = readdlm(string(clima_path, "/output/Stevens2005Data/experimental_qt_stevens2005.csv"), ',', Float64)
+    ql_stevens  = readdlm(string(clima_path, "/output/Stevens2005Data/experimental_ql_stevens2005.csv"), ',', Float64)
+    thl_stevens = readdlm(string(clima_path, "/output/Stevens2005Data/experimental_thetal_stevens2005.csv"), ',', Float64)
+    tkelower_stevens = readdlm(string(clima_path, "/output/Stevens2005Data/lower_limit_tke_time_stevens2005.csv"), ',', Float64)
+    tkeupper_stevens = readdlm(string(clima_path, "/output/Stevens2005Data/upper_limit_tke_time_stevens2005.csv"), ',', Float64)
+                    
     
     @show keys(data)
     println("data for $(length(data)) time steps in file")
@@ -115,8 +160,10 @@ function start(args::Vector{String})
 
     if user_specified_time < 0   
         timeend = maximum(times)
+        @show(timeend)
     else
         timeend = user_specified_time
+        @show(timeend)
     end
     ntimes = length(times)
     @show(ntimes)
@@ -153,7 +200,7 @@ function start(args::Vector{String})
     V19 = zeros(Nqk * nvertelem)
     if time_average == "yes" || time_average == "y"
 
-        time_str = string(integrator_method, ". Time averaged from 0 to ", ceil(timeend), " s")
+        time_str = string(info_str, ". Time-ave from 0 to ", ceil(timeend), " s")
         
         for key in keys(data)
             for ev in 1:nvertelem
@@ -184,7 +231,7 @@ function start(args::Vector{String})
     else
 
         key = time_data #this is a string
-        time_str = string(integrator_method, ". Instantaneous at t= ", ceil(timeend), " s")
+        time_str = string(info_str, ". ", SGS, ". At t= ", ceil(timeend), " s")
         
         ntimes = 1
         for ev in 1:nvertelem
@@ -321,7 +368,7 @@ function start(args::Vector{String})
     labels = ["θ" "θv" "θl"]
     pthl = plot(data, Z,
               linewidth=3,
-              xaxis=("<θ>"), #, (-0.15, 0.15), -0.15:0.05:0.15),
+              xaxis=("<θ>", (285, 310), 285:5:310),
               yaxis=("Altitude[m]", (0, zvertical)),
               label=labels,
                )
@@ -335,7 +382,7 @@ function start(args::Vector{String})
 
     pth = plot(data, Z,
               linewidth=3,
-              xaxis=("<θ>"), #, (-0.15, 0.15), -0.15:0.05:0.15),
+              xaxis=("<θ>", (285, 310), 285:5:310),
               yaxis=("Altitude[m]", (0, zvertical)),
               label=labels,
               )
@@ -381,11 +428,13 @@ function start(args::Vector{String})
     
     f=font(14,"courier")
     #plot(pqt, pql, pth, ptke, pww, pwww, layout = (2,3), titlefont=f, tickfont=f, legendfont=f, guidefont=f, title=time_str)
-    plot(pu,  pv,  pthl, pth,
+    all_plots = plot(pu,  pv,  pthl, pth,
          pqt, pql, pwqt, pB,
          puu, pww, pwww, ptke, layout = (3,4), titlefont=f, tickfont=f, legendfont=f, guidefont=f, title=time_str)
 
-    plot!(size=(900,1200))
+    plot!(size=(2200,1200))
+    savefig(all_plots, joinpath(string(out_plot_dir,"/plots/"), string(gcloud, ".t", ceil(timeend),"s.png")))
+end
 end
 
 #if length(ARGS) != 3 || !endswith(ARGS[1], ".jld2")
