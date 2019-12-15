@@ -63,15 +63,11 @@ function start(args::Vector{String})
     time_average = "y"
     isimex = "y"
 
+    #
+    # List the directories containing the JLD2 files to post-process:
+    #
     gcloud_VM = ["julia-sm", "julia-sm1", "julia-sm2", "julia-002", "clima-test-01"]
-    #gcloud = "julia-sm"
-    #gcloud = "julia-002"
-    #gcloud = "clima-test-01"
-    #gcloud = "julia-sm1"
-    #gcloud = "julia-sm2"
-    #
-    #
-    #
+    
     for gcloud in gcloud_VM
         if isimex == "yes" || isimex == "y"
 
@@ -266,6 +262,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("ht_sgs"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     p2 = plot(V2/ntimes, Z,
               linewidth=3,
@@ -273,6 +270,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("qt_sgs"),
               )
+hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     labels = ["h_m = e_i + gz + RmT" "h_t = e_t + RmT"]
     p3 = plot([V3/ntimes V4/ntimes], Z,
@@ -281,6 +279,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=labels,
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
     
     pwqt = plot(V5*1e+3/ntimes, Z,
               linewidth=3,
@@ -288,6 +287,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<w qt>"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     pqt = plot(V6*1e+3/ntimes, Z,
               linewidth=3,
@@ -295,14 +295,16 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<qt>"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     qt_rf01 = qt_stevens[:,1]
     z_rf01  = qt_stevens[:,2]
     p5 = plot!(qt_rf01,z_rf01,seriestype=:scatter,
                markersize = 10,
                markercolor = :black,
-               label=("<qt experimental>"))
-    ##
+               label=("<qt experimental>")
+               )
+##
     
     pql = plot(V7*1e+3/ntimes, Z,
               linewidth=3,
@@ -310,20 +312,23 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<ql>"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black], label="")
 
     ql_rf01 = ql_stevens[:,1]
     z_rf01  = ql_stevens[:,2]
     p6 = plot!(ql_rf01,z_rf01,seriestype=:scatter,
                markersize = 10,
                markercolor = :black,
-               label=("<ql experimental>"))
+               label=("<ql experimental>")
+               )
 
     puu = plot(V15/ntimes, Z,
               linewidth=3,
               xaxis=("<u'u'>"),# (-0.1, 0.6), -0.1:0.1:0.6),
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<u'u'>"),
-               )
+              )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     pvv = plot(V16/ntimes, Z,
               linewidth=3,
@@ -331,7 +336,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<v'v'>"),
               )
-
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
 
     pww = plot(V8/ntimes, Z,
@@ -340,14 +345,16 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<w'w'>"),
               )
-
-  tke = 0.5*(V8.*V8 + V15.*V15 + V16.*V16)
-  ptke = plot(tke/ntimes^2, Z,
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
+  
+   tke = 0.5*(V8.*V8 + V15.*V15 + V16.*V16)
+   ptke = plot(tke/ntimes^2, Z,
               linewidth=3,
               xaxis=("TKE"),# (-0.1, 0.6), -0.1:0.1:0.6),
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<TKE>"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     tke_rf01 = tkelower_stevens[:,1]
     z_rf01   = tkelower_stevens[:,2]
@@ -363,6 +370,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("<w'w'w'>"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
     
     data = [V10/ntimes V11/ntimes V12/ntimes]
     labels = ["θ" "θv" "θl"]
@@ -372,6 +380,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=labels,
                )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     thl_rf01 = thl_stevens[:,1]
     z_rf01  = thl_stevens[:,2]
@@ -386,6 +395,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=labels,
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 ##
 
     B = 9.81*V17/289.0
@@ -395,6 +405,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("g<w'θv>/θ_0"),
                )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
 
     pu = plot(V18/ntimes, Z,
@@ -403,6 +414,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("u (m/s)"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     pv = plot(V19/ntimes, Z,
               linewidth=3,
@@ -410,6 +422,7 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("v (m/s)"),
               )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     pw = plot(V13/ntimes, Z,
               linewidth=3,
@@ -417,13 +430,15 @@ function start(args::Vector{String})
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("w (m/s)"),
                )
+    hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     p11 = plot(V14/ntimes, Z,
               linewidth=3,
               xaxis=("dθv/dz"), #, (-0.15, 0.15), -0.15:0.05:0.15),
               yaxis=("Altitude[m]", (0, zvertical)),
               label=("dθv/dz"),
-              )
+               )
+   hline!( [600, 840], width=[1,1], linestyle=[:dash, :dash], color=[:black],  label="")
 
     
     f=font(14,"courier")
