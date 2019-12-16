@@ -59,14 +59,17 @@ function start(args::Vector{String})
     #
     # USER INPUTS:
     #
-    user_specified_time = -2494.383052871388 # set it to -1 if you want the plotter to detect and show the last time step data only
+    user_specified_time = -6456.050254491391 # set it to -1 if you want the plotter to detect and show the last time step data only
     time_average = "y"
     isimex = "y"
 
     #
     # List the directories containing the JLD2 files to post-process:
     #
-    gcloud_VM = ["julia-sm", "julia-sm1", "julia-sm2", "julia-002", "clima-test-01"]
+    #gcloud_VM = ["julia-sm", "julia-sm1", "julia-sm2", "julia-002", "clima-test-01", "clima-test-01-5m"]
+    gcloud_VM = ["julia-sm-5m"]
+    #gcloud_VM = ["dycoms-imex-expl-working"]  #EDDY
+    #gcloud_VM = ["yt-DYCOMS-MULTI-RATE-NEW-MOIST-THERMO"] #EDDY
     
     for gcloud in gcloud_VM
         if isimex == "yes" || isimex == "y"
@@ -77,6 +80,12 @@ function start(args::Vector{String})
             geostrophic = "+geostr"
             data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T18:38:31.103.jld2"))
             #data = load(string(clima_path, "/output/GCLOUD", gcloud, "/geostrophic-positive-sign/diagnostics-2019-12-12T16:27:38.751.jld2"))
+
+        elseif gcloud == "julia-sm-5m"
+            SGS = "Smago 5m"
+            radiation = "-rad"
+            geostrophic = "+geostr"
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-15T21:31:00.386.jld2"))
             
         elseif gcloud == "julia-002"
             SGS = "Vreman"
@@ -88,7 +97,13 @@ function start(args::Vector{String})
             SGS = "Smago"
             radiation = "+rad"
             geostrophic = "+geostr"
-            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T20:29:41.456.jld2"))
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T20:29:41.456.jld2")) 
+        
+        elseif gcloud == "clima-test-01-5m"
+            SGS = "Smago dz=5m"
+            radiation = "+rad"
+            geostrophic = "+geostr"
+            data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-15T05:58:09.484.jld2"))  #5m          
             
         elseif gcloud == "julia-sm1"
             SGS = "Smago"
@@ -101,6 +116,19 @@ function start(args::Vector{String})
             radiation = "-rad"
             geostrophic = "-geostr"
             data = load(string(clima_path, "/output/GCLOUD/", gcloud, "/diagnostics-2019-12-14T23:14:01.398.jld2"))
+
+        elseif gcloud == "yt-DYCOMS-MULTI-RATE-NEW-MOIST-THERMO"
+            SGS = "Smago"
+            radiation = "-rad"
+            geostrophic = "+geostr"
+            data = load(string(clima_path, "/output/EDDY/", gcloud, "/diagnostics-2019-12-15T18:08:20.27.jld2"))
+            
+        elseif gcloud == "dycoms-imex-expl-working"
+            SGS = "Smago"
+            radiation = "-rad"
+            geostrophic = "+geostr"
+            data = load(string(clima_path, "/output/EDDY/", gcloud, "/diagnostics-2019-12-15T21:21:51.544.jld2"))
+            
         end
         
         integrator_method = string("1D IMEX ")
