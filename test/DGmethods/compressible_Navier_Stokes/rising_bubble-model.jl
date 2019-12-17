@@ -190,4 +190,62 @@ let
   end
 end
 
-#nothing
+function gather_global_stats(mpicomm, 
+                             dg, 
+                             Q,
+                             out_dir,
+                             dt)
+
+    mpirank = MPI.Comm_rank(mpicomm)
+    nranks = MPI.Comm_size(mpicomm)
+
+    # extract grid information
+    bl = dg.balancelaw
+    grid = dg.grid
+    topology = grid.topology
+    N = polynomialorder(grid)
+    Nq = N + 1
+    Nqk = dimensionality(grid) == 2 ? 1 : Nq
+    npoints = Nq * Nq * Nqk
+    nrealelem = length(topology.realelems)
+    nvertelem = topology.stacksize
+    nhorzelem = div(nrealelem, nvertelem)
+
+    # get the state, auxiliary and geo variables onto the host if needed
+    if Array ∈ typeof(Q).parameters
+        localQ    = Q.realdata
+        localaux  = dg.auxstate.realdata
+        localvgeo = grid.vgeo
+        localdiff = dg.diffstate.realdata
+    else
+        localQ    = Array(Q.realdata)
+        localaux  = Array(dg.auxstate.realdata)
+        localvgeo = Array(grid.vgeo)
+        localdiff = Array(dg.diffstate.realdata)
+    end
+    FT = eltype(localQ)
+
+
+    zvals = zeros(Nqk, nvertelem)
+    thermoQ = zeros(Nq*Nq*Nqk,1,nrealelem)
+    
+    for eh in 1:nhorzelem
+      for ev in 1:nvertelem
+        e = ev + (eh - 1) * nvertelem
+        for k in 1:Nqk
+          for j in 1:Nq
+            for i in 1:Nq
+              ijk = i + Nq * ((j-1) + Nq * (k-1))
+              δρ̅ = localQ[ijk,1,e] - globalQ[1]
+              δρ̅u̅ = localQ[ijk,2,e] - globalQ[2]
+              δρ̅v̅ = localQ[ijk,3,e] - globalQ[3]
+              δρ̅w̅ = localQ[ijk,4,e] - globalQ[4]
+              δρ̅e̅_tot = localQ[ijk,5,e] - globalQ[5]
+              δρ̅q̅_tot = localQ[ijk,6,e] - globalQ[6]
+            end
+          end
+        end
+      end
+    end
+  return nothing
+end
