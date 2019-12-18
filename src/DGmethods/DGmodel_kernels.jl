@@ -1219,3 +1219,93 @@ function knl_copy_stack_field_down!(::Val{dim}, ::Val{N}, ::Val{nvertelem},
   end
   nothing
 end
+
+function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
+                     bl::BalanceLaw, vgeo, 
+                     Q, rhs, auxstate) where {dim, N, nvertelem, nhorzelem}
+
+  FT = eltype(Q)
+  Nq = N+1 
+  Nqk = dim == 2 ? 1 : Nq
+  
+  nstate = num_state(bl,FT)
+
+  l_M = @scratch FT (Nq, Nq, Nqk) 3
+  l_Σ = @scratch FT (nstate, Nq, Nq, Nqk) 3
+  l_Q̅ = @scratch FT (nstate, Nq, Nq, Nqk) 3
+  l_δ̅ = @scratch FT (nstate, Nq, Nq, Nqk) 3
+  l_χ̅ = @scratch FT (nstate, Nq, Nq, Nqk) 3
+  χ̅_max = MArray{Tuple{nhorzelem*nvertelem}, FT}(undef)
+
+  # Collect cumulative sums
+  @inbounds @loop for eh in (1:nhorzelem; blockIdx().x)
+    # Loop up the stack of elements
+    for ev = 1:nvertelem
+      e = ev + (eh - 1) * nvertelem
+      @loop for j in (1:Nqk; threadIdx().y)
+        @loop for i in (1:Nq; threadIdx().x)
+          @unroll for k in 1:Nq
+            ijk = i + Nq * ((j-1) + Nqk * (k-1))
+            M = vgeo[ijk, _M, e]
+            l_M[i, j, k] += M 
+            @unroll for s = 1:nstate
+              l_Σ[s, i, j, k] += M * Q[ijk, s, e]
+            end
+          end
+        end
+      end
+    end
+  end
+  
+  # Compute residual ratios for dyn-sgs method
+  @inbounds @loop for eh in (1:nhorzelem; blockIdx().x)
+    # Loop up the stack of elements
+    for ev = 1:nvertelem
+      e = ev + (eh - 1) * nvertelem
+      @loop for j in (1:Nqk; threadIdx().y)
+        @loop for i in (1:Nq; threadIdx().x)
+          @unroll for k in 1:Nq
+            ijk = i + Nq * ((j-1) + Nqk * (k-1))
+            @unroll for s = 1:nstate
+              l_Q̅[s, i, j, k] = l_Σ[s, i, j, k] / (l_M[i, j, k] + eps(FT))
+              l_δ̅[s, i, j, k] = Q[ijk, s, e] - l_Q̅[s, i, j, k] 
+              l_χ̅[s, i, j, k] = maximum(rhs[:, s, e]) /(l_δ̅[s, i, j, k] + eps(FT))
+            end
+          end
+        end
+      end
+      χ̅_max[e] = maximum(l_χ̅)
+    end
+  end
+  # Compute viscosity as the nth-rank maximum
+  χ̅ = FT(0)
+  χ̅ = maximum(χ̅_max)
+  
+  #= TODO Extend to multi-rank friendly version 
+  Σ_red  = MPI.Reduce(ΣM, +, 0, mpicomm)
+  # Collapse DG averages across ranks
+  ρ̅      = MPI.Reduce(Σρ, +, 0, mpicomm) / Σ_red
+  ρ̅u̅     = MPI.Reduce(Σρu, +, 0, mpicomm) / Σ_red
+  ρ̅v̅     = MPI.Reduce(Σρv, +, 0, mpicomm) / Σ_red
+  ρ̅w̅     = MPI.Reduce(Σρw, +, 0, mpicomm) / Σ_red
+  ρ̅e̅     = MPI.Reduce(Σρe, +, 0, mpicomm) / Σ_red
+  ρ̅q̅     = MPI.Reduce(Σρq, +, 0, mpicomm) / Σ_red
+  =# 
+  
+  # Update and store in the auxiliary array (as the first-index value)
+  nauxstate = num_aux(bl,FT)
+  @inbounds @loop for eh in (nhorzelem; blockIdx().x)
+    for ev = 1:nvertelem
+      e = ev + (eh - 1) * nvertelem
+      @loop for j in (1:Nqk; threadIdx().y)
+        @loop for i in (1:Nq; threadIdx().x)
+          @unroll for k in 1:Nq
+            ijk = i + Nq * ((j-1) + Nqk * (k-1))
+            auxstate[ijk, 1, e] = χ̅
+          end
+        end
+      end
+    end
+  end
+
+end

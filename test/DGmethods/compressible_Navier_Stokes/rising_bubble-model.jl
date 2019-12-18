@@ -34,7 +34,7 @@ const (xmin,xmax)      = (0,1000)
 const (ymin,ymax)      = (0,400)
 const (zmin,zmax)      = (0,1000)
 const Ne        = (10,2,10)
-const polynomialorder = 4
+const N = 4
 const dim       = 3
 const dt        = 0.01
 const timeend   = 10dt
@@ -89,13 +89,124 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
 end
 # --------------- Driver definition ------------------ # 
 function run(mpicomm, 
-             topl, dim, Ne, polynomialorder, 
+             topl, dim, Ne, N, 
              timeend, FT, dt)
+  # --------------- Testing global_stats -------------# 
+  function gather_global_stats(mpicomm, 
+                               dg, 
+                               Q,
+                               dt)
+
+    mpirank = MPI.Comm_rank(mpicomm)
+    nranks = MPI.Comm_size(mpicomm)
+
+    # extract grid information
+    bl = dg.balancelaw
+    grid = dg.grid
+    topology = grid.topology
+    N = polynomialorder(grid)
+    Nq = N + 1
+    Nqk = dimensionality(grid) == 2 ? 1 : Nq
+    npoints = Nq * Nq * Nqk
+    nrealelem = length(topology.realelems)
+    nvertelem = topology.stacksize
+    nhorzelem = div(nrealelem, nvertelem)
+
+    # get the state, auxiliary and geo variables onto the host if needed
+    if Array ∈ typeof(Q).parameters
+        localQ    = Q.realdata
+        localaux  = dg.auxstate.realdata
+        localvgeo = grid.vgeo
+        localdiff = dg.diffstate.realdata
+    else
+        localQ    = Array(Q.realdata)
+        localaux  = Array(dg.auxstate.realdata)
+        localvgeo = Array(grid.vgeo)
+        localdiff = Array(dg.diffstate.realdata)
+    end
+    FT = eltype(localQ)
+    zvals = zeros(Nqk, nvertelem)
+    thermoQ = zeros(Nq*Nq*Nqk,1,nrealelem)
+
+    (Σρ, Σρu, Σρv, Σρw, Σρe, Σρq, ΣM) = (zero(FT),zero(FT),zero(FT),zero(FT),zero(FT),zero(FT),zero(FT))
+    
+    # Accumulate variables across nodes and elements
+    for eh in 1:nhorzelem
+      for ev in 1:nvertelem
+        e = ev + (eh - 1) * nvertelem
+        for k in 1:Nqk
+          for j in 1:Nq
+            for i in 1:Nq
+              ijk     = i + Nq * ((j-1) + Nq * (k-1))
+              M       = localvgeo[ijk, grid.Mid, e]
+              Σρ      += M * localQ[ijk,1,e]
+              Σρu     += M * localQ[ijk,2,e]
+              Σρv     += M * localQ[ijk,3,e]
+              Σρw     += M * localQ[ijk,4,e]
+              Σρe     += M * localQ[ijk,5,e]
+              Σρq     += M * localQ[ijk,6,e]
+              ΣM      += M
+            end
+          end
+        end
+      end
+    end
+    
+    Σ_red  = MPI.Reduce(ΣM, +, 0, mpicomm)
+    # Collapse DG averages across ranks
+    ρ̅      = MPI.Reduce(Σρ, +, 0, mpicomm) / Σ_red
+    ρ̅u̅     = MPI.Reduce(Σρu, +, 0, mpicomm) / Σ_red
+    ρ̅v̅     = MPI.Reduce(Σρv, +, 0, mpicomm) / Σ_red
+    ρ̅w̅     = MPI.Reduce(Σρw, +, 0, mpicomm) / Σ_red
+    ρ̅e̅     = MPI.Reduce(Σρe, +, 0, mpicomm) / Σ_red
+    ρ̅q̅     = MPI.Reduce(Σρq, +, 0, mpicomm) / Σ_red
+
+    # Allocate
+    nrealelem = length(grid.topology.realelems)
+    δρ        = zeros(Nq * Nq * Nqk,1,nrealelem) 
+    δρu       = zeros(Nq * Nq * Nqk,1,nrealelem)
+    δρv       = zeros(Nq * Nq * Nqk,1,nrealelem)
+    δρw       = zeros(Nq * Nq * Nqk,1,nrealelem) 
+    δρe       = zeros(Nq * Nq * Nqk,1,nrealelem)
+    δρq       = zeros(Nq * Nq * Nqk,1,nrealelem)
+    tempmax   = zeros(nrealelem)
+    (δρmax, δρumax, δρvmax, δρwmax, δρemax, δρqmax) = (zero(FT),zero(FT),zero(FT),zero(FT),zero(FT),zero(FT))
+    
+    # Compute deviation from global means 
+    for eh in 1:nhorzelem
+      for ev in 1:nvertelem
+        e = ev + (eh - 1) * nvertelem
+        for k in 1:Nqk
+          for j in 1:Nq
+            for i in 1:Nq
+              ijk          = i + Nq * ((j-1) + Nq * (k-1))
+              δρ[ijk,1,e] = localQ[ijk,1,e] - ρ̅
+              δρu[ijk,1,e] = localQ[ijk,2,e] - ρ̅u̅
+              δρv[ijk,1,e] = localQ[ijk,3,e] - ρ̅v̅ 
+              δρw[ijk,1,e] = localQ[ijk,4,e] - ρ̅w̅ 
+              δρe[ijk,1,e] = localQ[ijk,5,e] - ρ̅e̅ 
+              δρq[ijk,1,e] = localQ[ijk,6,e] - ρ̅q̅
+            end
+          end
+        end
+        δρmax  = maximum(δρ[:,1,e])
+        δρumax = maximum(δρu[:,1,e])
+        δρvmax = maximum(δρv[:,1,e])
+        δρwmax = maximum(δρw[:,1,e])
+        δρemax = maximum(δρe[:,1,e])
+        δρqmax = maximum(δρq[:,1,e])
+      end
+    end
+    @show(ρ̅)
+    # Global maximum 
+    return nothing
+  end
+
   # -------------- Define grid ----------------------------------- # 
   grid = DiscontinuousSpectralElementGrid(topl,
                                           FloatType = FT,
                                           DeviceArray = ArrayType,
-                                          polynomialorder = polynomialorder
+                                          polynomialorder = N
                                            )
   # -------------- Define model ---------------------------------- # 
   model = AtmosModel(FlatOrientation(),
@@ -141,6 +252,10 @@ function run(mpicomm,
     end
   end
 
+  cb_dynsgs = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
+    #gather_global_stats(mpicomm, dg, Q, dt)
+  end
+
   step = [0]
   cbvtk = GenericCallbacks.EveryXSimulationSteps(3000)  do (init=false)
     mkpath("./vtk-rtb/")
@@ -152,7 +267,7 @@ function run(mpicomm,
       nothing
   end
 
-  solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo,cbvtk))
+  solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo,cbvtk,cb_dynsgs))
   # End of the simulation information
   engf = norm(Q)
   Qe = init_ode_state(dg, FT(timeend))
@@ -184,68 +299,8 @@ let
                   range(FT(zmin); length=Ne[3]+1, stop=zmax))
     topl = StackedBrickTopology(mpicomm, brickrange, periodicity = (false, true, false))
     engf_eng0 = run(mpicomm,
-                    topl, dim, Ne, polynomialorder, 
+                    topl, dim, Ne, N, 
                     timeend, FT, dt)
     @test engf_eng0 ≈ FT(9.9999993807738441e-01)
   end
-end
-
-function gather_global_stats(mpicomm, 
-                             dg, 
-                             Q,
-                             out_dir,
-                             dt)
-
-    mpirank = MPI.Comm_rank(mpicomm)
-    nranks = MPI.Comm_size(mpicomm)
-
-    # extract grid information
-    bl = dg.balancelaw
-    grid = dg.grid
-    topology = grid.topology
-    N = polynomialorder(grid)
-    Nq = N + 1
-    Nqk = dimensionality(grid) == 2 ? 1 : Nq
-    npoints = Nq * Nq * Nqk
-    nrealelem = length(topology.realelems)
-    nvertelem = topology.stacksize
-    nhorzelem = div(nrealelem, nvertelem)
-
-    # get the state, auxiliary and geo variables onto the host if needed
-    if Array ∈ typeof(Q).parameters
-        localQ    = Q.realdata
-        localaux  = dg.auxstate.realdata
-        localvgeo = grid.vgeo
-        localdiff = dg.diffstate.realdata
-    else
-        localQ    = Array(Q.realdata)
-        localaux  = Array(dg.auxstate.realdata)
-        localvgeo = Array(grid.vgeo)
-        localdiff = Array(dg.diffstate.realdata)
-    end
-    FT = eltype(localQ)
-
-
-    zvals = zeros(Nqk, nvertelem)
-    thermoQ = zeros(Nq*Nq*Nqk,1,nrealelem)
-    
-    for eh in 1:nhorzelem
-      for ev in 1:nvertelem
-        e = ev + (eh - 1) * nvertelem
-        for k in 1:Nqk
-          for j in 1:Nq
-            for i in 1:Nq
-              ijk = i + Nq * ((j-1) + Nq * (k-1))
-              δρ̅ = localQ[ijk,1,e] - globalQ[1]
-              δρ̅u̅ = localQ[ijk,2,e] - globalQ[2]
-              δρ̅v̅ = localQ[ijk,3,e] - globalQ[3]
-              δρ̅w̅ = localQ[ijk,4,e] - globalQ[4]
-              δρ̅e̅_tot = localQ[ijk,5,e] - globalQ[5]
-              δρ̅q̅_tot = localQ[ijk,6,e] - globalQ[6]
-            end
-          end
-        end
-      end
-    end
-  return nothing
 end

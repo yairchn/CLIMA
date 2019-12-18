@@ -17,7 +17,7 @@ import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
                         vars_diffusive, vars_integrals, flux_nondiffusive!,
                         flux_diffusive!, source!, wavespeed, boundary_state!,
                         gradvariables!, diffusive!, init_aux!, init_state!,
-                        update_aux!, integrate_aux!, LocalGeometry, lengthscale,
+                        update_aux!, dynsgs!, integrate_aux!, LocalGeometry, lengthscale,
                         resolutionmetric, DGModel, num_integrals,
                         nodal_update_aux!, indefinite_stack_integral!,
                         reverse_indefinite_stack_integral!
@@ -76,6 +76,7 @@ end
 
 function vars_aux(m::AtmosModel, FT)
   @vars begin
+    χ̅::FT
     ∫dz::vars_integrals(m, FT)
     ∫dnz::vars_integrals(m, FT)
     coord::SVector{3,FT}
@@ -200,7 +201,7 @@ function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::V
   diffusive!(m.turbulence, diffusive, ∇transform, state, aux, t, ρD_t)
 end
 
-function update_aux!(dg::DGModel, m::AtmosModel, Q::MPIStateArray, t::Real)
+function update_aux!(dg::DGModel, m::AtmosModel, Q::MPIStateArray, dQdt::MPIStateArray, t::Real)
   FT = eltype(Q)
   auxstate = dg.auxstate
 
@@ -210,9 +211,11 @@ function update_aux!(dg::DGModel, m::AtmosModel, Q::MPIStateArray, t::Real)
   end
 
   nodal_update_aux!(atmos_nodal_update_aux!, dg, m, Q, t)
+  dynsgs!(dg, m, Q, auxstate, dQdt)
 end
 
 function atmos_nodal_update_aux!(m::AtmosModel, state::Vars, aux::Vars,
+
                                  diff::Vars, t::Real)
   atmos_nodal_update_aux!(m.moisture, m, state, aux, t)
   atmos_nodal_update_aux!(m.radiation, m, state, aux, t)

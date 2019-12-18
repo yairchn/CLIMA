@@ -51,7 +51,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   communicate = !(isstacked(topology) &&
                   typeof(dg.direction) <: VerticalDirection)
 
-  update_aux!(dg, bl, Q, t)
+  update_aux!(dg, bl, Q, dQdt, t)
 
   ########################
   # Gradient Computation #
@@ -186,8 +186,40 @@ function indefinite_stack_integral!(dg::DGModel, m::BalanceLaw,
                                          Val(nintegrals)))
 end
 
+function dynsgs!(dg::DGModel, m::BalanceLaw, 
+                 Q::MPIStateArray,
+                 auxstate::MPIStateArray, 
+                 dQdt::MPIStateArray)
+
+  device = typeof(Q.data) <: Array ? CPU() : CUDA()
+
+  grid = dg.grid
+  topology = grid.topology
+
+  dim = dimensionality(grid)
+  N = polynomialorder(grid)
+  Nq = N + 1
+  Nqk = dim == 2 ? 1 : Nq
+
+  FT = eltype(Q)
+
+  vgeo = grid.vgeo
+  polyorder = polynomialorder(dg.grid)
+
+  # do integrals
+  nintegrals = num_integrals(m, FT)
+  nelem = length(topology.elems)
+  nvertelem = topology.stacksize
+  nhorzelem = div(nelem, nvertelem)
+
+  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
+          knl_dynsgs!(Val(dim), Val(N), Val(nvertelem), Val(nhorzelem), 
+                      m, vgeo, 
+                      Q.data, dQdt.data, auxstate))
+end
+
 # fallback
-function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
+function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, dQdt::MPIStateArray,  t::Real)
 end
 
 function reverse_indefinite_stack_integral!(dg::DGModel, m::BalanceLaw,
