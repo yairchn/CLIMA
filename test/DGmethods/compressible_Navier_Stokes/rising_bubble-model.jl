@@ -37,7 +37,7 @@ const Ne        = (10,2,10)
 const N = 4
 const dim       = 3
 const dt        = 0.01
-const timeend   = 10dt
+const timeend   = 2dt
 # ------------- Initial condition function ----------- # 
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,

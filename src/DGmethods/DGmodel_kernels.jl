@@ -1228,16 +1228,18 @@ function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
   Nq = N+1 
   Nqk = dim == 2 ? 1 : Nq
   
+  # Identify state, aux lengths
   nstate = num_state(bl,FT)
+  nauxstate = num_aux(bl,FT)
 
-  l_M = @scratch FT (Nq, Nq, Nqk) 3
-  l_Σ = @scratch FT (nstate, Nq, Nq, Nqk) 3
-  l_Q̅ = @scratch FT (nstate, Nq, Nq, Nqk) 3
+  # Scratch storage (not available outside function)
   l_δ̅ = @scratch FT (nstate, Nq, Nq, Nqk) 3
-  l_χ̅ = @scratch FT (nstate, Nq, Nq, Nqk) 3
   χ̅_max = MArray{Tuple{nhorzelem*nvertelem}, FT}(undef)
-
-  # Collect cumulative sums
+  l_Σ = MArray{Tuple{nstate}, FT}(undef)
+  l_Q̅ = MArray{Tuple{nstate}, FT}(undef)
+  l_χ̅ = MArray{Tuple{nstate}, FT}(undef)
+  ΣM = zero(FT)
+  # Accumulate sums for state variables
   @inbounds @loop for eh in (1:nhorzelem; blockIdx().x)
     # Loop up the stack of elements
     for ev = 1:nvertelem
@@ -1247,16 +1249,23 @@ function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
           @unroll for k in 1:Nq
             ijk = i + Nq * ((j-1) + Nqk * (k-1))
             M = vgeo[ijk, _M, e]
-            l_M[i, j, k] += M 
+            ΣM += M 
             @unroll for s = 1:nstate
-              l_Σ[s, i, j, k] += M * Q[ijk, s, e]
+              l_Σ[s] += M * Q[ijk, s, e]
             end
+            #l_Σ[1] += M * Q[ijk, 1, e]
+            #l_Σ[2] += M * Q[ijk, 2, e]
+            #l_Σ[3] += M * Q[ijk, 3, e]
+            #l_Σ[4] += M * Q[ijk, 4, e]
+            #l_Σ[5] += M * Q[ijk, 5, e]
+            #l_Σ[6] += M * Q[ijk, 6, e]
           end
         end
       end
     end
   end
   
+  χ̅ = FT(0)
   # Compute residual ratios for dyn-sgs method
   @inbounds @loop for eh in (1:nhorzelem; blockIdx().x)
     # Loop up the stack of elements
@@ -1267,33 +1276,52 @@ function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
           @unroll for k in 1:Nq
             ijk = i + Nq * ((j-1) + Nqk * (k-1))
             @unroll for s = 1:nstate
-              l_Q̅[s, i, j, k] = l_Σ[s, i, j, k] / (l_M[i, j, k] + eps(FT))
-              l_δ̅[s, i, j, k] = Q[ijk, s, e] - l_Q̅[s, i, j, k] 
-              l_χ̅[s, i, j, k] = maximum(rhs[:, s, e]) /(l_δ̅[s, i, j, k] + eps(FT))
+              l_Q̅[s] = l_Σ[s] / ΣM
+              l_δ̅[s, i, j, k] = abs(Q[ijk, s, e] - l_Q̅[s])
+              l_χ̅[s] = maximum(abs.(rhs[:, s, e])) /(maximum(l_δ̅[s,:,:,:]) + eps(FT))
             end
+            #l_Q̅[1] = l_Σ[1] / ΣM
+            #l_Q̅[2] = l_Σ[2] / ΣM
+            #l_Q̅[3] = l_Σ[3] / ΣM
+            #l_Q̅[4] = l_Σ[4] / ΣM
+            #l_Q̅[5] = l_Σ[5] / ΣM
+            #l_Q̅[6] = l_Σ[6] / ΣM
+            #
+            #l_δ̅[1, i, j, k] = abs(Q[ijk, 1, e] - l_Q̅[1])
+            #l_δ̅[2, i, j, k] = abs(Q[ijk, 2, e] - l_Q̅[2])
+            #l_δ̅[3, i, j, k] = abs(Q[ijk, 3, e] - l_Q̅[3])
+            #l_δ̅[4, i, j, k] = abs(Q[ijk, 4, e] - l_Q̅[4])
+            #l_δ̅[5, i, j, k] = abs(Q[ijk, 5, e] - l_Q̅[5])
+            #l_δ̅[6, i, j, k] = abs(Q[ijk, 6, e] - l_Q̅[6])
+            
+            #l_χ̅[1] = maximum(abs.(rhs[:, 1, e])) /(maximum(l_δ̅[1,:,:,:]) + eps(FT))
+            #l_χ̅[2] = maximum(abs.(rhs[:, 2, e])) /(maximum(l_δ̅[2,:,:,:]) + eps(FT))
+            #l_χ̅[3] = maximum(abs.(rhs[:, 3, e])) /(maximum(l_δ̅[3,:,:,:]) + eps(FT))
+            #l_χ̅[4] = maximum(abs.(rhs[:, 4, e])) /(maximum(l_δ̅[4,:,:,:]) + eps(FT))
+            #l_χ̅[5] = maximum(abs.(rhs[:, 5, e])) /(maximum(l_δ̅[5,:,:,:]) + eps(FT))
+            #l_χ̅[6] = maximum(abs.(rhs[:, 6, e])) /(maximum(l_δ̅[6,:,:,:]) + eps(FT))
           end
         end
       end
       χ̅_max[e] = maximum(l_χ̅)
     end
   end
+
   # Compute viscosity as the nth-rank maximum
-  χ̅ = FT(0)
   χ̅ = maximum(χ̅_max)
+  #@show(χ̅)
   
-  #= TODO Extend to multi-rank friendly version 
-  Σ_red  = MPI.Reduce(ΣM, +, 0, mpicomm)
-  # Collapse DG averages across ranks
-  ρ̅      = MPI.Reduce(Σρ, +, 0, mpicomm) / Σ_red
-  ρ̅u̅     = MPI.Reduce(Σρu, +, 0, mpicomm) / Σ_red
-  ρ̅v̅     = MPI.Reduce(Σρv, +, 0, mpicomm) / Σ_red
-  ρ̅w̅     = MPI.Reduce(Σρw, +, 0, mpicomm) / Σ_red
-  ρ̅e̅     = MPI.Reduce(Σρe, +, 0, mpicomm) / Σ_red
-  ρ̅q̅     = MPI.Reduce(Σρq, +, 0, mpicomm) / Σ_red
-  =# 
+#  TODO Extend to multi-rank friendly version 
+#  Σ_red  = MPI.Reduce(ΣM, +, 0, mpicomm)
+#  # Collapse DG averages across ranks
+#  ρ̅      = MPI.Reduce(Σρ, +, 0, mpicomm) / Σ_red
+#  ρ̅u̅     = MPI.Reduce(Σρu, +, 0, mpicomm) / Σ_red
+#  ρ̅v̅     = MPI.Reduce(Σρv, +, 0, mpicomm) / Σ_red
+#  ρ̅w̅     = MPI.Reduce(Σρw, +, 0, mpicomm) / Σ_red
+#  ρ̅e̅     = MPI.Reduce(Σρe, +, 0, mpicomm) / Σ_red
+#  ρ̅q̅     = MPI.Reduce(Σρq, +, 0, mpicomm) / Σ_red
   
   # Update and store in the auxiliary array (as the first-index value)
-  nauxstate = num_aux(bl,FT)
   @inbounds @loop for eh in (nhorzelem; blockIdx().x)
     for ev = 1:nvertelem
       e = ev + (eh - 1) * nvertelem
