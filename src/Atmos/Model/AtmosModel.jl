@@ -179,6 +179,8 @@ function symmetrize(X::StaticArray{Tuple{3,3}})
 end
 
 function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
+  @show((t,aux.χ̅))
+
   ∇u = ∇transform.u
   # strain rate tensor
   S = symmetrize(∇u)

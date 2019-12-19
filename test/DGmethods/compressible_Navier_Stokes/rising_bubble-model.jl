@@ -37,7 +37,7 @@ const Ne        = (10,2,10)
 const N = 4
 const dim       = 3
 const dt        = 0.01
-const timeend   = 2dt
+const timeend   = 10
 # ------------- Initial condition function ----------- # 
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,
@@ -211,7 +211,7 @@ function run(mpicomm,
   # -------------- Define model ---------------------------------- # 
   model = AtmosModel(FlatOrientation(),
                      NoReferenceState(),
-                     Vreman{FT}(C_smag),
+                     DynamicSubgridStabilization(),
                      EquilMoist(), 
                      NoRadiation(),
                      Gravity(),
@@ -257,7 +257,7 @@ function run(mpicomm,
   end
 
   step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(3000)  do (init=false)
+  cbvtk = GenericCallbacks.EveryXSimulationSteps(1)  do (init=false)
     mkpath("./vtk-rtb/")
       outprefix = @sprintf("./vtk-rtb/DC_%dD_mpirank%04d_step%04d", dim,
                            MPI.Comm_rank(mpicomm), step[1])

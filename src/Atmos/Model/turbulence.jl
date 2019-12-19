@@ -2,7 +2,7 @@
 using DocStringExtensions
 using CLIMA.PlanetParameters
 using CLIMA.SubgridScaleParameters
-export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss
+export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss, DynamicSubgridStabilization
 
 abstract type TurbulenceClosure end
 
@@ -271,5 +271,27 @@ function dynamic_viscosity_tensor(m::AnisoMinDiss, S, state::Vars, diffusive::Va
   return state.ρ * ν_e
 end
 function scaled_momentum_flux_tensor(m::AnisoMinDiss, ρν, S)
+  (-2*ρν) * S
+end
+
+"""
+  DynamicSubgridStabilization <: TurbulenceClosure
+"""
+struct DynamicSubgridStabilization <: TurbulenceClosure end
+vars_aux(::DynamicSubgridStabilization,T) = @vars(Δ::T)
+vars_gradient(::DynamicSubgridStabilization,T) = @vars(θ_v::T)
+function atmos_init_aux!(::DynamicSubgridStabilization, ::AtmosModel, aux::Vars, geom::LocalGeometry)
+  aux.turbulence.Δ = lengthscale(geom)
+end
+function gradvariables!(m::DynamicSubgridStabilization, transform::Vars, state::Vars, aux::Vars, t::Real)
+  transform.turbulence.θ_v = aux.moisture.θ_v
+end
+function dynamic_viscosity_tensor(m::DynamicSubgridStabilization, S, state::Vars, diffusive::Vars, ∇transform::Grad, aux::Vars, t::Real)
+  FT = eltype(state)
+  Δ = aux.turbulence.Δ 
+  ν_e = min(Δ^2 * aux.χ̅, FT(1//2) * Δ * aux.moisture.speed_sound)
+  return state.ρ * ν_e
+end
+function scaled_momentum_flux_tensor(m::DynamicSubgridStabilization, ρν, S)
   (-2*ρν) * S
 end
