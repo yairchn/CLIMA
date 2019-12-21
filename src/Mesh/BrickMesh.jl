@@ -583,7 +583,7 @@ function partition(comm::MPI.Comm, elemtovert, elemtocoord, elemtobndy,
     end
   end
 
-  (newelemtovert, newelemtocoord, newelemtobndy, newfaceconnections)
+  (newelemtovert, newelemtocoord, newelemtobndy, newfaceconnections, sendorder)
 end
 
 """
