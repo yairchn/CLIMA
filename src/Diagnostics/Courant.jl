@@ -19,10 +19,12 @@ using ..VariableTemplates
 export gather_Courant
 
 function gather_Courant(mpicomm, dg, Q,
-                            xmax, ymax, out_dir,Dx,Dy,Dz,dt)
+                            xmax, ymax, out_dir,Dx,Dy,Dz,dt_inout)
     mpirank = MPI.Comm_rank(mpicomm)
     nranks = MPI.Comm_size(mpicomm)
 
+    dt = dt_inout[]
+    
     # extract grid information
     bl = dg.balancelaw
     grid = dg.grid
@@ -114,8 +116,15 @@ function gather_Courant(mpicomm, dg, Q,
     cfldiff_h = max(Courdx, Courdy)
     cfldiff_v = Courdz
 
-    dt_exp = cfl_h * min(Dx, Dy, Dz) / max_sound_speed
-    dt_imp = cfl_v * max(Dx, Dy, Dz) / max_sound_speed
+    CFLh = max(cfl_h, cflu_h, cfldiff_h)
+    CFLv = max(cfl_v, cflu_v, cfldiff_v)
+
+    CFLmax_theoretical = 0.2
+    CFLh = min(CFLh, CFLmax_theoretical)
+    CFLv = min(CFLv, CFLmax_theoretical)
+    
+    dt_exp = CFLh * min(Dx, Dy, Dz) / max_sound_speed
+    dt_imp = CFLv * max(Dx, Dy, Dz) / max_sound_speed
     
     @info @sprintf """Courant numbers:
            dt_exp           = %.5e
@@ -127,7 +136,9 @@ function gather_Courant(mpicomm, dg, Q,
            CFLdiff_h        = %.5f
            CFLdiff_v        = %.5f
 """ dt_exp dt_imp cfl_h cfl_v cflu_h cflu_v cfldiff_h cfldiff_v
- 
+
+    dt_inout[] = dt_imp
+    
     return nothing
    
 end # function gather_Courant
