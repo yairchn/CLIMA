@@ -102,7 +102,7 @@ function Initialise_DYCOMS!(state::Vars, aux::Vars, (x,y,z), t)
   qref::FT      = FT(9.0e-3)
   q_tot_sfc::FT = qref
   q_pt_sfc      = PhasePartition(q_tot_sfc)
-  Rm_sfc::FT    = 461.5 #gas_constant_air(q_pt_sfc) # 461.5
+  Rm_sfc::FT    = gas_constant_air(q_pt_sfc)
   T_sfc::FT     = 290.4
   P_sfc::FT     = MSLP
   ρ_sfc::FT     = P_sfc / Rm_sfc / T_sfc
@@ -123,12 +123,11 @@ function Initialise_DYCOMS!(state::Vars, aux::Vars, (x,y,z), t)
     q_tot = FT(1.5e-3)
   end
   q_c = q_liq + q_ice
-  #Rm  = Rd*(FT(1) + (ϵdv - FT(1))*q_tot - ϵdv*q_c)
 
-    ugeo = FT(7)
-    vgeo = FT(-5.5)
-    u, v, w = ugeo, vgeo, FT(0)
-    
+  ugeo = FT(7)
+  vgeo = FT(-5.5)
+  u, v, w = ugeo, vgeo, FT(0)
+  
   # --------------------------------------------------
   # perturb initial state to break the symmetry and
   # trigger turbulent convection
