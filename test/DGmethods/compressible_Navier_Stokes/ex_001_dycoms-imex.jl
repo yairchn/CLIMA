@@ -304,7 +304,7 @@ function run(mpicomm,
         dt             = Courant_number * min_node_distance(dg.grid, VerticalDirection())/soundspeed_air(FT(340))
         numberofsteps = convert(Int64, cld(timeend, dt))
         dt = timeend / numberofsteps #dt_exp
-        @info "EXP timestepper" dt numberofsteps dt*numberofsteps timeend
+        @info "EXP timestepper" dt numberofsteps dt*numberofsteps timeend Courant_number
         solver = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
         #
         # Get statistics during run
@@ -336,7 +336,7 @@ function run(mpicomm,
                 
         numberofsteps = convert(Int64, cld(timeend, dt))
         dt = timeend / numberofsteps #dt_imex
-        @info "1DIMEX timestepper" dt numberofsteps dt*numberofsteps timeend
+        @info "1DIMEX timestepper" dt numberofsteps dt*numberofsteps timeend Courant_number
         
         solver = SolverMethod(dg, vdg, SingleColumnLU(), Q;
                               dt = dt, t0 = 0,
@@ -387,8 +387,8 @@ let
       #aspectratios = (1,3.5,7,)
       exp_step = 0
       linearmodels      = (AtmosAcousticGravityLinearModel,)
-      IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,) #(ARK2GiraldoKellyConstantinescu,) 
-      #IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
+      #IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,)
+      IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
       for SolverMethod in IMEXSolverMethods
           for LinearModel in linearmodels 
               for explicit in exp_step
@@ -406,10 +406,11 @@ let
                   C_drag = FT(0.0011)
                   
                   # User defined domain parameters
-                  Δh = FT(40)
-                  aspectratio = FT(7)
-                  Δv = FT(20) #Δh/aspectratio
-                  aspectratio = Δh/Δv
+                  #Δh = FT(40)
+                  aspectratio = FT(3)
+                  Δv = FT(20)
+                  Δh = Δv * aspectratio
+                  #aspectratio = Δh/Δv
                   
                   xmin, xmax = 0, 1000
                   ymin, ymax = 0, 1000
