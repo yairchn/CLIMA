@@ -19,7 +19,7 @@ using ..VariableTemplates
 export gather_Courant
 
 function gather_Courant(mpicomm, dg, Q,
-                            xmax, ymax, out_dir,Dx,Dy,Dz,dt_inout)
+                            xmax, ymax, CFLmax_theoretical, out_dir,Dx,Dy,Dz,dt_inout)
     mpirank = MPI.Comm_rank(mpicomm)
     nranks = MPI.Comm_size(mpicomm)
 
@@ -118,13 +118,12 @@ function gather_Courant(mpicomm, dg, Q,
 
     CFLh = max(cfl_h, cflu_h, cfldiff_h)
     CFLv = max(cfl_v, cflu_v, cfldiff_v)
-
-    CFLmax_theoretical = 0.2
+    
     CFLh = min(CFLh, CFLmax_theoretical)
     CFLv = min(CFLv, CFLmax_theoretical)
     
-    dt_exp = CFLh * min(Dx, Dy, Dz) / max_sound_speed
-    dt_imp = CFLv * max(Dx, Dy, Dz) / max_sound_speed
+    dt_exp = CFLh * Dz          / max_sound_speed
+    dt_imp = CFLv * min(Dx, Dy) / max_sound_speed
     
     @info @sprintf """Courant numbers:
            dt_exp           = %.5e
