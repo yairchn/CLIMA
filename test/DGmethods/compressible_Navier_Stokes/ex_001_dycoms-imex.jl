@@ -301,6 +301,8 @@ function run(mpicomm,
         nothing
     end
     if explicit == 1
+        Courant_number = 0.2
+        dt             = Courant_number * min_node_distance(dg.grid, VerticalDirection())/soundspeed_air(FT(340))
         numberofsteps = convert(Int64, cld(timeend, dt))
         dt = timeend / numberofsteps #dt_exp
         @info "EXP timestepper" dt numberofsteps dt*numberofsteps timeend
