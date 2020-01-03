@@ -184,7 +184,6 @@ function run(mpicomm,
              C_drag,
              xmax, ymax, zmax,
              zsponge,
-             dt,
              explicit, 
              LinearModel,
              SolverMethod,
@@ -318,8 +317,10 @@ function run(mpicomm,
             #Calcualte Courant numbers:
             Dx = min_node_distance(grid, HorizontalDirection())
             Dz = min_node_distance(grid, VerticalDirection())
-            dt_inout = Ref(dt)
+            
+            dt_inout = Ref(dt)                       
             gather_Courant(mpicomm, dg, Q,xmax, ymax, out_dir,Dx,Dx,Dz,dt_inout)
+                        
         end
         #End get statistcs
         
@@ -329,6 +330,9 @@ function run(mpicomm,
         #
         # 1D IMEX
         #
+        Courant_number = 0.2
+        dt             = Courant_number * min_node_distance(dg.grid, HorizontalDirection())/soundspeed_air(FT(340))
+                
         numberofsteps = convert(Int64, cld(timeend, dt))
         dt = timeend / numberofsteps #dt_imex
         @info "1DIMEX timestepper" dt numberofsteps dt*numberofsteps timeend
@@ -424,23 +428,19 @@ let
                                               periodicity = (true, true, false),
                                               boundary=((0,0),(0,0),(1,2)))
                   
-                  safety_fac = FT(1.0)
-                  dt_exp  = min(Δv/soundspeed_air(FT(340))/N, Δh/soundspeed_air(FT(340))/N) * safety_fac
+                  #safety_fac = FT(1.0)
+                  #dt_exp  = min(Δv/soundspeed_air(FT(340))/N, Δh/soundspeed_air(FT(340))/N) * safety_fac
                   #dt_imex = Δh/soundspeed_air(FT(340))/N * safety_fac
-                  dt_imex = Δv/soundspeed_air(FT(340))/N * safety_fac
+                  #dt_imex = Δv/soundspeed_air(FT(340))/N * safety_fac
+                  #dt = exp_step*dt_exp + (1 - exp_step)*dt_imex
                   timeend = 14400
-
-                  dt = exp_step*dt_exp + (1 - exp_step)*dt_imex
                   
                   @info @sprintf """Starting
                           ArrayType                 = %s
                           ODE_Solver                = %s
                           LinearModel               = %s
-                          dt_exp                    = %.5e
-                          dt_imp                    = %.5e
-                          dt_ratio                  = %.3e
                           Δhoriz/Δvert              = %.5e
-                          """ ArrayType SolverMethod LinearModel dt_exp dt_imex dt_imex/dt_exp aspectratio
+                          """ ArrayType SolverMethod LinearModel aspectratio
                   
                   result = run(mpicomm,
                                ArrayType,
@@ -454,7 +454,6 @@ let
                                C_drag,
                                xmax, ymax, zmax,
                                zsponge,
-                               dt, 
                                explicit, 
                                LinearModel,
                                SolverMethod,
