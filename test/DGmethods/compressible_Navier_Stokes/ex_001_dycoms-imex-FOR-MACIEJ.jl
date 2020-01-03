@@ -320,7 +320,7 @@ function run(mpicomm,
             Dz = min_node_distance(grid, VerticalDirection())
             
             dt_inout = Ref(dt)                       
-            gather_Courant(mpicomm, dg, Q,xmax, ymax, out_dir,Dx,Dx,Dz,dt_inout)
+            gather_Courant(mpicomm, dg, Q, xmax, ymax, Courant_number, out_dir,Dx,Dx,Dz,dt_inout)
                         
         end
         #End get statistcs
@@ -331,7 +331,7 @@ function run(mpicomm,
         #
         # 1D IMEX
         #
-        Courant_number = 0.2
+        Courant_number = 0.4
         dt             = Courant_number * min_node_distance(dg.grid, HorizontalDirection())/soundspeed_air(FT(340))
                 
         numberofsteps = convert(Int64, cld(timeend, dt))
@@ -356,7 +356,7 @@ function run(mpicomm,
             Dz = min_node_distance(grid, VerticalDirection())
             dt_inout = Ref(dt)
             #@info " Ref(dt): " dt_inout
-            gather_Courant(mpicomm, dg, Q,xmax, ymax, out_dir, Dx, Dx, Dz, dt_inout)
+            gather_Courant(mpicomm, dg, Q,xmax, ymax, Courant_number, out_dir, Dx, Dx, Dz, dt_inout)
             #dt = dt_inout[]
             #@info " dt::::: " dt, Ref(dt)
         end
