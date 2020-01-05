@@ -1,5 +1,7 @@
 ### Reference state
 using DocStringExtensions
+using CLIMA.MoistThermodynamics
+using CLIMA.PlanetParameters
 export NoReferenceState, HydrostaticState, IsothermalProfile, LinearTemperatureProfile
 
 """
@@ -123,4 +125,57 @@ function (profile::LinearTemperatureProfile)(orientation::Orientation, aux::Vars
     p *= exp(-(z-z_top)/H_min)
   end
   return (T, p)
+end
+
+"""
+    dycoms_ref{F} <: dycoms_ref
+"""
+struct dycoms_ref{FT} <: TemperatureProfile
+  "minimum temperature (K)"
+  T_min::FT
+  "surface temperature (K)"
+  T_surface::FT
+end
+
+function (profile::dycoms_ref)(orientation::Orientation, aux::Vars)
+    
+    z = altitude(orientation, aux)
+    T = max(profile.T_surface - profile.Γ*z, profile.T_min)
+    
+    FT            = typeof(z)
+    Rd::FT        = R_d
+    Rv::FT        = R_v
+    Rm::FT        = Rd
+    ϵdv::FT       = Rv/Rd
+    cpd::FT       = cp_d
+    
+    # These constants are those used by Stevens et al. (2005)
+    qref::FT      = FT(9.0e-3)
+    q_tot_sfc::FT = qref
+    q_pt_sfc      = PhasePartition(q_tot_sfc)
+    Rm_sfc::FT    = 461.5 #gas_constant_air(q_pt_sfc) # 461.5
+    T_sfc::FT     = 290.4
+    P_sfc::FT     = MSLP
+    
+    # Specify moisture profiles
+    zb::FT         = 600         # initial cloud bottom
+    zi::FT         = 840         # initial cloud top
+    ziplus::FT     = 875
+    dz_cloud       = zi - zb
+    θ_liq::FT      = 289
+    if xvert <= zi
+        θ_liq = FT(289.0)
+        q_tot = qref
+    else
+        θ_liq = FT(297.0) + (xvert - zi)^(FT(1/3))
+        q_tot = FT(1.5e-3)
+    end
+    
+    # Pressure
+    H     = Rm_sfc * T_sfc / grav;
+    p     = P_sfc * exp(-xvert/H);
+    TS    = LiquidIcePotTempSHumEquil_given_pressure(θ_liq, p, q_tot)
+    T     = air_temperature(TS)
+    
+    return (T, p)
 end

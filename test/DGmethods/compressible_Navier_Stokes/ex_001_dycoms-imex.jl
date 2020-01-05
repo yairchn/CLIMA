@@ -385,7 +385,7 @@ let
   # @testset "$(@__FILE__)" for ArrayType in ArrayTypes
   for ArrayType in ArrayTypes
       #aspectratios = (1,3.5,7,)
-      exp_step = 0
+      exp_step = 1
       linearmodels      = (AtmosAcousticGravityLinearModel,)
       #IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,)
       IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
@@ -407,7 +407,7 @@ let
                   
                   # User defined domain parameters
                   #Δh = FT(40)
-                  aspectratio = FT(3)
+                  aspectratio = FT(2)
                   Δv = FT(20)
                   Δh = Δv * aspectratio
                   #aspectratio = Δh/Δv
@@ -430,11 +430,6 @@ let
                                               periodicity = (true, true, false),
                                               boundary=((0,0),(0,0),(1,2)))
                   
-                  #safety_fac = FT(1.0)
-                  #dt_exp  = min(Δv/soundspeed_air(FT(340))/N, Δh/soundspeed_air(FT(340))/N) * safety_fac
-                  #dt_imex = Δh/soundspeed_air(FT(340))/N * safety_fac
-                  #dt_imex = Δv/soundspeed_air(FT(340))/N * safety_fac
-                  #dt = exp_step*dt_exp + (1 - exp_step)*dt_imex
                   timeend = 14400
                   
                   @info @sprintf """Starting
