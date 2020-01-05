@@ -332,8 +332,8 @@ function run(mpicomm,
         # 1D IMEX
         #
         Courant_number = 0.4
-        dt             = Courant_number * min_node_distance(dg.grid, HorizontalDirection())/soundspeed_air(FT(340))
-                
+        #dt             = Courant_number * min_node_distance(dg.grid, HorizontalDirection())/soundspeed_air(FT(340))
+        dt = 0.01
         numberofsteps = convert(Int64, cld(timeend, dt))
         dt = timeend / numberofsteps #dt_imex
         @info "1DIMEX timestepper" dt numberofsteps dt*numberofsteps timeend Courant_number
@@ -385,7 +385,7 @@ let
   # @testset "$(@__FILE__)" for ArrayType in ArrayTypes
   for ArrayType in ArrayTypes
       #aspectratios = (1,3.5,7,)
-      exp_step = 1
+      exp_step = 0
       linearmodels      = (AtmosAcousticGravityLinearModel,)
       #IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,)
       IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
