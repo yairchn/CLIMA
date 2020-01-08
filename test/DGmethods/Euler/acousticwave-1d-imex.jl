@@ -1,29 +1,30 @@
 using CLIMA
 using CLIMA.Mesh.Topologies: StackedCubedSphereTopology, cubedshellwarp, grid1d
-using CLIMA.Mesh.Grids
+using CLIMA.Mesh.Grids: DiscontinuousSpectralElementGrid
 using CLIMA.Mesh.Filters
-using CLIMA.DGmethods: DGModel, init_ode_state
+using CLIMA.DGmethods: DGModel, init_ode_state, VerticalDirection
 using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralGradPenalty,
                                        CentralNumericalFluxDiffusive
 using CLIMA.ODESolvers: solve!, gettime
-using CLIMA.LowStorageRungeKuttaMethod: LSRK144NiegemannDiehlBusch
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.GeneralizedMinimalResidualSolver
+using CLIMA.ColumnwiseLUSolver: ManyColumnLU
 using CLIMA.VTK: writevtk, writepvtu
 using CLIMA.GenericCallbacks: EveryXWallTimeSeconds, EveryXSimulationSteps
-using CLIMA.MPIStateArrays: euclidean_distance
-using CLIMA.PlanetParameters: R_d, grav, MSLP, planet_radius, cp_d, cv_d, day
-using CLIMA.MoistThermodynamics: air_density, total_energy, soundspeed_air, internal_energy, air_temperature
-using CLIMA.Atmos: AtmosModel, SphericalOrientation, NoReferenceState,
+using CLIMA.PlanetParameters: planet_radius, day
+using CLIMA.MoistThermodynamics: air_density, soundspeed_air, internal_energy
+using CLIMA.Atmos: AtmosModel, SphericalOrientation,
                    DryModel, NoRadiation, NoFluxBC,
                    ConstantViscosityWithDivergence,
                    vars_state, vars_aux,
-                   Gravity, Coriolis,
-                   HydrostaticState, IsothermalProfile
+                   Gravity, HydrostaticState, IsothermalProfile,
+                   AtmosAcousticGravityLinearModel
 using CLIMA.VariableTemplates: flattenednames
 
 using MPI, Logging, StaticArrays, LinearAlgebra, Printf, Dates, Test
-
-const output_vtk = true
 const ArrayType = CLIMA.array_type()
+
+const output_vtk = false
 
 function main()
   CLIMA.init()
@@ -39,22 +40,28 @@ function main()
   global_logger(ConsoleLogger(logger_stream, loglevel))
 
   polynomialorder = 5
-  numelem_horz = 6
-  numelem_vert = 8
-  timeend = 60 # 400day
-  outputtime = 2day
-  
-  for FT in (Float64,)
+  numelem_horz = 10
+  numelem_vert = 5
 
-    run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
-        timeend, outputtime, ArrayType, FT)
+  timeend = 60 * 60
+  # timeend = 33 * 60 * 60 # Full simulation
+  outputtime = 60 * 60
+
+  expected_result = Dict()
+  expected_result[Float32] = 9.5064378310656000e+13
+  expected_result[Float64] = 9.5073452847081828e+13
+
+  for FT in (Float32, Float64)
+    result = run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
+                 timeend, outputtime, ArrayType, FT)
+    @test result ≈ expected_result[FT]
   end
 end
 
 function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
              timeend, outputtime, ArrayType, FT)
 
-  setup = HeldSuarezSetup{FT}()
+  setup = AcousticWaveSetup{FT}()
 
   vert_range = grid1d(FT(planet_radius), FT(planet_radius + setup.domain_height), nelem = numelem_vert)
   topology = StackedCubedSphereTopology(mpicomm, numelem_horz, vert_range)
@@ -66,30 +73,43 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                                           meshwarp = cubedshellwarp)
 
   model = AtmosModel(SphericalOrientation(),
-                     HydrostaticState(IsothermalProfile(setup.T_initial), FT(0)),
+                     HydrostaticState(IsothermalProfile(setup.T_ref), FT(0)),
                      ConstantViscosityWithDivergence(FT(0)),
                      DryModel(),
                      NoRadiation(),
-                     (Gravity(), Coriolis(), held_suarez_forcing!), 
+                     Gravity(),
                      NoFluxBC(),
                      setup)
+  linearmodel = AtmosAcousticGravityLinearModel(model)
 
   dg = DGModel(model, grid, Rusanov(),
                CentralNumericalFluxDiffusive(), CentralGradPenalty())
 
+  lineardg = DGModel(linearmodel, grid, Rusanov(),
+                     CentralNumericalFluxDiffusive(), CentralGradPenalty();
+                     direction=VerticalDirection(),
+                     auxstate=dg.auxstate)
+
   # determine the time step
   element_size = (setup.domain_height / numelem_vert)
-  acoustic_speed = soundspeed_air(FT(315))
-  lucas_magic_factor = 5
-  dt = lucas_magic_factor * min_node_distance(grid) / acoustic_speed
+  acoustic_speed = soundspeed_air(FT(setup.T_ref))
+  dt_factor = 445
+  dt = dt_factor * element_size / acoustic_speed / polynomialorder ^ 2
+  # Adjust the time step so we exactly hit 1 hour for VTK output
+  dt = 60 * 60 / ceil(60 * 60 / dt)
+  nsteps = ceil(Int, timeend / dt)
 
   Q = init_ode_state(dg, FT(0))
-  lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
 
-  filterorder = 14
+  linearsolver = ManyColumnLU()
+
+  odesolver = ARK2GiraldoKellyConstantinescu(dg, lineardg, linearsolver, Q;
+                                             dt = dt, t0 = 0, split_nonlinear_linear=false)
+
+  filterorder = 18
   filter = ExponentialFilter(grid, 0, filterorder)
   cbfilter = EveryXSimulationSteps(1) do
-    Filters.apply!(Q, 1:size(Q, 2), grid, filter)
+    Filters.apply!(Q, 1:size(Q, 2), grid, filter, VerticalDirection())
     nothing
   end
 
@@ -100,10 +120,9 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                     polynomialorder = %d
                     numelem_horz    = %d
                     numelem_vert    = %d
-                    filterorder     = %d
                     dt              = %.16e
                     norm(Q₀)        = %.16e
-                    """ "$ArrayType" "$FT" polynomialorder numelem_horz numelem_vert filterorder dt eng0
+                    """ "$ArrayType" "$FT" polynomialorder numelem_horz numelem_vert dt eng0
 
   # Set up the information callback
   starttime = Ref(now())
@@ -117,16 +136,16 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                         simtime = %.16e
                         runtime = %s
                         norm(Q) = %.16e
-                        """ gettime(lsrk) runtime energy
+                        """ gettime(odesolver) runtime energy
     end
   end
   callbacks = (cbinfo, cbfilter)
 
   if output_vtk
     # create vtk dir
-    vtkdir = "vtk_heldsuarez" *
+    vtkdir = "vtk_acousticwave" *
       "_poly$(polynomialorder)_horz$(numelem_horz)_vert$(numelem_vert)" *
-      "_filter$(filterorder)_$(ArrayType)_$(FT)"
+      "_dt$(dt_factor)x_$(ArrayType)_$(FT)"
     mkpath(vtkdir)
 
     vtkstep = 0
@@ -136,13 +155,13 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
     # setup the output callback
     cbvtk = EveryXSimulationSteps(floor(outputtime / dt)) do
       vtkstep += 1
-      Qe = init_ode_state(dg, gettime(lsrk))
+      Qe = init_ode_state(dg, gettime(odesolver))
       do_output(mpicomm, vtkdir, vtkstep, dg, Q, model)
     end
     callbacks = (callbacks..., cbvtk)
   end
 
-  solve!(Q, lsrk; timeend=timeend, callbacks=callbacks)
+  solve!(Q, odesolver; numberofsteps=nsteps, adjustfinalstep=false, callbacks=callbacks)
 
   # final statistics
   engf = norm(Q)
@@ -151,72 +170,39 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
   norm(Q) / norm(Q₀)      = %.16e
   norm(Q) - norm(Q₀)      = %.16e
   """ engf engf/eng0 engf-eng0
+  engf
 end
 
-Base.@kwdef struct HeldSuarezSetup{FT}
-  p_ground::FT = MSLP
-  T_initial::FT = 255
-  domain_height::FT = 30e3
+Base.@kwdef struct AcousticWaveSetup{FT}
+  domain_height::FT = 10e3
+  T_ref::FT = 300
+  α::FT = 3
+  γ::FT = 100
+  nv::Int = 1
 end
 
-function (setup::HeldSuarezSetup)(state, aux, coords, t) 
+function (setup::AcousticWaveSetup)(state, aux, coords, t)
   # callable to set initial conditions
   FT = eltype(state)
 
   r = norm(coords, 2)
+  @inbounds λ = atan(coords[2], coords[1])
+  @inbounds φ = asin(coords[3] / r)
   h = r - FT(planet_radius)
 
-  scale_height = R_d * setup.T_initial / grav
-  p = setup.p_ground * exp(-h / scale_height)
+  β = min(FT(1), setup.α * acos(cos(φ) * cos(λ)))
+  f = (1 + cos(FT(π) * β)) / 2
+  g = sin(setup.nv * FT(π) * h / setup.domain_height)
+  Δp = setup.γ * f * g
+  p = aux.ref_state.p + Δp
 
-  state.ρ = air_density(setup.T_initial, p)
+  state.ρ = air_density(setup.T_ref, p)
   state.ρu = SVector{3, FT}(0, 0, 0)
-  state.ρe = state.ρ * (internal_energy(setup.T_initial) + aux.orientation.Φ)
+  state.ρe = state.ρ * (internal_energy(setup.T_ref) + aux.orientation.Φ)
   nothing
 end
 
-function held_suarez_forcing!(source, state, aux, t::Real)
-  FT = eltype(state)
-
-  ρ = state.ρ
-  ρu = state.ρu
-  ρe = state.ρe
-  coord = aux.coord
-  Φ = aux.orientation.Φ
-  e = ρe / ρ
-  u = ρu / ρ
-  e_int = e - u' * u / 2 - Φ
-  T = air_temperature(e_int)
-  # Held-Suarez constants
-  k_a = FT(1 / (40 * day))
-  k_f = FT(1 / day)
-  k_s = FT(1 / (4 * day))
-  ΔT_y = FT(60)
-  Δθ_z = FT(10)
-  T_equator = FT(315)
-  T_min = FT(200)
-  σ_b = FT(7 / 10)
-  r = norm(coord, 2)
-  @inbounds λ = atan(coord[2], coord[1])
-  @inbounds φ = asin(coord[3] / r)
-  h = r - FT(planet_radius)
-  scale_height = FT(7000) #from Smolarkiewicz JAS 2001 paper
-  σ = exp(-h / scale_height)
-  # TODO: use
-  #  p = air_pressure(T, ρ)
-  #  σ = p/p0
-  exner_p = σ ^ (R_d / cp_d)
-  Δσ = (σ - σ_b) / (1 - σ_b)
-  height_factor = max(0, Δσ)
-  T_equil = (T_equator - ΔT_y * sin(φ) ^ 2 - Δθ_z * log(σ) * cos(φ) ^ 2 ) * exner_p
-  T_equil = max(T_min, T_equil)
-  k_T = k_a + (k_s - k_a) * height_factor * cos(φ) ^ 4
-  k_v = k_f * height_factor
-  source.ρu += -k_v * ρu
-  source.ρe += -k_T * ρ * cv_d * (T - T_equil) - k_v * ρu' * ρu / ρ
-end
-
-function do_output(mpicomm, vtkdir, vtkstep, dg, Q, model, testname = "heldsuarez")
+function do_output(mpicomm, vtkdir, vtkstep, dg, Q, model, testname = "acousticwave")
   ## name of the file that this MPI rank will write
   filename = @sprintf("%s/%s_mpirank%04d_step%04d",
                       vtkdir, testname, MPI.Comm_rank(mpicomm), vtkstep)

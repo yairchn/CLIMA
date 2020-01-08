@@ -1,4 +1,5 @@
 using Requires
+using ..Mesh.Grids: EveryDirection, VerticalDirection, HorizontalDirection
 @init @require CUDAnative = "be33ccc6-a3ff-5ff2-a52e-74243cff1e17" begin
   using .CUDAnative
 end
@@ -6,32 +7,33 @@ end
 const _M = Grids._M
 
 """
-    knl_apply_filter!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{horizontal},
-                      ::Val{vertical}, Q, ::Val{states}, filtermatrix,
-                      elems) where {dim, N, nstate, states, horizontal, vertical}
+    knl_apply_filter!(::Val{dim}, ::Val{N}, ::Val{nstate}, ::Val{direction},
+                      Q, ::Val{states}, filtermatrix,
+                      elems) where {dim, N, nstate, states, direction}
 
 Computational kernel: Applies the `filtermatrix` to the `states` of `Q`.
 
-The arguments `horizontal` and `vertical` are used to control if the filter is
-applied in the horizontal and vertical reference directions, respectively.
+The `direction` argument is used to control if the filter is applied in the
+horizontal and/or vertical reference directions.
 """
 function knl_apply_filter!(::Val{dim}, ::Val{N}, ::Val{nstate},
-                           ::Val{horizontal}, ::Val{vertical}, Q,
-                           ::Val{states}, filtermatrix,
-                           elems) where {dim, N, nstate, horizontal, vertical,
-                                         states}
+                           ::Val{direction}, Q, ::Val{states}, filtermatrix,
+                           elems) where {dim, N, nstate, direction, states}
   FT = eltype(Q)
 
   Nq = N + 1
   Nqk = dim == 2 ? 1 : Nq
 
-  filterinξ1 = horizontal
-  filterinξ2 = dim == 2 ? vertical : horizontal
-  filterinξ3 = dim == 2 ? false : vertical
-
-  # Return if we are not filtering in any direction
-  if !(filterinξ1 || filterinξ2 || filterinξ3)
-    return
+  if direction isa EveryDirection
+    filterinξ1 = filterinξ2 = filterinξ3 = true
+  elseif direction isa HorizontalDirection
+    filterinξ1 = true
+    filterinξ2 = dim == 2 ? false : true
+    filterinξ3 = false
+  elseif direction isa VerticalDirection
+    filterinξ1 = false
+    filterinξ2 = dim == 2 ? true : false
+    filterinξ3 = dim == 2 ? false : true
   end
 
   nfilterstates = length(states)
@@ -81,6 +83,7 @@ function knl_apply_filter!(::Val{dim}, ::Val{N}, ::Val{nstate},
       end
 
       if filterinξ2 || filterinξ3
+        @synchronize
         @loop for k in (1:Nqk; threadIdx().z)
           @loop for j in (1:Nq; threadIdx().y)
             @loop for i in (1:Nq; threadIdx().x)
@@ -109,12 +112,13 @@ function knl_apply_filter!(::Val{dim}, ::Val{N}, ::Val{nstate},
       end
 
       if filterinξ3
+        @synchronize
         @loop for k in (1:Nqk; threadIdx().z)
           @loop for j in (1:Nq; threadIdx().y)
             @loop for i in (1:Nq; threadIdx().x)
               @unroll for fs = 1:nfilterstates
                 s_Q[i, j, k, fs] = l_Qfiltered[fs, i, j, k]
-                (l_Qfiltered[fs, i, j, k] = zero(FT))
+                l_Qfiltered[fs, i, j, k] = zero(FT)
               end
             end
           end
