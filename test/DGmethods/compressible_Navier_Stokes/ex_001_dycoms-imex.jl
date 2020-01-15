@@ -132,10 +132,10 @@ function Initialise_DYCOMS!(state::Vars, aux::Vars, (x,y,z), t)
   # perturb initial state to break the symmetry and
   # trigger turbulent convection
     # --------------------------------------------------
-    randnum1   = rand(Uniform(-0.02,0.02))
-    randnum2   = rand(Uniform(-0.000015,0.000015))
-    randnum3   = rand(Uniform(-0.1,0.1))
-    randnum4   = rand(Uniform(-0.1,0.1))
+    randnum1   = rand(Uniform(-0.002,0.002))
+    randnum2   = rand(Uniform(-0.00001,0.00001))
+    randnum3   = rand(Uniform(-0.001,0.001))
+    randnum4   = rand(Uniform(-0.001,0.001))
     if xvert <= 400.0
         θ_liq += randnum1 * θ_liq
         q_tot += randnum2 * q_tot
@@ -338,12 +338,13 @@ function run(mpicomm,
         dt = timeend / numberofsteps #dt_imex
         @info "1DIMEX timestepper" dt numberofsteps dt*numberofsteps timeend Courant_number
 
-        solver = SolverMethod(dg, vdg, SingleColumnLU(), Q;
+        #=solver = SolverMethod(dg, vdg, SingleColumnLU(), Q;
                               dt = dt, t0 = 0,
                               split_nonlinear_linear=false)
-
-
-
+        =#
+        solver = SolverMethod(dg, Q;
+                              dt = dt, t0 = 0)
+        
         # Get statistics during run
         out_interval_diags = 10000
         diagnostics_time_str = string(now())
@@ -364,6 +365,8 @@ function run(mpicomm,
 
         solve!(Q, solver; numberofsteps=numberofsteps, callbacks=(cbtmarfilter, cbdiagnostics, cbinfo), adjustfinalstep=false)
     end
+
+    @info " END of the simulation!"
 
 end
 
@@ -388,7 +391,8 @@ let
       exp_step = 0
       linearmodels      = (AtmosAcousticGravityLinearModel,)
       #IMEXSolverMethods = (ARK548L2SA2KennedyCarpenter,)
-      IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
+      #IMEXSolverMethods = (ARK2GiraldoKellyConstantinescu,)
+      IMEXSolverMethods = (LSRK144NiegemannDiehlBusch,)
       for SolverMethod in IMEXSolverMethods
           for LinearModel in linearmodels
               for explicit in exp_step
@@ -407,8 +411,8 @@ let
 
                   # User defined domain parameters
                   #Δh = FT(40)
-                  aspectratio = FT(2)
-                  Δv = FT(20)
+                  aspectratio = FT(7)
+                  Δv = FT(5)
                   Δh = Δv * aspectratio
                   #aspectratio = Δh/Δv
 
