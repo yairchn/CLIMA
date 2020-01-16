@@ -1,6 +1,7 @@
 ### Reference state
 using DocStringExtensions
-export NoReferenceState, HydrostaticState, IsothermalProfile, LinearTemperatureProfile
+export NoReferenceState, HydrostaticState, IsothermalProfile, LinearTemperatureProfile,
+       IsentropicProfile
 
 """
     ReferenceState
@@ -88,6 +89,28 @@ end
 function (profile::IsothermalProfile)(orientation::Orientation, aux::Vars)
   p = MSLP * exp(-gravitational_potential(orientation, aux)/(R_d*profile.T))
   return (profile.T, p)
+end
+
+"""
+    IsentropicProfile{F} <: TemperatureProfile
+
+A uniform potential temperature profile.
+
+# Fields
+
+$(DocStringExtensions.FIELDS)
+"""
+struct IsentropicProfile{F} <: TemperatureProfile
+  "potential temperature (K)"
+  θ::F
+end
+
+function (profile::IsentropicProfile)(orientation::Orientation, aux::Vars)
+  FT = eltype(aux)
+  z = altitude(orientation, aux)
+  p = FT(MSLP) * (1 - FT(grav) / (profile.θ * FT(cp_d)) * z) ^ FT(cp_d / R_d)
+  T = (p / FT(MSLP)) ^ FT(R_d / cp_d) * profile.θ
+  return (T, p)
 end
 
 """
