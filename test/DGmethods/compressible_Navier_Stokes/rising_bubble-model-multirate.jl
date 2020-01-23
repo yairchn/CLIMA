@@ -3,8 +3,10 @@ using MPI
 using CLIMA
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
+using CLIMA.Mesh.Grids: VerticalDirection, HorizontalDirection, EveryDirection
 using CLIMA.Mesh.Geometry
 using CLIMA.DGmethods
+using CLIMA.DGmethods: courant
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.MPIStateArrays
 using CLIMA.MultirateRungeKuttaMethod
@@ -22,7 +24,7 @@ using StaticArrays
 using Logging, Printf, Dates
 using CLIMA.VTK
 using Random
-using CLIMA.Atmos: vars_state, vars_aux
+using CLIMA.Atmos: vars_state, vars_aux, soundspeed
 
 const ArrayType = CLIMA.array_type()
 
@@ -113,7 +115,7 @@ function run(mpicomm,
 
   fast_model = AtmosAcousticLinearModel(model)
   slow_model = RemainderModel(model, (fast_model,))
-   
+
   dg = DGModel(model,
                grid,
                Rusanov(),
@@ -144,9 +146,9 @@ function run(mpicomm,
   slow_ode_solver = LSRK144NiegemannDiehlBusch(slow_dg, Q; dt = slow_dt)
 
   fast_ode_solver = SSPRK33ShuOsher(fast_dg, Q; dt = fast_dt)
- 
+
   ode_solver = MultirateRungeKutta((slow_ode_solver, fast_ode_solver))
-        
+
   eng0 = norm(Q)
   @info @sprintf """Starting
   norm(Q₀) = %.16e
@@ -196,6 +198,22 @@ function run(mpicomm,
   norm(Q - Qe) / norm(Qe) = %.16e
   """ engf engf/eng0 engf-eng0 errf errf / engfe
 engf/eng0
+
+# TODO: Not the cleanest way to invoke the Courant number calculations.
+# Consider a more general-purpose user-facing API
+function local_courant(m::AtmosModel, state::Vars, aux::Vars, diffusive::Vars, Δx)
+  u = state.ρu/state.ρ
+  return dt * (norm(u) + soundspeed(m.moisture, m.orientation, state, aux)) / Δx
+end
+
+c = courant(local_courant, dg, model, Q, EveryDirection())
+c_h = courant(local_courant, dg, model, Q, HorizontalDirection())
+c_v = courant(local_courant, dg, model, Q, VerticalDirection())
+@info @sprintf("""Courant numbers:
+c   = %.16e
+c_h = %.16e
+c_v = %.16e
+""", c, c_h, c_v)
 end
 # --------------- Test block / Loggers ------------------ #
 using Test
