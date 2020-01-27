@@ -73,8 +73,18 @@ function vars_diffusive(m::AtmosModel, FT)
     moisture::vars_diffusive(m.moisture,FT)
   end
 end
-
-
+function vars_hyperdiffusive!(m::AtmosModel, FT)
+  @vars begin
+    σ1::SVector{3,FT}
+    σ2::SVector{3,FT}
+  end
+end
+function vars_gradient_laplacian!(m::AtmosModel, FT)
+  @vars begin
+    u::SVector{3,FT}
+    h_tot::FT
+  end
+end
 function vars_aux(m::AtmosModel, FT)
   @vars begin
     ∫dz::vars_integrals(m, FT)
@@ -151,16 +161,23 @@ Where
 end
 
 @inline function flux_diffusive!(m::AtmosModel, flux::Grad, state::Vars,
-                                 diffusive::Vars, hyperdiffusive::Vars, aux::Vars, t::Real)
+                                 diffusive::Vars, auxHDG::Vars, aux::Vars, t::Real)
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
-
+  σ1 = auxHDG.σ1
+  σ2 = auxHDG.σ2
   # diffusive
   ρτ = diffusive.ρτ
   ρd_h_tot = diffusive.ρd_h_tot
+  
   flux.ρu += ρτ
   flux.ρe += ρτ*u
   flux.ρe += ρd_h_tot
+  
+  # Hyperdiffusive 
+  flux.ρe += σ2
+  flux.ρu += σ1
+
   flux_diffusive!(m.moisture, flux, state, diffusive, aux, t)
 end
 
@@ -206,6 +223,16 @@ function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::V
   # diffusion terms required for SGS turbulence computations
   diffusive!(m.turbulence, diffusive, ∇transform, state, aux, t, ρD_t)
 end
+
+function hyperdiffusive!(m::AtmosModel, auxHDG::Vars, ∇transform::Grad,
+                         state::Vars, aux::Vars, t::Real)
+  ∇Δρe = ∇transform.h_tot
+  ∇Δρu = ∇transform.u
+  D = SMatrix{3,3,eltype(state),9}(1,1,1,1,1,1,1,1,1)
+  auxHDG.σ1 = D * ∇Δρe
+  auxHDG.σ2 = D * ∇Δρu
+end
+
 
 function update_aux!(dg::DGModel, m::AtmosModel, Q::MPIStateArray, t::Real)
   FT = eltype(Q)
