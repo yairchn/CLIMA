@@ -2,7 +2,7 @@ using CLIMA
 using CLIMA.Mesh.Topologies: BrickTopology
 using CLIMA.Mesh.Grids: DiscontinuousSpectralElementGrid
 using CLIMA.DGmethods: DGModel, init_ode_state, LocalGeometry
-using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralGradPenalty,
+using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralNumericalFluxGradient,
                                        CentralNumericalFluxDiffusive
 using CLIMA.ODESolvers: solve!, gettime
 using CLIMA.AdditiveRungeKuttaMethod
@@ -17,7 +17,7 @@ using CLIMA.Atmos: AtmosModel,
                    AtmosAcousticLinearModel, RemainderModel,
                    NoOrientation,
                    NoReferenceState, ReferenceState,
-                   DryModel, NoRadiation, PeriodicBC,
+                   DryModel, NoPrecipitation, NoRadiation, NoSubsidence, PeriodicBC,
                    ConstantViscosityWithDivergence, vars_state
 using CLIMA.VariableTemplates: @vars, Vars, flattenednames
 import CLIMA.Atmos: atmos_init_aux!, vars_aux
@@ -49,12 +49,12 @@ function main()
   numlevels = integration_testing ? 4 : 1
 
   expected_error = Dict()
-  
+
   expected_error[Float64, false, 1] = 2.3225467541870387e+01
   expected_error[Float64, false, 2] = 5.2663709730295070e+00
   expected_error[Float64, false, 3] = 1.2183770894070467e-01
   expected_error[Float64, false, 4] = 2.8660813871243937e-03
-  
+
   expected_error[Float64, true, 1] = 2.3225467618783981e+01
   expected_error[Float64, true, 2] = 5.2663710765946341e+00
   expected_error[Float64, true, 3] = 1.2183771242881866e-01
@@ -112,13 +112,15 @@ function run(mpicomm, polynomialorder, numelems, setup,
   initialcondition! = function(args...)
     isentropicvortex_initialcondition!(setup, args...)
   end
-  
+
 
   model = AtmosModel(NoOrientation(),
                      IsentropicVortexReferenceState{FT}(setup),
                      ConstantViscosityWithDivergence(FT(0)),
                      DryModel(),
+                     NoPrecipitation(),
                      NoRadiation(),
+                     NoSubsidence{FT}(),
                      nothing,
                      PeriodicBC(),
                      initialcondition!)
@@ -126,15 +128,17 @@ function run(mpicomm, polynomialorder, numelems, setup,
   linear_model = AtmosAcousticLinearModel(model)
   nonlinear_model = RemainderModel(model, (linear_model,))
 
-  dg = DGModel(model, grid, Rusanov(), CentralNumericalFluxDiffusive(), CentralGradPenalty())
+  dg = DGModel(model, grid, Rusanov(), CentralNumericalFluxDiffusive(),
+               CentralNumericalFluxGradient())
 
   dg_linear = DGModel(linear_model,
-                      grid, Rusanov(), CentralNumericalFluxDiffusive(), CentralGradPenalty();
-                      auxstate=dg.auxstate)
+                      grid, Rusanov(), CentralNumericalFluxDiffusive(),
+                      CentralNumericalFluxGradient(); auxstate=dg.auxstate)
 
   if split_nonlinear_linear
     dg_nonlinear = DGModel(nonlinear_model,
-                           grid, Rusanov(), CentralNumericalFluxDiffusive(), CentralGradPenalty();
+                           grid, Rusanov(), CentralNumericalFluxDiffusive(),
+                           CentralNumericalFluxGradient();
                            auxstate=dg.auxstate)
   end
 
@@ -147,7 +151,7 @@ function run(mpicomm, polynomialorder, numelems, setup,
   dt = timeend / nsteps
 
   Q = init_ode_state(dg, FT(0))
-  
+
   linearsolver = GeneralizedMinimalResidual(10, Q, 1e-10)
   ode_solver = ARK2GiraldoKellyConstantinescu(split_nonlinear_linear ? dg_nonlinear : dg,
                                               dg_linear,
@@ -187,7 +191,7 @@ function run(mpicomm, polynomialorder, numelems, setup,
       "_poly$(polynomialorder)_dims$(dims)_$(ArrayType)_$(FT)_level$(level)" *
       "_$(split_nonlinear_linear)"
     mkpath(vtkdir)
-    
+
     vtkstep = 0
     # output initial step
     do_output(mpicomm, vtkdir, vtkstep, dg, Q, Q, model)

@@ -1,4 +1,4 @@
-# Load Packages 
+# Load Packages
 using MPI
 using CLIMA
 using CLIMA.Mesh.Topologies
@@ -29,7 +29,7 @@ if !@isdefined integration_testing
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
 end
 
-# -------------- Problem constants ------------------- # 
+# -------------- Problem constants ------------------- #
 const (xmin,xmax)      = (0,1000)
 const (ymin,ymax)      = (0,400)
 const (zmin,zmax)      = (0,1000)
@@ -37,8 +37,8 @@ const Ne        = (10,2,10)
 const N = 4
 const dim       = 3
 const dt        = 0.01
-const timeend   = 10
-# ------------- Initial condition function ----------- # 
+const timeend   = 10dt
+# ------------- Initial condition function ----------- #
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,
 author = {Robert, A},
@@ -60,16 +60,16 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
   c_v::FT       = cv_d
   γ::FT         = c_p / c_v
   p0::FT        = MSLP
-  
+
   xc::FT        = 500
   zc::FT        = 260
   r             = sqrt((x1 - xc)^2 + (x3 - zc)^2)
   rc::FT        = 250
   θ_ref::FT     = 303
   Δθ::FT        = 0
-  
-  if r <= rc 
-    Δθ          = FT(1//2) 
+
+  if r <= rc
+    Δθ          = FT(1//2)
   end
   #Perturbed state:
   θ            = θ_ref + Δθ # potential temperature
@@ -208,21 +208,23 @@ function run(mpicomm,
                                           DeviceArray = ArrayType,
                                           polynomialorder = N
                                            )
-  # -------------- Define model ---------------------------------- # 
+  # -------------- Define model ---------------------------------- #
   model = AtmosModel(FlatOrientation(),
                      NoReferenceState(),
                      DynamicSubgridStabilization(),
                      EquilMoist(), 
+                     NoPrecipitation(),
                      NoRadiation(),
+                     NoSubsidence{FT}(),
                      Gravity(),
                      NoFluxBC(),
                      Initialise_Rising_Bubble!)
-  # -------------- Define dgbalancelaw --------------------------- # 
+  # -------------- Define dgbalancelaw --------------------------- #
   dg = DGModel(model,
                grid,
                Rusanov(),
                CentralNumericalFluxDiffusive(),
-               CentralGradPenalty())
+               CentralNumericalFluxGradient())
 
   Q = init_ode_state(dg, FT(0))
 
@@ -282,7 +284,7 @@ function run(mpicomm,
   """ engf engf/eng0 engf-eng0 errf errf / engfe
 engf/eng0
 end
-# --------------- Test block / Loggers ------------------ # 
+# --------------- Test block / Loggers ------------------ #
 using Test
 let
   CLIMA.init()
@@ -299,7 +301,7 @@ let
                   range(FT(zmin); length=Ne[3]+1, stop=zmax))
     topl = StackedBrickTopology(mpicomm, brickrange, periodicity = (false, true, false))
     engf_eng0 = run(mpicomm,
-                    topl, dim, Ne, N, 
+                    topl, dim, Ne, polynomialorder,
                     timeend, FT, dt)
     @test engf_eng0 ≈ FT(9.9999993807738441e-01)
   end

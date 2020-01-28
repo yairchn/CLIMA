@@ -2,7 +2,7 @@ using CLIMA
 using CLIMA.Mesh.Topologies: BrickTopology
 using CLIMA.Mesh.Grids: DiscontinuousSpectralElementGrid
 using CLIMA.DGmethods: DGModel, init_ode_state, LocalGeometry
-using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralGradPenalty,
+using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralNumericalFluxGradient,
                                        CentralNumericalFluxDiffusive
 using CLIMA.ODESolvers: solve!, gettime
 using CLIMA.MultirateRungeKuttaMethod
@@ -20,7 +20,7 @@ using CLIMA.Atmos: AtmosModel,
                    AtmosAcousticLinearModel, RemainderModel,
                    NoOrientation,
                    NoReferenceState, ReferenceState,
-                   DryModel, NoRadiation, PeriodicBC,
+                   DryModel, NoPrecipitation, NoRadiation, NoSubsidence, PeriodicBC,
                    ConstantViscosityWithDivergence, vars_state
 using CLIMA.VariableTemplates: @vars, Vars, flattenednames
 import CLIMA.Atmos: atmos_init_aux!, vars_aux
@@ -56,7 +56,7 @@ function main()
   expected_error[Float64, SSPRK33ShuOsher, 2] = 5.2782503174265516e+00
   expected_error[Float64, SSPRK33ShuOsher, 3] = 1.2281763287878383e-01
   expected_error[Float64, SSPRK33ShuOsher, 4] = 2.3761870907666096e-03
-  
+
   expected_error[Float64, ARK2GiraldoKellyConstantinescu, 1] = 2.3245216640111998e+01
   expected_error[Float64, ARK2GiraldoKellyConstantinescu, 2] = 5.2626584944153949e+00
   expected_error[Float64, ARK2GiraldoKellyConstantinescu, 3] = 1.2324230746483673e-01
@@ -115,7 +115,9 @@ function run(mpicomm, polynomialorder, numelems, setup,
                      IsentropicVortexReferenceState{FT}(setup),
                      ConstantViscosityWithDivergence(FT(0)),
                      DryModel(),
+                     NoPrecipitation(),
                      NoRadiation(),
+                     NoSubsidence{FT}(),
                      nothing,
                      PeriodicBC(),
                      initialcondition!)
@@ -124,12 +126,15 @@ function run(mpicomm, polynomialorder, numelems, setup,
   # The nonlinear model has the slow time scales
   slow_model = RemainderModel(model, (fast_model,))
 
-  dg = DGModel(model, grid, Rusanov(), CentralNumericalFluxDiffusive(), CentralGradPenalty())
+  dg = DGModel(model, grid, Rusanov(), CentralNumericalFluxDiffusive(),
+               CentralNumericalFluxGradient())
   fast_dg = DGModel(fast_model,
-                    grid, Rusanov(), CentralNumericalFluxDiffusive(), CentralGradPenalty();
+                    grid, Rusanov(), CentralNumericalFluxDiffusive(),
+                    CentralNumericalFluxGradient();
                     auxstate=dg.auxstate)
   slow_dg = DGModel(slow_model,
-                    grid, Rusanov(), CentralNumericalFluxDiffusive(), CentralGradPenalty();
+                    grid, Rusanov(), CentralNumericalFluxDiffusive(),
+                    CentralNumericalFluxGradient();
                     auxstate=dg.auxstate)
 
   timeend = FT(2 * setup.domain_halflength / setup.translation_speed)
@@ -190,7 +195,7 @@ function run(mpicomm, polynomialorder, numelems, setup,
       "_poly$(polynomialorder)_dims$(dims)_$(ArrayType)_$(FT)" *
       "_$(FastMethod)_level$(level)"
     mkpath(vtkdir)
-    
+
     vtkstep = 0
     # output initial step
     do_output(mpicomm, vtkdir, vtkstep, dg, Q, Q, model)

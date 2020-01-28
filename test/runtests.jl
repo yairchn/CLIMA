@@ -13,10 +13,12 @@ for submodule in ["Utilities/TicToc",
                   "Atmos/Parameterizations/Microphysics",
                   "Mesh",
                   "DGmethods",
+                  "Diagnostics",
                   "ODESolvers",
                   "Ocean",
                   "Arrays",
                   "LinearSolvers",
+                  "Driver",
                  ]
 
   println("Starting tests for $submodule")

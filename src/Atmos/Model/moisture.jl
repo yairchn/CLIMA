@@ -11,11 +11,11 @@ vars_aux(::MoistureModel, FT) = @vars()
 function atmos_nodal_update_aux!(::MoistureModel, m::AtmosModel, state::Vars,
                                  aux::Vars, t::Real)
 end
-function flux_moisture!(::MoistureModel, flux::Grad, state::Vars, aux::Vars, t::Real)
+function flux_moisture!(::MoistureModel, ::AtmosModel, flux::Grad, state::Vars, aux::Vars, t::Real)
 end
-function diffusive!(::MoistureModel, diffusive, ∇transform, state, aux, t, ρD_t)
+function diffusive!(::MoistureModel, diffusive, ∇transform, state, aux, t)
 end
-function flux_diffusive!(::MoistureModel, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+function flux_diffusive!(::MoistureModel, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real, D_t)
 end
 function flux_nondiffusive!(::MoistureModel, flux::Grad, state::Vars, aux::Vars, t::Real)
 end
@@ -64,7 +64,8 @@ thermo_state(moist::DryModel, orientation::Orientation, state::Vars, aux::Vars) 
 
 Assumes the moisture components are computed via thermodynamic equilibrium.
 """
-struct EquilMoist <: MoistureModel
+Base.@kwdef struct EquilMoist <: MoistureModel
+  maxiter::Int = 3
 end
 vars_state(::EquilMoist,FT) = @vars(ρq_tot::FT)
 vars_gradient(::EquilMoist,FT) = @vars(q_tot::FT, h_tot::FT)
@@ -74,7 +75,7 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT, speed_so
 @inline function atmos_nodal_update_aux!(moist::EquilMoist, atmos::AtmosModel,
                                          state::Vars, aux::Vars, t::Real)
   e_int = internal_energy(moist, atmos.orientation, state, aux)
-  TS = PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ)
+  TS = PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, moist.maxiter)
   aux.moisture.temperature = air_temperature(TS)
   aux.moisture.θ_v = virtual_pottemp(TS)
   aux.moisture.q_liq = PhasePartition(TS).liq
@@ -84,7 +85,8 @@ end
 
 function thermo_state(moist::EquilMoist, orientation::Orientation, state::Vars, aux::Vars)
   e_int = internal_energy(moist, orientation, state, aux)
-  PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, aux.moisture.temperature)
+  FT = eltype(state)
+  return PhaseEquil{FT}(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, aux.moisture.temperature)
 end
 
 function gradvariables!(moist::EquilMoist, transform::Vars, state::Vars, aux::Vars, t::Real)
@@ -92,19 +94,28 @@ function gradvariables!(moist::EquilMoist, transform::Vars, state::Vars, aux::Va
   transform.moisture.q_tot = state.moisture.ρq_tot * ρinv
 end
 
-function diffusive!(moist::EquilMoist, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real, ρD_t)
+function diffusive!(moist::EquilMoist, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
   # diffusive flux of q_tot
-  diffusive.moisture.ρd_q_tot = (-ρD_t) .* ∇transform.moisture.q_tot
+  diffusive.moisture.∇q_tot = ∇transform.moisture.q_tot
 end
 
-function flux_moisture!(moist::EquilMoist, flux::Grad, state::Vars, aux::Vars, t::Real)
-  u = state.ρu / state.ρ
-  flux.moisture.ρq_tot += state.moisture.ρq_tot * u
+function flux_moisture!(moist::EquilMoist, atmos::AtmosModel, flux::Grad, state::Vars, aux::Vars, t::Real)
+  ρ = state.ρ
+  u = state.ρu / ρ
+  z = altitude(atmos.orientation, aux)
+  usub = subsidence_velocity(atmos.subsidence, z)
+  ẑ = vertical_unit_vector(atmos.orientation, aux)
+  u_tot = u .- usub * ẑ
+  flux.moisture.ρq_tot += u_tot * state.moisture.ρq_tot
 end
 
-function flux_diffusive!(moist::EquilMoist, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-  u = state.ρu / state.ρ
-  flux.ρ += diffusive.moisture.ρd_q_tot
-  flux.ρu += diffusive.moisture.ρd_q_tot .* u'
-  flux.moisture.ρq_tot += diffusive.moisture.ρd_q_tot
+function flux_diffusive!(moist::EquilMoist, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real, D_t)
+  d_q_tot = (-D_t) .* diffusive.moisture.∇q_tot
+  flux_diffusive!(moist, flux, state, d_q_tot)
+end
+#TODO: Consider whether to not pass ρ and ρu (not state), foc BCs reasons
+function flux_diffusive!(moist::EquilMoist, flux::Grad, state::Vars, d_q_tot)
+  flux.ρ += d_q_tot * state.ρ
+  flux.ρu += d_q_tot .* state.ρu'
+  flux.moisture.ρq_tot += d_q_tot * state.ρ
 end
