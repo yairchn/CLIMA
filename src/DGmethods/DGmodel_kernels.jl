@@ -1306,23 +1306,31 @@ end
 function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
                      bl::BalanceLaw, vgeo, 
                      Q, rhs, auxstate) where {dim, N, nvertelem, nhorzelem}
-
+  # TODO: Move to turbulence kernels
+  
   # Types and domain sizes
   FT  = eltype(Q)
   Nq  = N+1 
-  Nqk = dim == 2 ? 1 : Nq
+  Nqj = dim == 2 ? 1 : Nq
   
   # Identify state, aux lengths
   nstate    = num_state(bl,FT)
   nauxstate = num_aux(bl,FT)
 
   # Mutable storage 
-  l_δ̅   = MArray{Tuple{nstate, Nq, Nq, Nqk}, FT}(undef)
+  l_δ̅   = MArray{Tuple{nstate, Nq, Nq, Nqj}, FT}(undef)
   χ̅_max = MArray{Tuple{nhorzelem*nvertelem}, FT}(undef)
-  l_ΣQ  = MArray{Tuple{nstate}, FT}(undef)
   l_Q̅   = MArray{Tuple{nstate}, FT}(undef)
   l_χ̅   = MArray{Tuple{nstate, nhorzelem*nvertelem}, FT}(undef)
+  l_ΣQ  = MArray{Tuple{nstate}, FT}(undef)
   l_ΣM  = MArray{Tuple{nstate}, FT}(undef)
+
+  fill!(l_δ̅, -zero(FT))
+  fill!(χ̅_max, -zero(FT))
+  fill!(l_Q̅, -zero(FT))
+  fill!(l_χ̅, -zero(FT))
+  fill!(l_ΣQ, -zero(FT))
+  fill!(l_ΣM, -zero(FT))
 
   # Accumulate sums for state variables
   @inbounds @loop for eh in (1:nhorzelem; blockIdx().x)
@@ -1330,10 +1338,10 @@ function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
     for ev = 1:nvertelem
       e = ev + (eh - 1) * nvertelem
       # Node loop
-      @loop for j in (1:Nqk; threadIdx().y)
+      @loop for j in (1:Nqj; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
           @unroll for k in 1:Nq
-            ijk = i + Nq * ((j-1) + Nqk * (k-1))
+            ijk = i + Nq * ((j-1) + Nqj * (k-1))
             M = vgeo[ijk, _M, e]
             # State loop 
             @unroll for s = 1:nstate
@@ -1355,10 +1363,10 @@ function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
     for ev = 1:nvertelem
       e = ev + (eh - 1) * nvertelem
       # Node loop
-      @loop for j in (1:Nqk; threadIdx().y)
+      @loop for j in (1:Nqj; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
           @unroll for k in 1:Nq
-            ijk = i + Nq * ((j-1) + Nqk * (k-1))
+            ijk = i + Nq * ((j-1) + Nqj * (k-1))
             # State loop
             @unroll for s = 1:nstate
               # Get mean values
@@ -1366,12 +1374,12 @@ function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
               # Get deviations from mean values
               l_δ̅[s, i, j, k] = abs(Q[ijk, s, e] - l_Q̅[s])
               # Get ratio measure for DYNSGS method
-              l_χ̅[s,e] = maximum(abs.(rhs[:, s, e])) /(abs.(maximum(l_δ̅[s,:,:,:])) + eps(FT))
+              l_χ̅[s,e] = maximum(abs.(rhs[:, s, e])) /(maximum(abs.(l_δ̅[s,:,:,:]))+eps(FT))
             end
           end
         end
       end
-      χ̅_max[e] = maximum(l_χ̅)
+      χ̅_max[e] = maximum(l_χ̅[:,e])
     end
   end
 
@@ -1381,17 +1389,16 @@ function knl_dynsgs!(::Val{dim}, ::Val{N}, ::Val{nvertelem}, ::Val{nhorzelem},
   @inbounds @loop for eh in (nhorzelem; blockIdx().x)
     for ev = 1:nvertelem
       e = ev + (eh - 1) * nvertelem
-      @loop for j in (1:Nqk; threadIdx().y)
+      @loop for j in (1:Nqj; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
           @unroll for k in 1:Nq
             # Store result in auxiliary state (first index)
-            ijk = i + Nq * ((j-1) + Nqk * (k-1))
-            auxstate[ijk, 1, e] = maximum(χ̅_max)
+            ijk = i + Nq * ((j-1) + Nqj * (k-1))
+            auxstate[ijk, 1, e] = max(maximum(χ̅_max),FT(0))
           end
         end
       end
     end
   end
-  @show(maximum(χ̅_max))
   nothing
 end

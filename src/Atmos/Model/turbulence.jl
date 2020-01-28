@@ -181,11 +181,9 @@ function diffusive!(::SmagorinskyLilly, orientation::Orientation,
 end
 
 function turbulence_tensors(m::SmagorinskyLilly, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-
   FT = eltype(state)
   S = diffusive.turbulence.S
   normS = strain_rate_magnitude(S)
-
   # squared buoyancy correction
   Richardson = diffusive.turbulence.N² / (normS^2 + eps(normS))
   f_b² = sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
@@ -323,33 +321,36 @@ function turbulence_tensors(m::AnisoMinDiss, state::Vars, diffusive::Vars, aux::
   FT = eltype(state)
   α = diffusive.turbulence.∇u
   S = symmetrize(α)
-
   coeff = (aux.turbulence.Δ * m.C_poincare)^2
   βij = -(α' * α)
   ν = max(0, coeff * (dot(βij, S) / (norm2(α) + eps(FT))))
   τ = (-2*ν) * S
-
   return ν, τ
 end
 
 """
   DynamicSubgridStabilization <: TurbulenceClosure
+Dynamic method that infers viscosity by considering equation residuals (rhs) 
+normalised by the domain averages of state variables. The maximum global 
+viscosity is effectively applied to the solution.
 """
 struct DynamicSubgridStabilization <: TurbulenceClosure end
 vars_aux(::DynamicSubgridStabilization,T) = @vars(Δ::T)
 vars_gradient(::DynamicSubgridStabilization,T) = @vars(θ_v::T)
+vars_diffusive(::DynamicSubgridStabilization,T) = @vars(∇u::SMatrix{3,3,T,9})
 function atmos_init_aux!(::DynamicSubgridStabilization, ::AtmosModel, aux::Vars, geom::LocalGeometry)
   aux.turbulence.Δ = lengthscale(geom)
 end
 function gradvariables!(m::DynamicSubgridStabilization, transform::Vars, state::Vars, aux::Vars, t::Real)
   transform.turbulence.θ_v = aux.moisture.θ_v
 end
-function dynamic_viscosity_tensor(m::DynamicSubgridStabilization, S, state::Vars, diffusive::Vars, ∇transform::Grad, aux::Vars, t::Real)
+function turbulence_tensors(m::DynamicSubgridStabilization, state::Vars, diffusive::Vars, aux::Vars, t::Real)
   FT = eltype(state)
+  α = diffusive.turbulence.∇u
+  S = symmetrize(α)
   Δ = aux.turbulence.Δ 
-  ν_e = min(Δ^2 * aux.χ̅, FT(1//2) * Δ * aux.moisture.speed_sound)
-  return state.ρ * ν_e
-end
-function scaled_momentum_flux_tensor(m::DynamicSubgridStabilization, ρν, S)
-  (-2*ρν) * S
+  ν = min(abs(Δ^2 * aux.χ̅), FT(1//2) * Δ * aux.moisture.speed_sound)
+  @show(ν)
+  τ = (-2*ν) * S
+  return ν, τ
 end

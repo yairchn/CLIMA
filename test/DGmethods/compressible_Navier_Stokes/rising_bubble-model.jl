@@ -37,7 +37,7 @@ const Ne        = (10,2,10)
 const N = 4
 const dim       = 3
 const dt        = 0.01
-const timeend   = 10dt
+const timeend   = 100
 # ------------- Initial condition function ----------- #
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,
@@ -107,7 +107,6 @@ function run(mpicomm,
     N = polynomialorder(grid)
     Nq = N + 1
     Nqk = dimensionality(grid) == 2 ? 1 : Nq
-    npoints = Nq * Nq * Nqk
     nrealelem = length(topology.realelems)
     nvertelem = topology.stacksize
     nhorzelem = div(nrealelem, nvertelem)
@@ -169,7 +168,6 @@ function run(mpicomm,
     δρw       = zeros(Nq * Nq * Nqk,1,nrealelem) 
     δρe       = zeros(Nq * Nq * Nqk,1,nrealelem)
     δρq       = zeros(Nq * Nq * Nqk,1,nrealelem)
-    tempmax   = zeros(nrealelem)
     (δρmax, δρumax, δρvmax, δρwmax, δρemax, δρqmax) = (zero(FT),zero(FT),zero(FT),zero(FT),zero(FT),zero(FT))
     
     # Compute deviation from global means 
@@ -181,11 +179,11 @@ function run(mpicomm,
             for i in 1:Nq
               ijk          = i + Nq * ((j-1) + Nq * (k-1))
               δρ[ijk,1,e] = localQ[ijk,1,e] - ρ̅
-              δρu[ijk,1,e] = localQ[ijk,2,e] - ρ̅u̅
-              δρv[ijk,1,e] = localQ[ijk,3,e] - ρ̅v̅ 
-              δρw[ijk,1,e] = localQ[ijk,4,e] - ρ̅w̅ 
-              δρe[ijk,1,e] = localQ[ijk,5,e] - ρ̅e̅ 
-              δρq[ijk,1,e] = localQ[ijk,6,e] - ρ̅q̅
+              δρu[ijk,1,e] = localQ[ijk,1,e] - ρ̅u̅
+              δρv[ijk,1,e] = localQ[ijk,1,e] - ρ̅v̅ 
+              δρw[ijk,1,e] = localQ[ijk,1,e] - ρ̅w̅ 
+              δρe[ijk,1,e] = localQ[ijk,1,e] - ρ̅e̅ 
+              δρq[ijk,1,e] = localQ[ijk,1,e] - ρ̅q̅
             end
           end
         end
@@ -197,7 +195,7 @@ function run(mpicomm,
         δρqmax = maximum(δρq[:,1,e])
       end
     end
-    @show(ρ̅)
+    #@show(max(δρmax, δρumax, δρvmax, δρwmax, δρemax, δρqmax))
     # Global maximum 
     return nothing
   end
@@ -212,6 +210,7 @@ function run(mpicomm,
   model = AtmosModel(FlatOrientation(),
                      NoReferenceState(),
                      DynamicSubgridStabilization(),
+                     #SmagorinskyLilly{FT}(0.23),
                      EquilMoist(), 
                      NoPrecipitation(),
                      NoRadiation(),
@@ -238,7 +237,7 @@ function run(mpicomm,
 
   # Set up the information callback (output field dump is via vtk callback: see cbinfo)
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(3, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -255,7 +254,7 @@ function run(mpicomm,
   end
 
   cb_dynsgs = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
-    #gather_global_stats(mpicomm, dg, Q, dt)
+    gather_global_stats(mpicomm, dg, Q, dt)
   end
 
   step = [0]
@@ -301,7 +300,7 @@ let
                   range(FT(zmin); length=Ne[3]+1, stop=zmax))
     topl = StackedBrickTopology(mpicomm, brickrange, periodicity = (false, true, false))
     engf_eng0 = run(mpicomm,
-                    topl, dim, Ne, polynomialorder,
+                    topl, dim, Ne, N,
                     timeend, FT, dt)
     @test engf_eng0 ≈ FT(9.9999993807738441e-01)
   end
