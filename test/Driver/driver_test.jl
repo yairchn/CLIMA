@@ -60,13 +60,13 @@ function main()
     N = 4
 
     # Domain resolution and size
-    Δh = FT(35)
-    Δv = FT(5)
+    Δh = FT(50)
+    Δv = FT(30)
     resolution = (Δh, Δh, Δv)
 
-    xmax = 100
-    ymax = 100
-    zmax = 250
+    xmax = 400
+    ymax = 400
+    zmax = 600
 
     t0 = FT(0)
     timeend = FT(10)
