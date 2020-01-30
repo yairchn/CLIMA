@@ -106,17 +106,18 @@ function main()
     resolution = (nelem_horz, nelem_vert)
 
     t0 = FT(0)
-    timeend = FT(60) # 400day
+    timeend =  365day
 
     driver_config = config_heldsuarez(FT, N, resolution)
-    ode_solver_type = CLIMA.ExplicitSolverType(LSRK144NiegemannDiehlBusch)
+    #ode_solver_type = CLIMA.ExplicitSolverType(LSRK144NiegemannDiehlBusch)
+    ode_solver_type = CLIMA.IMEXSolverType()
     solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
                                        ode_solver_type=ode_solver_type)
 
     # Set up the filter callback
     filterorder = 14
     filter = ExponentialFilter(solver_config.dg.grid, 0, filterorder)
-    cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do
+    cbfilter = GenericCallbacks.EveryXSimulationSteps(10) do
         Filters.apply!(solver_config.Q, 1:size(solver_config.Q, 2),
                        solver_config.dg.grid, filter)
         nothing

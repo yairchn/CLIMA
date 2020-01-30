@@ -60,13 +60,14 @@ function vars_state(m::AtmosModel, FT)
 end
 function vars_gradient(m::AtmosModel, FT)
   @vars begin
+    ρ::FT
     u::SVector{3,FT}
     h_tot::FT
     turbulence::vars_gradient(m.turbulence,FT)
     moisture::vars_gradient(m.moisture,FT)
   end
 end
-function vars_gradient_laplacian!(m::AtmosModel, FT)
+function vars_gradient_laplacian(m::AtmosModel, FT)
   @vars begin
     u::SVector{3,FT}
     h_tot::FT
@@ -172,10 +173,6 @@ end
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
   
-  # hyperdiffusive
-  #σ1 = hyperdiffusive.σ1
-  #σ2 = hyperdiffusive.σ2
-  
   # diffusive
   ρτ = diffusive.ρτ
   ρd_h_tot = diffusive.ρd_h_tot
@@ -184,9 +181,11 @@ end
   flux.ρe += ρτ*u
   flux.ρe += ρd_h_tot
   
-  # Hyperdiffusive 
-  #flux.ρe += σ2
-  #flux.ρu += σ1
+  σ1 = hyperdiffusive.σ1
+  σ2 = hyperdiffusive.σ2
+  
+  flux.ρu += σ1
+  flux.ρe += σ2
 
   flux_diffusive!(m.moisture, flux, state, diffusive, aux, t)
 end
@@ -199,11 +198,26 @@ end
 
 function gradvariables!(atmos::AtmosModel, transform::Vars, state::Vars, aux::Vars, t::Real)
   ρinv = 1/state.ρ
+  transform.ρ = state.ρ
   transform.u = ρinv * state.ρu
   transform.h_tot = total_specific_enthalpy(atmos.moisture, atmos.orientation, state, aux)
 
   gradvariables!(atmos.moisture, transform, state, aux, t)
   gradvariables!(atmos.turbulence, transform, state, aux, t)
+end
+
+function hyperdiffusive!(m::AtmosModel, 
+                         hyperdiffusive::Vars, 
+                         ∇hypertransform::Grad,
+                         state::Vars, 
+                         aux::Vars, 
+                         t::Real)
+  FT = eltype(state)
+  ∇Δu = ∇hypertransform.u
+  ∇Δh = ∇hypertransform.h_tot
+  D = SMatrix{3,3,FT,9}(1,1,1,1,1,1,1,1,1) .* 1e10
+  hyperdiffusive.σ1 = D * ∇Δu
+  hyperdiffusive.σ2 = D * ∇Δh
 end
 
 
@@ -219,7 +233,6 @@ function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::V
   ρν = dynamic_viscosity_tensor(m.turbulence, S, state, diffusive, ∇transform, aux, t)
   # momentum flux tensor
   diffusive.ρτ = scaled_momentum_flux_tensor(m.turbulence, ρν, S)
-
   ∇h_tot = ∇transform.h_tot
   # turbulent Prandtl number
   diag_ρν = ρν isa Real ? ρν : diag(ρν) # either a scalar or matrix
@@ -232,18 +245,6 @@ function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::V
   diffusive!(m.moisture, diffusive, ∇transform, state, aux, t, ρD_t)
   # diffusion terms required for SGS turbulence computations
   diffusive!(m.turbulence, diffusive, ∇transform, state, aux, t, ρD_t)
-end
-
-function hyperdiffusive!(m::AtmosModel, 
-                         hyperdiffusive::Vars, 
-                         ∇hypertransform::Grad,
-                         state::Vars, aux::Vars, t::Real)
-  ∇Δρu = ∇hypertransform.u
-  ∇Δρe = ∇hypertransform.h_tot
-  D = SMatrix{3,3,eltype(state),9}(1,1,1,1,1,1,1,1,1)
-  hyperdiffusive.σ1 = D * ∇Δρu
-  hyperdiffusive.σ2 = D * ∇Δρe
-  @show(hyperdiffusive.σ1)
 end
 
 
@@ -298,6 +299,7 @@ boundary_state!(nf, m::AtmosModel, x...) =
 
 # FIXME: This is probably not right....
 boundary_state!(::CentralGradPenalty, bl::AtmosModel, _...) = nothing
+boundary_state!(::CentralDivPenalty, bl::AtmosModel, _...) = nothing
 
 function init_state!(m::AtmosModel, state::Vars, aux::Vars, coords, t, args...)
   m.init_state(state, aux, coords, t, args...)

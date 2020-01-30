@@ -36,8 +36,8 @@ const (zmin,zmax)      = (0,1000)
 const Ne        = (10,2,10)
 const polynomialorder = 4
 const dim       = 3
-const dt        = 0.01
-const timeend   = 10dt
+const dt        = 0.001
+const timeend   = 1000
 # ------------- Initial condition function ----------- #
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,
@@ -100,7 +100,7 @@ function run(mpicomm,
   # -------------- Define model ---------------------------------- #
   model = AtmosModel(FlatOrientation(),
                      NoReferenceState(),
-                     Vreman{FT}(C_smag),
+                     Vreman{FT}(0.1),
                      EquilMoist(),
                      NoRadiation(),
                      NoSubsidence{FT}(),

@@ -2,7 +2,7 @@ module NumericalFluxes
 
 export NumericalFluxNonDiffusive, NumericalFluxDiffusive, GradNumericalPenalty,
        Rusanov, CentralGradPenalty, CentralNumericalFluxDiffusive,
-       CentralNumericalFluxNonDiffusive
+       CentralNumericalFluxNonDiffusive, CentralDivPenalty, CentralHyperDiffusiveFlux
 
 using StaticArrays, LinearAlgebra
 using GPUifyLoops: @unroll

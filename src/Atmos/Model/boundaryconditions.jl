@@ -17,6 +17,13 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, f::Function,
   f(stateP, diffP, auxP, nM, stateM, diffM, auxM, bctype, t)
 end
 
+function atmos_boundary_state!(::CentralNumericalFluxDiffusive, f::Function,
+                               m::AtmosModel, stateP::Vars, diffP::Vars,
+                               auxP::Vars, nM, stateM::Vars, diffM::Vars,
+                               auxM::Vars, bctype, t, _...)
+  f(stateP, diffP, auxP, nM, stateM, diffM, auxM, bctype, t)
+end
+
 # lookup boundary condition by face
 function atmos_boundary_state!(nf::Rusanov, bctup::Tuple, m::AtmosModel,
                                stateP::Vars, auxP::Vars, nM, stateM::Vars,
@@ -77,6 +84,19 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::NoFluxBC,
   diffP.ρτ = SVector(FT(0), FT(0), FT(0), FT(0), FT(0), FT(0))
   diffP.ρd_h_tot =  SVector(FT(0), FT(0), FT(0))
 end
+function atmos_boundary_state!(::CentralHyperDiffusiveFlux, 
+                               bc::NoFluxBC,
+                               m::AtmosModel, 
+                               stateP::Vars, 
+                               auxP::Vars, 
+                               lapP::Vars,
+                               nM, 
+                               stateM::Vars, 
+                               auxM::Vars,
+                               lapM::Vars, 
+                               bctype, t, _...)
+  nothing
+end
 
 """
     InitStateBC <: BoundaryCondition
@@ -98,6 +118,18 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::InitStateBC,
                                m::AtmosModel, stateP::Vars, diffP::Vars,
                                auxP::Vars, nM, stateM::Vars, diffM::Vars,
                                auxM::Vars, bctype, t, _...)
+  init_state!(m, stateP, auxP, auxP.coord, t)
+end
+function atmos_boundary_state!(::CentralHyperDiffusiveFlux, bc::InitStateBC,
+                               m::AtmosModel, 
+                               stateP::Vars, 
+                               auxP::Vars, 
+                               lapP::Vars,
+                               nM, 
+                               stateM::Vars, 
+                               auxM::Vars,
+                               lapM::Vars, 
+                               bctype, t, _...)
   init_state!(m, stateP, auxP, auxP.coord, t)
 end
 
