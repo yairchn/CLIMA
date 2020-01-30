@@ -143,7 +143,7 @@ function init(arraytype=array_type())
 
     # parse command line arguments we understand
     parsed_args = parse_commandline()
-    decl_global_const("ShowUpdates", parsed_args["no-show-updates"])
+    decl_global_const("NoShowUpdates", parsed_args["no-show-updates"])
     decl_global_const("UpdateInterval", parsed_args["update-interval"])
     decl_global_const("EnableDiagnostics", parsed_args["enable-diagnostics"])
     enablediagnostics = parsed_args["enable-diagnostics"]
@@ -264,7 +264,7 @@ function invoke!(solver_config::SolverConfiguration;
 
     # set up callbacks
     callbacks = ()
-    if ShowUpdates
+    if !NoShowUpdates
         # set up the information callback
         starttime = Ref(now())
         cbinfo = GenericCallbacks.EveryXWallTimeSeconds(UpdateInterval, mpicomm) do (init=false)
