@@ -18,7 +18,8 @@ import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
                         flux_diffusive!, source!, wavespeed, boundary_state!,
                         gradvariables!, diffusive!, init_aux!, init_state!,
                         update_aux!, integrate_aux!, LocalGeometry, lengthscale,
-                        resolutionmetric, DGModel, num_integrals,
+                        resolutionmetric, DGModel, num_integrals, 
+                        vars_gradient_laplacian, vars_hyperdiffusive, hyperdiffusive!,
                         nodal_update_aux!, indefinite_stack_integral!,
                         reverse_indefinite_stack_integral!
 using ..DGmethods.NumericalFluxes
@@ -65,6 +66,12 @@ function vars_gradient(m::AtmosModel, FT)
     moisture::vars_gradient(m.moisture,FT)
   end
 end
+function vars_gradient_laplacian!(m::AtmosModel, FT)
+  @vars begin
+    u::SVector{3,FT}
+    h_tot::FT
+  end
+end
 function vars_diffusive(m::AtmosModel, FT)
   @vars begin
     ρτ::SHermitianCompact{3,FT,6}
@@ -73,16 +80,10 @@ function vars_diffusive(m::AtmosModel, FT)
     moisture::vars_diffusive(m.moisture,FT)
   end
 end
-function vars_hyperdiffusive!(m::AtmosModel, FT)
+function vars_hyperdiffusive(m::AtmosModel, FT)
   @vars begin
-    σ1::SVector{3,FT}
+    σ1::SMatrix{3,3,FT,9}
     σ2::SVector{3,FT}
-  end
-end
-function vars_gradient_laplacian!(m::AtmosModel, FT)
-  @vars begin
-    u::SVector{3,FT}
-    h_tot::FT
   end
 end
 function vars_aux(m::AtmosModel, FT)
@@ -160,12 +161,21 @@ Where
   flux_moisture!(m.moisture, m, flux, state, aux, t)
 end
 
-@inline function flux_diffusive!(m::AtmosModel, flux::Grad, state::Vars,
-                                 diffusive::Vars, auxHDG::Vars, aux::Vars, t::Real)
+@inline function flux_diffusive!(m::AtmosModel, 
+                                 flux::Grad, 
+                                 state::Vars,
+                                 diffusive::Vars, 
+                                 hyperdiffusive::Vars, 
+                                 aux::Vars, 
+                                 t::Real)
+
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
-  σ1 = auxHDG.σ1
-  σ2 = auxHDG.σ2
+  
+  # hyperdiffusive
+  #σ1 = hyperdiffusive.σ1
+  #σ2 = hyperdiffusive.σ2
+  
   # diffusive
   ρτ = diffusive.ρτ
   ρd_h_tot = diffusive.ρd_h_tot
@@ -175,8 +185,8 @@ end
   flux.ρe += ρd_h_tot
   
   # Hyperdiffusive 
-  flux.ρe += σ2
-  flux.ρu += σ1
+  #flux.ρe += σ2
+  #flux.ρu += σ1
 
   flux_diffusive!(m.moisture, flux, state, diffusive, aux, t)
 end
@@ -224,13 +234,16 @@ function diffusive!(m::AtmosModel, diffusive::Vars, ∇transform::Grad, state::V
   diffusive!(m.turbulence, diffusive, ∇transform, state, aux, t, ρD_t)
 end
 
-function hyperdiffusive!(m::AtmosModel, auxHDG::Vars, ∇transform::Grad,
+function hyperdiffusive!(m::AtmosModel, 
+                         hyperdiffusive::Vars, 
+                         ∇hypertransform::Grad,
                          state::Vars, aux::Vars, t::Real)
-  ∇Δρe = ∇transform.h_tot
-  ∇Δρu = ∇transform.u
+  ∇Δρu = ∇hypertransform.u
+  ∇Δρe = ∇hypertransform.h_tot
   D = SMatrix{3,3,eltype(state),9}(1,1,1,1,1,1,1,1,1)
-  auxHDG.σ1 = D * ∇Δρe
-  auxHDG.σ2 = D * ∇Δρu
+  hyperdiffusive.σ1 = D * ∇Δρu
+  hyperdiffusive.σ2 = D * ∇Δρe
+  @show(hyperdiffusive.σ1)
 end
 
 
