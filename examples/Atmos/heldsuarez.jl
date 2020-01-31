@@ -45,7 +45,7 @@ function main()
   polynomialorder = 5
   numelem_horz = 6
   numelem_vert = 8
-  timeend = 60 # 400day
+  timeend = 3600*24 # 400day
   outputtime = 2day
   
   for FT in (Float64,)
@@ -107,7 +107,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
 
   filterorder = 14
   filter = ExponentialFilter(grid, 0, filterorder)
-  cbfilter = EveryXSimulationSteps(1) do
+  cbfilter = EveryXSimulationSteps(1000) do
     Filters.apply!(Q, 1:size(Q, 2), grid, filter)
     nothing
   end
