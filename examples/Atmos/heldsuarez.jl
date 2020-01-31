@@ -1,6 +1,7 @@
 using CLIMA
 using CLIMA.Mesh.Topologies: StackedCubedSphereTopology, cubedshellwarp, grid1d
 using CLIMA.Mesh.Grids
+using CLIMA.Mesh.Grids: HorizontalDirection, EveryDirection, VerticalDirection
 using CLIMA.Mesh.Filters
 using CLIMA.DGmethods: DGModel, init_ode_state
 using CLIMA.DGmethods.NumericalFluxes: Rusanov, CentralGradPenalty,
@@ -17,8 +18,11 @@ using CLIMA.Atmos: AtmosModel, SphericalOrientation, NoReferenceState,
                    ConstantViscosityWithDivergence,
                    vars_state, vars_aux,
                    Gravity, Coriolis,
-                   HydrostaticState, IsothermalProfile
+                   HydrostaticState, IsothermalProfile, AtmosAcousticGravityLinearModel
 using CLIMA.VariableTemplates: flattenednames
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.ColumnwiseLUSolver: SingleColumnLU, ManyColumnLU, banded_matrix,
+                                banded_matrix_vector_product!
 
 using MPI, Logging, StaticArrays, LinearAlgebra, Printf, Dates, Test
 
@@ -76,16 +80,32 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                      setup)
 
   dg = DGModel(model, grid, Rusanov(),
-               CentralNumericalFluxDiffusive(), CentralGradPenalty())
+               CentralNumericalFluxDiffusive(), 
+               CentralGradPenalty())
+
+  linmodel = AtmosAcousticGravityLinearModel(model)
+  
+  vdg = DGModel(linmodel, grid, Rusanov(), 
+                CentralNumericalFluxDiffusive(), CentralGradPenalty(), 
+                direction=VerticalDirection(), auxstate=dg.auxstate)
 
   # determine the time step
-  element_size = (setup.domain_height / numelem_vert)
-  acoustic_speed = soundspeed_air(FT(315))
-  lucas_magic_factor = 5
-  dt = lucas_magic_factor * min_node_distance(grid) / acoustic_speed
-
   Q = init_ode_state(dg, FT(0))
-  lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
+
+  # determine the time step
+  resolution_horz = min_node_distance(grid, HorizontalDirection())
+  resolution_vert = min_node_distance(grid, VerticalDirection())
+
+  acoustic_speed = soundspeed_air(FT(315))
+  lucas_magic_factor = resolution_horz / resolution_vert * FT(0.05)
+  dt = lucas_magic_factor * min_node_distance(grid, VerticalDirection()) / acoustic_speed
+  Q = init_ode_state(dg, FT(0))
+
+  solver = ARK2GiraldoKellyConstantinescu(dg, vdg, SingleColumnLU(), Q;
+                                          dt=dt, t0=0,
+                                          split_nonlinear_linear=false)
+
+
 
   filterorder = 14
   filter = ExponentialFilter(grid, 0, filterorder)
@@ -118,7 +138,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                         simtime = %.16e
                         runtime = %s
                         norm(Q) = %.16e
-                        """ gettime(lsrk) runtime energy
+                        """ gettime(solver) runtime energy
     end
   end
   callbacks = (cbinfo, cbfilter)
@@ -137,13 +157,13 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
     # setup the output callback
     cbvtk = EveryXSimulationSteps(floor(outputtime / dt)) do
       vtkstep += 1
-      Qe = init_ode_state(dg, gettime(lsrk))
+      Qe = init_ode_state(dg, gettime(solver))
       do_output(mpicomm, vtkdir, vtkstep, dg, Q, model)
     end
     callbacks = (callbacks..., cbvtk)
   end
 
-  solve!(Q, lsrk; timeend=timeend, callbacks=callbacks)
+  solve!(Q, solver; timeend=timeend, callbacks=callbacks)
 
   # final statistics
   engf = norm(Q)
@@ -214,7 +234,7 @@ function held_suarez_forcing!(source, state, aux, t::Real)
   k_T = k_a + (k_s - k_a) * height_factor * cos(φ) ^ 4
   k_v = k_f * height_factor
   source.ρu += -k_v * ρu
-  source.ρe += -k_T * ρ * cv_d * (T - T_equil) - k_v * ρu' * ρu / ρ
+  source.ρe += -k_T * ρ * cv_d * (T - T_equil)
 end
 
 function do_output(mpicomm, vtkdir, vtkstep, dg, Q, model, testname = "heldsuarez")
