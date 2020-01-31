@@ -97,15 +97,13 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
   resolution_vert = min_node_distance(grid, VerticalDirection())
 
   acoustic_speed = soundspeed_air(FT(315))
-  lucas_magic_factor = resolution_horz / resolution_vert * FT(0.05)
-  dt = lucas_magic_factor * min_node_distance(grid, VerticalDirection()) / acoustic_speed
+  boost_timestep = FT(1) #resolution_horz / resolution_vert * FT(0.05)
+  dt = boost_timestep * min_node_distance(grid, VerticalDirection()) / acoustic_speed
   Q = init_ode_state(dg, FT(0))
 
-  solver = ARK2GiraldoKellyConstantinescu(dg, vdg, SingleColumnLU(), Q;
+  solver = ARK2GiraldoKellyConstantinescu(dg, vdg, ManyColumnLU(), Q;
                                           dt=dt, t0=0,
                                           split_nonlinear_linear=false)
-
-
 
   filterorder = 14
   filter = ExponentialFilter(grid, 0, filterorder)
@@ -128,7 +126,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
 
   # Set up the information callback
   starttime = Ref(now())
-  cbinfo = EveryXWallTimeSeconds(60, mpicomm) do (s=false)
+  cbinfo = EveryXWallTimeSeconds(5, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -163,7 +161,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
     callbacks = (callbacks..., cbvtk)
   end
 
-  solve!(Q, solver; timeend=timeend, callbacks=callbacks)
+  solve!(Q, solver; timeend=timeend, callbacks=callbacks, adjustfinalstep=false)
 
   # final statistics
   engf = norm(Q)

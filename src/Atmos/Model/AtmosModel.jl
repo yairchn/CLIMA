@@ -215,7 +215,7 @@ function hyperdiffusive!(m::AtmosModel,
   FT = eltype(state)
   ∇Δu = ∇hypertransform.u
   ∇Δh = ∇hypertransform.h_tot
-  D = SMatrix{3,3,FT,9}(1,1,1,1,1,1,1,1,1) .* 1e10
+  D = SMatrix{3,3,FT,9}(1,0,0,0,1,0,0,0,1) .* 1e13 * 0
   hyperdiffusive.σ1 = D * ∇Δu
   hyperdiffusive.σ2 = D * ∇Δh
 end
