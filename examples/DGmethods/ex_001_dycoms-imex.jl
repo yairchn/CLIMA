@@ -324,7 +324,7 @@ function run(mpicomm,
         #
         # 1D IMEX
         #
-        Courant_number = 0.4
+        Courant_number = 0.95
         dt             = Courant_number * min_node_distance(dg.grid, HorizontalDirection())/soundspeed_air(FT(290))
         # dt = 0.01
         numberofsteps = convert(Int64, cld(timeend, dt))
