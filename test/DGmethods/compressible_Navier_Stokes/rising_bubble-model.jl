@@ -24,8 +24,6 @@ using CLIMA.VTK
 using Random
 using CLIMA.Atmos: vars_state, vars_aux, soundspeed
 
-const ArrayType = CLIMA.array_type()
-
 if !@isdefined integration_testing
   const integration_testing =
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
@@ -90,7 +88,7 @@ function Initialise_Rising_Bubble!(state::Vars, aux::Vars, (x1,x2,x3), t)
   state.moisture.ρq_tot = FT(0)
 end
 # --------------- Driver definition ------------------ #
-function run(mpicomm,
+function run(mpicomm, ArrayType,
              topl, dim, Ne, polynomialorder,
              timeend, FT, dt)
   # -------------- Define grid ----------------------------------- #
@@ -104,6 +102,7 @@ function run(mpicomm,
                      NoReferenceState(),
                      Vreman{FT}(C_smag),
                      EquilMoist(),
+                     NoPrecipitation(),
                      NoRadiation(),
                      NoSubsidence{FT}(),
                      Gravity(),
@@ -114,7 +113,7 @@ function run(mpicomm,
                grid,
                Rusanov(),
                CentralNumericalFluxDiffusive(),
-               CentralGradPenalty())
+               CentralNumericalFluxGradient())
 
   Q = init_ode_state(dg, FT(0))
 
@@ -190,6 +189,7 @@ end
 using Test
 let
   CLIMA.init()
+  ArrayType = CLIMA.array_type()
   mpicomm = MPI.COMM_WORLD
   ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
   loglevel = ll == "DEBUG" ? Logging.Debug :
@@ -202,7 +202,7 @@ let
                   range(FT(ymin); length=Ne[2]+1, stop=ymax),
                   range(FT(zmin); length=Ne[3]+1, stop=zmax))
     topl = StackedBrickTopology(mpicomm, brickrange, periodicity = (false, true, false))
-    engf_eng0 = run(mpicomm,
+    engf_eng0 = run(mpicomm, ArrayType,
                     topl, dim, Ne, polynomialorder,
                     timeend, FT, dt)
     # @test engf_eng0 ≈ FT(9.9999993807738441e-01)
