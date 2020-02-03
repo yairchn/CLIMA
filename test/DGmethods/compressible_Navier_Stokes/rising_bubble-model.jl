@@ -33,11 +33,11 @@ end
 const (xmin,xmax)      = (0,1000)
 const (ymin,ymax)      = (0,400)
 const (zmin,zmax)      = (0,1000)
-const Ne        = (10,2,10)
+const Ne        = (10,2,70)
 const polynomialorder = 4
 const dim       = 3
 const dt        = 0.01
-const timeend   = 10dt
+const timeend   = 600.0
 # ------------- Initial condition function ----------- #
 """
 @article{doi:10.1175/1520-0469(1993)050<1865:BCEWAS>2.0.CO;2,
