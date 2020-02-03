@@ -43,8 +43,8 @@ function main()
   global_logger(ConsoleLogger(logger_stream, loglevel))
 
   polynomialorder = 5
-  numelem_horz = 6
-  numelem_vert = 8
+  numelem_horz = 10
+  numelem_vert = 10
   timeend = 3600*24 # 400day
   outputtime = 2day
   
@@ -71,7 +71,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
 
   model = AtmosModel(SphericalOrientation(),
                      HydrostaticState(IsothermalProfile(setup.T_initial), FT(0)),
-                     ConstantViscosityWithDivergence(FT(0)),
+                     ConstantViscosityWithDivergence(FT(1e10)),
                      DryModel(),
                      NoRadiation(),
                      NoSubsidence{FT}(),
@@ -97,7 +97,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
   resolution_vert = min_node_distance(grid, VerticalDirection())
 
   acoustic_speed = soundspeed_air(FT(315))
-  boost_timestep = FT(1) #resolution_horz / resolution_vert * FT(0.05)
+  boost_timestep = FT(1)# * resolution_horz / resolution_vert 
   dt = boost_timestep * min_node_distance(grid, VerticalDirection()) / acoustic_speed
   Q = init_ode_state(dg, FT(0))
 
@@ -105,7 +105,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                                           dt=dt, t0=0,
                                           split_nonlinear_linear=false)
 
-  filterorder = 14
+  filterorder = 8
   filter = ExponentialFilter(grid, 0, filterorder)
   cbfilter = EveryXSimulationSteps(1000) do
     Filters.apply!(Q, 1:size(Q, 2), grid, filter)
@@ -126,7 +126,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
 
   # Set up the information callback
   starttime = Ref(now())
-  cbinfo = EveryXWallTimeSeconds(5, mpicomm) do (s=false)
+  cbinfo = EveryXWallTimeSeconds(3, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
