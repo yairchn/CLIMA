@@ -105,7 +105,7 @@ function run(mpicomm, ArrayType,
                                            )
   # -------------- Define model ---------------------------------- #
   model = AtmosModel(FlatOrientation(),
-                     NoReferenceState(),
+                     HydrostaticState(DryAdiabaticProfile(typemin(FT), FT(300)), FT(0)),
                      AnisoMinDiss{FT}(1),
                      EquilMoist(),
                      NoPrecipitation(),
