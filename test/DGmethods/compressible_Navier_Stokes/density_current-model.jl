@@ -123,13 +123,18 @@ function run(mpicomm, ArrayType,
 
   lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
 
+  Δx = xmax/Ne[1]
+  Δz = zmax/Ne[3]
+
   @info @sprintf """Starting density current simulation:
   Time-integrator = LSRK54CarpenterKennedy
   ArrayType       = %s
   FloatType       = %s
+  Δx              = %s
+  Δz              = %s
   Δx / Δz         = %s
   Δt              = %s
-  Time end        = %s""" ArrayType FT (xmax/Ne[1]) / (zmax/Ne[3]) dt timeend
+  Time end        = %s""" ArrayType FT Δx Δz Δx/Δz dt timeend
 
   # Set up the information callback (output field dump is via vtk callback: see cbinfo)
   starttime = Ref(now())
