@@ -123,56 +123,62 @@ function run(mpicomm, ArrayType,
 
   lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
 
-  eng0 = norm(Q)
-  @info @sprintf """Starting
-  norm(Q₀) = %.16e
-  ArrayType = %s
-  FloatType = %s""" eng0 ArrayType FT
+  @info @sprintf """Starting density current simulation:
+  Time-integrator = LSRK54CarpenterKennedy
+  ArrayType       = %s
+  FloatType       = %s
+  Δx / Δz         = %s
+  Δt              = %s
+  Time end        = %s""" ArrayType FT (xmax/Ne[1]) / (zmax/Ne[3]) dt timeend
 
   # Set up the information callback (output field dump is via vtk callback: see cbinfo)
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
-    if s
-      starttime[] = now()
-    else
-      energy = norm(Q)
-      @info @sprintf("""Update
-                     simtime = %.16e
-                     runtime = %s
-                     norm(Q) = %.16e""", ODESolvers.gettime(lsrk),
-                     Dates.format(convert(Dates.DateTime,
-                                          Dates.now()-starttime[]),
-                                  Dates.dateformat"HH:MM:SS"),
-                     energy)
-    end
-  end
+  # cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+  #   if s
+  #     starttime[] = now()
+  #   else
+  #     energy = norm(Q)
+  #     @info @sprintf("""Update
+  #                    simtime = %.16e
+  #                    runtime = %s
+  #                    norm(Q) = %.16e""", ODESolvers.gettime(lsrk),
+  #                    Dates.format(convert(Dates.DateTime,
+  #                                         Dates.now()-starttime[]),
+  #                                 Dates.dateformat"HH:MM:SS"),
+  #                    energy)
+  #   end
+  # end
 
-  step = [0]
-  cbvtk = GenericCallbacks.EveryXSimulationSteps(3000)  do (init=false)
-    mkpath("./vtk-dc/")
-      outprefix = @sprintf("./vtk-dc/DC_%dD_mpirank%04d_step%04d", dim,
-                           MPI.Comm_rank(mpicomm), step[1])
-      @debug "doing VTK output" outprefix
-      writevtk(outprefix, Q, dg, flattenednames(vars_state(model,FT)), dg.auxstate, flattenednames(vars_aux(model,FT)))
-      step[1] += 1
-      nothing
-  end
+  # step = [0]
+  # cbvtk = GenericCallbacks.EveryXSimulationSteps(3000)  do (init=false)
+  #   mkpath("./vtk-dc/")
+  #     outprefix = @sprintf("./vtk-dc/DC_%dD_mpirank%04d_step%04d", dim,
+  #                          MPI.Comm_rank(mpicomm), step[1])
+  #     @debug "doing VTK output" outprefix
+  #     writevtk(outprefix, Q, dg, flattenednames(vars_state(model,FT)), dg.auxstate, flattenednames(vars_aux(model,FT)))
+  #     step[1] += 1
+  #     nothing
+  # end
 
+  solve!(Q, lsrk; timeend=timeend)
+  @info @sprintf """Finished at: %s
+  """ Dates.format(convert(Dates.DateTime,
+                           Dates.now()-starttime[]),
+                   Dates.dateformat"HH:MM:SS")
 
-  solve!(Q, lsrk; timeend=timeend, callbacks=(cbinfo,cbvtk))
   # End of the simulation information
-  engf = norm(Q)
-  Qe = init_ode_state(dg, FT(timeend))
-  engfe = norm(Qe)
-  errf = euclidean_distance(Q, Qe)
-  @info @sprintf """Finished
-  norm(Q)                 = %.16e
-  norm(Q) / norm(Q₀)      = %.16e
-  norm(Q) - norm(Q₀)      = %.16e
-  norm(Q - Qe)            = %.16e
-  norm(Q - Qe) / norm(Qe) = %.16e
-  """ engf engf/eng0 engf-eng0 errf errf / engfe
-engf/eng0
+  # engf = norm(Q)
+  # Qe = init_ode_state(dg, FT(timeend))
+  # engfe = norm(Qe)
+  # errf = euclidean_distance(Q, Qe)
+  # @info @sprintf """Finished
+  # norm(Q)                 = %.16e
+  # norm(Q) / norm(Q₀)      = %.16e
+  # norm(Q) - norm(Q₀)      = %.16e
+  # norm(Q - Qe)            = %.16e
+  # norm(Q - Qe) / norm(Qe) = %.16e
+  # """ engf engf/eng0 engf-eng0 errf errf / engfe
+  # engf/eng0
 end
 # --------------- Test block / Loggers ------------------ #
 using Test
@@ -187,14 +193,15 @@ let
   logger_stream = MPI.Comm_rank(mpicomm) == 0 ? stderr : devnull
   global_logger(ConsoleLogger(logger_stream, loglevel))
 
-  for FT in (Float32, Float64)
+  for FT in (Float64,)
     brickrange = (range(FT(xmin); length=Ne[1]+1, stop=xmax),
                   range(FT(ymin); length=Ne[2]+1, stop=ymax),
                   range(FT(zmin); length=Ne[3]+1, stop=zmax))
     topl = StackedBrickTopology(mpicomm, brickrange, periodicity = (false, true, false))
-    engf_eng0 = run(mpicomm, ArrayType,
-                    topl, dim, Ne, polynomialorder,
-                    timeend, FT, dt)
+
+    run(mpicomm, ArrayType,
+        topl, dim, Ne, polynomialorder,
+        timeend, FT, dt)
     # @test engf_eng0 ≈ FT(9.9999970927037096e-01)
   end
 end
