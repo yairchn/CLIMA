@@ -1,5 +1,5 @@
 using CLIMA.PlanetParameters
-export PeriodicBC, NoFluxBC, InitStateBC, DYCOMS_BC, RayleighBenardBC
+export PeriodicBC, NoFluxBC, InitStateBC, DYCOMS_BC, RayleighBenardBC, NoSlipBC
 
 #TODO: figure out a better interface for this.
 # at the moment we can just pass a function, but we should do something better
@@ -55,6 +55,42 @@ struct PeriodicBC <: BoundaryCondition end
 atmos_boundary_state!(_, ::PeriodicBC, _...) = nothing
 
 """
+    NoSlipBC <: BoundaryCondition
+
+Set the velocity to zero at the boundary to be zero
+"""
+struct NoSlipBC <: BoundaryCondition
+end
+
+function atmos_boundary_state!(::Rusanov, bc::NoSlipBC, m::AtmosModel,
+                               stateP::Vars, auxP::Vars, nM, stateM::Vars,
+                               auxM::Vars, bctype, t, _...)
+  stateP.ρu = -stateM.ρu
+end
+
+function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::NoSlipBC,
+                               m::AtmosModel, stateP::Vars, diffP::Vars,
+                               auxP::Vars, nM, stateM::Vars, diffM::Vars,
+                               auxM::Vars, bctype, t, _...)
+  # Diff boundaries calculated from equations of motion
+  nothing
+end
+function atmos_boundary_state!(::CentralHyperDiffusiveFlux, 
+                               bc::NoSlipBC,
+                               m::AtmosModel, 
+                               stateP::Vars, 
+                               auxP::Vars, 
+                               lapP::Vars,
+                               nM, 
+                               stateM::Vars, 
+                               auxM::Vars,
+                               lapM::Vars, 
+                               bctype, t, _...)
+  # Hyper-diff boundaries calculated from equations of motion
+  nothing
+end
+
+"""
     NoFluxBC <: BoundaryCondition
 
 Set the momentum at the boundary to be zero.
@@ -71,7 +107,7 @@ function atmos_boundary_state!(::Rusanov, bc::NoFluxBC, m::AtmosModel,
                                auxM::Vars, bctype, t, _...)
   FT = eltype(stateM)
   stateP.ρ = stateM.ρ
-  stateP.ρu -= 2 * dot(stateM.ρu, nM) * SVector(nM)
+  stateP.ρu = -stateM.ρu + 2 * dot(stateM.ρu, nM) * SVector(nM)
 end
 
 function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::NoFluxBC,
@@ -80,9 +116,10 @@ function atmos_boundary_state!(::CentralNumericalFluxDiffusive, bc::NoFluxBC,
                                auxM::Vars, bctype, t, _...)
   FT = eltype(stateM)
   stateP.ρ = stateM.ρ
-  stateP.ρu -= 2 * dot(stateM.ρu, nM) * SVector(nM)
+  stateP.ρu = -stateM.ρu + 2 * dot(stateM.ρu, nM) * SVector(nM)
   diffP.ρτ = SVector(FT(0), FT(0), FT(0), FT(0), FT(0), FT(0))
   diffP.ρd_h_tot =  SVector(FT(0), FT(0), FT(0))
+
 end
 function atmos_boundary_state!(::CentralHyperDiffusiveFlux, 
                                bc::NoFluxBC,

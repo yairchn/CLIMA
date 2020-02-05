@@ -14,7 +14,7 @@ using CLIMA.MPIStateArrays: euclidean_distance
 using CLIMA.PlanetParameters: R_d, grav, MSLP, planet_radius, cp_d, cv_d, day
 using CLIMA.MoistThermodynamics: air_density, total_energy, soundspeed_air, internal_energy, air_temperature
 using CLIMA.Atmos: AtmosModel, SphericalOrientation, NoReferenceState,
-                   DryModel, NoRadiation, NoSubsidence, NoFluxBC,
+                   DryModel, NoRadiation, NoSubsidence, NoFluxBC, NoSlipBC,
                    ConstantViscosityWithDivergence,
                    vars_state, vars_aux,
                    Gravity, Coriolis,
@@ -43,9 +43,9 @@ function main()
   global_logger(ConsoleLogger(logger_stream, loglevel))
 
   polynomialorder = 5
-  numelem_horz = 10
-  numelem_vert = 10
-  timeend = 3600*24 # 400day
+  numelem_horz = 8
+  numelem_vert = 8
+  timeend = 60day # 400day
   outputtime = 2day
   
   for FT in (Float64,)
@@ -71,7 +71,7 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
 
   model = AtmosModel(SphericalOrientation(),
                      HydrostaticState(IsothermalProfile(setup.T_initial), FT(0)),
-                     ConstantViscosityWithDivergence(FT(1e10)),
+                     ConstantViscosityWithDivergence(FT(0)),
                      DryModel(),
                      NoRadiation(),
                      NoSubsidence{FT}(),
@@ -97,17 +97,17 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
   resolution_vert = min_node_distance(grid, VerticalDirection())
 
   acoustic_speed = soundspeed_air(FT(315))
-  boost_timestep = FT(1)# * resolution_horz / resolution_vert 
+  boost_timestep = resolution_horz / resolution_vert / 40
   dt = boost_timestep * min_node_distance(grid, VerticalDirection()) / acoustic_speed
   Q = init_ode_state(dg, FT(0))
 
-  solver = ARK2GiraldoKellyConstantinescu(dg, vdg, ManyColumnLU(), Q;
-                                          dt=dt, t0=0,
+  solver = ARK2GiraldoKellyConstantinescu(dg, vdg, ManyColumnLU(), 
+                                          Q; dt=dt, t0=0,
                                           split_nonlinear_linear=false)
 
-  filterorder = 8
+  filterorder = 14
   filter = ExponentialFilter(grid, 0, filterorder)
-  cbfilter = EveryXSimulationSteps(1000) do
+  cbfilter = EveryXSimulationSteps(1) do
     Filters.apply!(Q, 1:size(Q, 2), grid, filter)
     nothing
   end
@@ -122,7 +122,8 @@ function run(mpicomm, polynomialorder, numelem_horz, numelem_vert,
                     filterorder     = %d
                     dt              = %.16e
                     norm(Q₀)        = %.16e
-                    """ "$ArrayType" "$FT" polynomialorder numelem_horz numelem_vert filterorder dt eng0
+                    dh / dv         = %.5e
+                    """ "$ArrayType" "$FT" polynomialorder numelem_horz numelem_vert filterorder dt eng0 boost_timestep
 
   # Set up the information callback
   starttime = Ref(now())

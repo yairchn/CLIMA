@@ -126,7 +126,7 @@ function run(mpicomm,
 
   # Set up the information callback (output field dump is via vtk callback: see cbinfo)
   starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(0.1, mpicomm) do (s=false)
     if s
       starttime[] = now()
     else
@@ -179,7 +179,7 @@ let
     ll == "ERROR" ? Logging.Error : Logging.Info
   logger_stream = MPI.Comm_rank(mpicomm) == 0 ? stderr : devnull
   global_logger(ConsoleLogger(logger_stream, loglevel))
-  for FT in (Float32, Float64)
+  for FT in (Float32, )
     brickrange = (range(FT(xmin); length=Ne[1]+1, stop=xmax),
                   range(FT(ymin); length=Ne[2]+1, stop=ymax),
                   range(FT(zmin); length=Ne[3]+1, stop=zmax))

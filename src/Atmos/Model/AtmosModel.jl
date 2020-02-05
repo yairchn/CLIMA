@@ -213,12 +213,16 @@ function hyperdiffusive!(m::AtmosModel,
                          aux::Vars, 
                          t::Real)
   FT = eltype(state)
+
+  k̂ = aux.orientation.∇Φ / norm(aux.orientation.∇Φ)
+  D_const = FT(0 * 1e-16)
+  D = SVector{3,FT}(D_const, D_const, D_const)
+  Dₕ = SDiagonal(cross(k̂,cross(D,k̂)))
+  Dᵥ = SDiagonal(dot(D, k̂) * k̂)
   ∇Δu = ∇hypertransform.u
   ∇Δh = ∇hypertransform.h_tot
-  D_const = FT(10)
-  D = SDiagonal(D_const,D_const,D_const)
-  hyperdiffusive.σ1 = -D * ∇Δu
-  hyperdiffusive.σ2 = -D * ∇Δh
+  hyperdiffusive.σ1 = Dₕ * ∇Δu
+  hyperdiffusive.σ2 = Dₕ * ∇Δh
 end
 
 
