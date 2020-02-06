@@ -58,7 +58,7 @@ function solve!(Q, solver::AbstractODESolver, p=nothing; timeend::Real=Inf,
 
   @assert isfinite(timeend) || numberofsteps > 0
   if adjustfinalstep && !isadjustable(solver)
-    error("$solver does not support time step adjustments. Can only be used with `adjustfinalstep=false`.")
+    error("$(typeof(solver)) does not support time step adjustments. Can only be used with `adjustfinalstep=false`.")
   end
   t0 = gettime(solver)
 
