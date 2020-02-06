@@ -37,10 +37,10 @@ const dim               = 3
 const (xmin, xmax)      = (0,12800)
 const (ymin, ymax)      = (0,400)
 const (zmin, zmax)      = (0,6400)
-const Ne                = (16,2,50)
+const Ne                = (32,2,100)
 const polynomialorder   = 4
 const dt                = 0.1
-const timeend           = 2*dt
+const timeend           = 300
 
 # ------------- Initial condition function ----------- #
 """
@@ -155,7 +155,7 @@ function run(mpicomm, ArrayType,
 
   starttime = Ref(now())
 
-  solve!(Q, ark; timeend=timeend)
+  solve!(Q, ark; timeend=timeend, adjustfinalstep=true)
   @info @sprintf """Finished at: %s
   """ Dates.format(convert(Dates.DateTime,
                            Dates.now()-starttime[]),
