@@ -155,7 +155,7 @@ function run(mpicomm, ArrayType,
 
   starttime = Ref(now())
 
-  solve!(Q, ark; timeend=timeend, adjustfinalstep=true)
+  solve!(Q, ark; timeend=timeend, adjustfinalstep=false)
   @info @sprintf """Finished at: %s
   """ Dates.format(convert(Dates.DateTime,
                            Dates.now()-starttime[]),
