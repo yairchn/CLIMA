@@ -1,6 +1,6 @@
 using .NumericalFluxes: CentralHyperDiffusiveFlux, CentralDivPenalty
 
-struct DGModel{BL,G,NFND,NFD,GNF,AS,DS,HDS,D,MD}
+struct DGModel{BL,G,NFND,NFD,GNF,AS,DS,HDS,D,MD,DD}
   balancelaw::BL
   grid::G
   numfluxnondiff::NFND
@@ -11,15 +11,16 @@ struct DGModel{BL,G,NFND,NFD,GNF,AS,DS,HDS,D,MD}
   hyperdiffstate::HDS
   direction::D
   modeldata::MD
+  diffusiondir::DD
 end
 function DGModel(balancelaw, grid, numfluxnondiff, numfluxdiff, gradnumflux;
                  auxstate=create_auxstate(balancelaw, grid),
                  diffstate=create_diffstate(balancelaw, grid),
                  hyperdiffstate=create_hyperdiffstate(balancelaw, grid),
-                 direction=EveryDirection(), modeldata=nothing)
+                 direction=EveryDirection(), modeldata=nothing, diffusiondir=HorizontalDirection())
   DGModel(balancelaw, grid,
           numfluxnondiff, numfluxdiff, gradnumflux,
-          auxstate, diffstate, hyperdiffstate, direction, modeldata)
+          auxstate, diffstate, hyperdiffstate, direction, modeldata, diffusiondir)
 end
 
 function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
@@ -76,7 +77,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   if nviscstate > 0 || nhyperviscstate > 0
 
     @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
-            volumeviscterms!(bl, Val(dim), Val(polyorder), dg.direction, Q.data,
+            volumeviscterms!(bl, Val(dim), Val(polyorder), dg.diffusiondir, Q.data,
                              Qvisc.data, Qhypervisc_grad.data, auxstate.data, vgeo, t, Dmat,
                              hypervisc_indexmap, topology.realelems))
 
@@ -88,7 +89,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     end
 
     @launch(device, threads=Nfp, blocks=nrealelem,
-            faceviscterms!(bl, Val(dim), Val(polyorder), dg.direction,
+            faceviscterms!(bl, Val(dim), Val(polyorder), dg.diffusiondir, 
                            dg.gradnumflux,
                            Q.data, Qvisc.data, Qhypervisc_grad.data, auxstate.data,
                            vgeo, sgeo, t, vmapM, vmapP, elemtobndy,
@@ -115,14 +116,14 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     #########################
    
     @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
-            volumedivgrad!(bl, Val(dim), Val(polyorder), dg.direction,
+            volumedivgrad!(bl, Val(dim), Val(polyorder), dg.diffusiondir,
                                            Qhypervisc_grad.data, Qhypervisc_div.data, vgeo, Dmat,
                                            topology.realelems))
     
     communicate && MPIStateArrays.finish_ghost_recv!(Qhypervisc_grad)
 
     @launch(device, threads=Nfp, blocks=nrealelem,
-            facedivgrad!(bl, Val(dim), Val(polyorder), dg.direction,
+            facedivgrad!(bl, Val(dim), Val(polyorder), dg.diffusiondir,
                                          CentralDivPenalty(),
                                          Qhypervisc_grad.data, Qhypervisc_div.data,
                                          vgeo, sgeo, vmapM, vmapP, elemtobndy,
@@ -135,7 +136,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     ####################################
    
     @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
-            volumehyperviscterms!(bl, Val(dim), Val(polyorder), dg.direction,
+            volumehyperviscterms!(bl, Val(dim), Val(polyorder), dg.diffusiondir,
                                     Qhypervisc_grad.data, Qhypervisc_div.data,
                                     Q.data, auxstate.data,
                                     vgeo, Dmat,
@@ -144,7 +145,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     communicate && MPIStateArrays.finish_ghost_recv!(Qhypervisc_div)
 
     @launch(device, threads=Nfp, blocks=nrealelem,
-            facehyperviscterms!(bl, Val(dim), Val(polyorder), dg.direction,
+            facehyperviscterms!(bl, Val(dim), Val(polyorder), dg.diffusiondir,
                                       CentralHyperDiffusiveFlux(),
                                       Qhypervisc_grad.data, Qhypervisc_div.data,
                                       Q.data, auxstate.data,
