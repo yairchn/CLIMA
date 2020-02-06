@@ -37,7 +37,7 @@ const (ymin, ymax)      = (0,400)
 const (zmin, zmax)      = (0,6400)
 const Ne                = (32,2,100)
 const polynomialorder   = 4
-const dt                = 0.05
+const dt                = 0.1
 const timeend           = 300.0
 
 # ------------- Initial condition function ----------- #
@@ -139,13 +139,13 @@ function run(mpicomm, ArrayType,
                     auxstate=dg.auxstate)
 
   # determine the slow time step
-  elementsize = min_node_distance(grid)
-  slow_dt = 8 * elementsize / soundspeed_air(303.0) / polynomialorder ^ 2
-  nsteps = ceil(Int, timeend / slow_dt)
-  slow_dt = timeend / nsteps
+  # elementsize = min_node_distance(grid)
+  # slow_dt = 8 * elementsize / soundspeed_air(303.0) / polynomialorder ^ 2
+  # nsteps = ceil(Int, timeend / slow_dt)
+  slow_dt = dt
 
   # arbitrary and not needed for stabilty, just for testing
-  fast_dt = slow_dt / 3
+  fast_dt = slow_dt / 10
 
   Q = init_ode_state(dg, FT(0))
 
@@ -165,8 +165,9 @@ function run(mpicomm, ArrayType,
   Δx              = %s
   Δz              = %s
   Δx / Δz         = %s
-  Δt              = %s
-  Time end        = %s""" ArrayType FT Δx Δz Δx/Δz dt timeend
+  Slow Δt         = %s
+  Fast Δt         = %s
+  Time end        = %s""" ArrayType FT Δx Δz Δx/Δz slow_dt fast_dt timeend
 
   starttime = Ref(now())
 
