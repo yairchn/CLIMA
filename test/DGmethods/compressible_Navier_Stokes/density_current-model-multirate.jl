@@ -8,9 +8,9 @@ using CLIMA.Mesh.Geometry
 using CLIMA.DGmethods
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.MPIStateArrays
-using CLIMA.MultirateRungeKuttaMethod: MultirateRungeKutta
-using CLIMA.LowStorageRungeKuttaMethod: LSRK144NiegemannDiehlBusch
-using CLIMA.StrongStabilityPreservingRungeKuttaMethod: SSPRK33ShuOsher
+using CLIMA.MultirateRungeKuttaMethod
+using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.StrongStabilityPreservingRungeKuttaMethod
 using CLIMA.SubgridScaleParameters
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
@@ -149,8 +149,8 @@ function run(mpicomm, ArrayType,
 
   Q = init_ode_state(dg, FT(0))
 
-  slow_ode_solver = LSRK144NiegemannDiehlBusch(slow_dg, Q; dt = slow_dt)
-  fast_ode_solver = SSPRK33ShuOsher(fast_dg, Q; dt = fast_dt)
+  slow_ode_solver = LSRK54CarpenterKennedy(slow_dg, Q; dt = slow_dt)
+  fast_ode_solver = LSRK54CarpenterKennedy(fast_dg, Q; dt = fast_dt)
   ode_solver = MultirateRungeKutta((slow_ode_solver, fast_ode_solver))
 
   Δx = xmax/Ne[1]
