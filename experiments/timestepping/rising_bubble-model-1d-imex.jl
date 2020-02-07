@@ -9,7 +9,9 @@ using CLIMA.DGmethods
 using CLIMA.DGmethods: courant
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.MPIStateArrays
-using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.LinearSolvers
+using CLIMA.ColumnwiseLUSolver
 using CLIMA.SubgridScaleParameters
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
@@ -36,7 +38,7 @@ const (zmin,zmax)      = (0,1000)
 const Ne        = (20,2,100)
 const polynomialorder = 4
 const dim       = 3
-const dt        = 0.01
+const dt        = 0.05
 const timeend   = 100.0
 
 # ------------- Initial condition function ----------- #
@@ -120,15 +122,26 @@ function run(mpicomm, ArrayType,
                CentralNumericalFluxDiffusive(),
                CentralNumericalFluxGradient())
 
+  linmodel = AtmosAcousticGravityLinearModel(model)
+  lindg = DGModel(linmodel,
+                  grid,
+                  Rusanov(),
+                  CentralNumericalFluxDiffusive(),
+                  CentralNumericalFluxGradient();
+                  direction=VerticalDirection(),
+                  auxstate=dg.auxstate)
+
   Q = init_ode_state(dg, FT(0))
 
-  lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
+  linearsolver = ManyColumnLU()
+  ark = ARK548L2SA2KennedyCarpenter(dg, lindg, linearsolver, Q; dt = dt, t0 = 0)
 
   Δx = xmax/Ne[1]
   Δz = zmax/Ne[3]
 
   @info @sprintf """Starting rising bubble simulation:
-  Time-integrator = LSRK144NiegemannDiehlBusch
+  Time-integrator = ARK548L2SA2KennedyCarpenter
+  Linear solver   = ManyColumnLU
   ArrayType       = %s
   FloatType       = %s
   Δx              = %s
@@ -139,7 +152,7 @@ function run(mpicomm, ArrayType,
 
   starttime = Ref(now())
 
-  solve!(Q, lsrk; timeend=timeend)
+  solve!(Q, ark; timeend=timeend, adjustfinalstep=false)
 
   @info @sprintf """Finished at: %s
   """ Dates.format(convert(Dates.DateTime,

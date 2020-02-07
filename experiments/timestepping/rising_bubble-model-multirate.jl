@@ -9,6 +9,7 @@ using CLIMA.DGmethods
 using CLIMA.DGmethods: courant
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.MPIStateArrays
+using CLIMA.MultirateRungeKuttaMethod
 using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.SubgridScaleParameters
 using CLIMA.ODESolvers
@@ -36,7 +37,7 @@ const (zmin,zmax)      = (0,1000)
 const Ne        = (20,2,100)
 const polynomialorder = 4
 const dim       = 3
-const dt        = 0.01
+const dt        = 0.05
 const timeend   = 100.0
 
 # ------------- Initial condition function ----------- #
@@ -120,26 +121,51 @@ function run(mpicomm, ArrayType,
                CentralNumericalFluxDiffusive(),
                CentralNumericalFluxGradient())
 
+  fast_model = AtmosAcousticLinearModel(model)
+  slow_model = RemainderModel(model, (fast_model,))
+
+  fast_dg = DGModel(fast_model,
+                    grid,
+                    Rusanov(),
+                    CentralNumericalFluxDiffusive(),
+                    CentralNumericalFluxGradient();
+                    auxstate=dg.auxstate)
+
+  slow_dg = DGModel(slow_model,
+                    grid,
+                    Rusanov(),
+                    CentralNumericalFluxDiffusive(),
+                    CentralNumericalFluxGradient();
+                    auxstate=dg.auxstate)
+
+  slow_dt = dt
+  fast_dt = slow_dt / 10
+
   Q = init_ode_state(dg, FT(0))
 
-  lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
+  slow_ode_solver = LSRK54CarpenterKennedy(slow_dg, Q; dt = slow_dt)
+  fast_ode_solver = LSRK54CarpenterKennedy(fast_dg, Q; dt = fast_dt)
+  ode_solver = MultirateRungeKutta((slow_ode_solver, fast_ode_solver))
 
   Δx = xmax/Ne[1]
   Δz = zmax/Ne[3]
 
   @info @sprintf """Starting rising bubble simulation:
-  Time-integrator = LSRK144NiegemannDiehlBusch
+  Time-integrator = MultirateRungeKutta
+  Fast solver     = LSRK54CarpenterKennedy
+  Slow solver     = LSRK54CarpenterKennedy (10 substeps)
   ArrayType       = %s
   FloatType       = %s
   Δx              = %s
   Δz              = %s
   Δx / Δz         = %s
-  Δt              = %s
-  Time end        = %s""" ArrayType FT Δx Δz Δx/Δz dt timeend
+  Δt fast         = %s
+  Δt slow         = %s
+  Time end        = %s""" ArrayType FT Δx Δz Δx/Δz fast_dt slow_dt timeend
 
   starttime = Ref(now())
 
-  solve!(Q, lsrk; timeend=timeend)
+  solve!(Q, ode_solver; timeend=timeend)
 
   @info @sprintf """Finished at: %s
   """ Dates.format(convert(Dates.DateTime,
