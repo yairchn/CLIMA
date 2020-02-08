@@ -3,6 +3,7 @@ using MPI
 using CLIMA
 using CLIMA.MPIStateArrays
 using CLIMA.Mesh.BrickMesh
+using KernelAbstractions
 using Pkg
 
 CLIMA.init()
@@ -91,16 +92,29 @@ function main()
                            nabrtovmaprecv, nabrtovmapsend, ArrayType(weights),
                            555)
 
+  B = MPIStateArray{Int64}(comm, ArrayType, 9, 2, numelem, realelems, ghostelems,
+                           ArrayType(vmaprecv), ArrayType(vmapsend), nabrtorank,
+                           nabrtovmaprecv, nabrtovmapsend, ArrayType(weights),
+                           555)
+
   Q = Array(A.data)
   Q .= -1
   shift = 100
   Q[:, 1, realelems] .= reshape((crank * 1000)          .+ (1:9*numreal), 9, numreal)
   Q[:, 2, realelems] .= reshape((crank * 1000) .+ shift .+ (1:9*numreal), 9, numreal)
+
   copyto!(A.data, Q)
+  copyto!(B.data, Q)
 
   MPIStateArrays.start_ghost_exchange!(A)
   MPIStateArrays.finish_ghost_exchange!(A)
 
+  device = typeof(B.data) <: Array ? CPU() : CUDA()
+  event = Event(device)
+  event = MPIStateArrays.ghost_exchange!(B, dependencies=event)
+  wait(event)
+
+  @test A.data == B.data
   Q = Array(A.data)
   @test all(         expectedghostdata .== Q[:, 1, :][:][vmaprecv])
   @test all(shift .+ expectedghostdata .== Q[:, 2, :][:][vmaprecv])

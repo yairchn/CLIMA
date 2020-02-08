@@ -5,6 +5,7 @@ using DoubleFloats
 using LazyArrays
 using StaticArrays
 using KernelAbstractions
+using KernelAbstractions: CPUEvent
 using ..Kernels
 using Requires
 using MPI
@@ -251,15 +252,17 @@ end
 posts the `MPI.Irecv!` for `Q`
 """
 function post_Irecvs!(Q::MPIStateArray)
-  nnabr = length(Q.nabrtorank)
-  transfer = get_transfer(Q.recv_buffer)
+  if length(Q.vmaprecv) > 0
+    nnabr = length(Q.nabrtorank)
+    transfer = get_transfer(Q.recv_buffer)
 
-  for n = 1:nnabr
-    # If this fails we haven't waited on previous recv!
-    @assert Q.recvreq[n].buffer == nothing
+    for n = 1:nnabr
+      # If this fails we haven't waited on previous recv!
+      @assert Q.recvreq[n].buffer == nothing
 
-    Q.recvreq[n] = MPI.Irecv!((@view transfer[:, Q.nabrtovmaprecv[n]]),
-                              Q.nabrtorank[n], Q.commtag, Q.mpicomm)
+      Q.recvreq[n] = MPI.Irecv!((@view transfer[:, Q.nabrtovmaprecv[n]]),
+                                Q.nabrtorank[n], Q.commtag, Q.mpicomm)
+    end
   end
 end
 
@@ -274,25 +277,30 @@ the device to the host, and then issues the send. Previous sends are waited on
 to ensure that they are complete.
 """
 function start_ghost_exchange!(Q::MPIStateArray; dorecvs=true)
-
   dorecvs && post_Irecvs!(Q)
 
   # wait on (prior) MPI sends
   finish_ghost_send!(Q)
 
   @tic mpi_sendcopy
-  # pack data in send buffer
-  stage = get_stage(Q.send_buffer)
-  fillsendbuf!(stage, Q.data, Q.vmapsend)
-  prepare_transfer!(Q.send_buffer)
+  if length(Q.vmapsend) > 0
+    # pack data in send buffer
+    stage = get_stage(Q.send_buffer)
+    event = Event(device(Q.data))
+    event = fillsendbuf!(stage, Q.data, Q.vmapsend; dependencies=event)
+    event = prepare_transfer!(Q.send_buffer; dependencies=event)
+    wait(CPU(), event)
+  end
   @toc mpi_sendcopy
 
-  # post MPI sends
-  nnabr = length(Q.nabrtorank)
-  transfer = get_transfer(Q.send_buffer)
-  for n = 1:nnabr
-    Q.sendreq[n] = MPI.Isend((@view transfer[:, Q.nabrtovmapsend[n]]),
-                           Q.nabrtorank[n], Q.commtag, Q.mpicomm)
+  if length(Q.vmapsend) > 0
+    # post MPI sends
+    nnabr = length(Q.nabrtorank)
+    transfer = get_transfer(Q.send_buffer)
+    for n = 1:nnabr
+      Q.sendreq[n] = MPI.Isend((@view transfer[:, Q.nabrtovmapsend[n]]),
+                               Q.nabrtorank[n], Q.commtag, Q.mpicomm)
+    end
   end
 end
 
@@ -317,14 +325,20 @@ Complete the receive of data and fill the data array on the device
 function finish_ghost_recv!(Q::MPIStateArray)
   @tic mpi_recvwait
   # wait on MPI receives
-  MPI.Waitall!(Q.recvreq)
+  if length(Q.vmaprecv) > 0
+    MPI.Waitall!(Q.recvreq)
+  end
   @toc mpi_recvwait
 
   @tic mpi_recvcopy
   # copy data to state vectors
-  prepare_stage!(Q.recv_buffer)
-  stage = get_stage(Q.recv_buffer)
-  transferrecvbuf!(Q.data, stage, Q.vmaprecv)
+  if length(Q.vmaprecv) > 0
+    event = Event(device(Q.data))
+    event = prepare_stage!(Q.recv_buffer; dependencies=event)
+    stage = get_stage(Q.recv_buffer)
+    event = transferrecvbuf!(Q.data, stage, Q.vmaprecv; dependencies=event)
+    wait(device(Q.data), event)
+  end
   @toc mpi_recvcopy
 end
 
@@ -335,39 +349,116 @@ Waits on the send of data to be complete
 """
 function finish_ghost_send!(Q::MPIStateArray)
   @tic mpi_sendwait
-  MPI.Waitall!(Q.sendreq)
+  if length(Q.vmapsend) > 0
+    MPI.Waitall!(Q.sendreq)
+  end
   @toc mpi_sendwait
 end
 
-# {{{ MPI Buffer handling
-function fillsendbuf!(sendbuf, buf, vmapsend)
-  if length(vmapsend) > 0
-    Np = size(buf, 1)
-    nvar = size(buf, 2)
+function __testall!(requests; dependencies=nothing)
+  wait(CPU(), MultiEvent(dependencies), yield)
 
-    event = Event(device(buf))
-    event = knl_fillsendbuf!(device(buf), 256)(
-      Val(Np), Val(nvar), sendbuf, buf, vmapsend,
-      length(vmapsend);
-      ndrange=length(vmapsend),
-      dependencies=(event,))
-    wait(device(buf), event)
+  done = false
+  while !done
+    done, _ = MPI.Testall!(requests)
+    yield()
   end
 end
 
-function transferrecvbuf!(buf, recvbuf, vmaprecv)
-  if length(vmaprecv) > 0
-    Np = size(buf, 1)
-    nvar = size(buf, 2)
+function __Irecv!(Q; dependencies=nothing)
+  wait(CPU(), MultiEvent(dependencies), yield)
 
-    event = Event(device(buf))
-    event = knl_transferrecvbuf!(device(buf), 256)(
-      Val(Np), Val(nvar), buf, recvbuf,
-      vmaprecv, length(vmaprecv);
-      ndrange=length(vmaprecv),
-      dependencies=(event,))
-    wait(device(buf), event)
+  nnabr = length(Q.nabrtorank)
+  transfer = get_transfer(Q.recv_buffer)
+
+  for n = 1:nnabr
+    # If this fails we haven't waited on previous recv!
+    @assert Q.recvreq[n].buffer == nothing
+
+    Q.recvreq[n] = MPI.Irecv!((@view transfer[:, Q.nabrtovmaprecv[n]]),
+                              Q.nabrtorank[n], Q.commtag, Q.mpicomm)
   end
+end
+
+function __Isend!(Q; dependencies=nothing)
+  wait(CPU(), MultiEvent(dependencies), yield)
+
+  nnabr = length(Q.nabrtorank)
+  transfer = get_transfer(Q.send_buffer)
+
+  for n = 1:nnabr
+    Q.sendreq[n] = MPI.Isend((@view transfer[:, Q.nabrtovmapsend[n]]),
+                             Q.nabrtorank[n], Q.commtag, Q.mpicomm)
+  end
+end
+
+
+"""
+    ghost_exchange!(Q::MPIStateArray; dependencies=nothing)
+
+Asynchronous call to perform the exchange of ghost degrees-of-freedom.  The
+returned `KernelAbstractions.Event` can be waited on to know when the ghost
+exchange is finished.
+"""
+function ghost_exchange!(Q::MPIStateArray; dependencies=nothing)
+  if length(Q.vmaprecv) > 0
+    event = CPUEvent(@async(__Irecv(Q; dependencies=dependencies)))
+    event = CPUEvent(@async(__testall!(Q.recvreq; dependencies=event)))
+    event = prepare_stage!(Q.recv_buffer; dependencies=event)
+    event = transferrecvbuf!(Q.data, get_stage(Q.recv_buffer), Q.vmaprecv;
+                             dependencies=event)
+    return_event = event
+  else
+    return_event = MultiEvent(dependencies)
+  end
+
+  if length(Q.vmapsend) > 0
+    # Wait on previous sends
+    event = CPUEvent(@async(__testall!(Q.sendreq; dependencies=dependencies)))
+    event = fillsendbuf!(get_stage(Q.send_buffer), Q.data, Q.vmapsend;
+                         dependencies=event)
+    event = prepare_transfer!(Q.send_buffer; dependencies=event)
+    # Here we don't wait on the send using a `KernelAbstractions.Event`.  The
+    # wait happens above at the MPI level via `MPI.Testall!`.
+    @async __Isend!(Q; dependencies=event)
+  end
+
+  return return_event
+end
+
+# {{{ MPI Buffer handling
+function fillsendbuf!(sendbuf, buf, vmapsend; dependencies=nothing)
+  if length(vmapsend) == 0
+    return MultiEvent(dependencies)
+  end
+
+  Np = size(buf, 1)
+  nvar = size(buf, 2)
+
+  event = knl_fillsendbuf!(device(buf), 256)(
+    Val(Np), Val(nvar), sendbuf, buf,
+    vmapsend, length(vmapsend);
+    ndrange=length(vmapsend),
+    dependencies=dependencies)
+
+  return event
+end
+
+function transferrecvbuf!(buf, recvbuf, vmaprecv; dependencies=nothing)
+  if length(vmaprecv) == 0
+    return MultiEvent(dependencies)
+  end
+
+  Np = size(buf, 1)
+  nvar = size(buf, 2)
+
+  event = knl_transferrecvbuf!(device(buf), 256)(
+    Val(Np), Val(nvar), buf, recvbuf,
+    vmaprecv, length(vmaprecv);
+    ndrange=length(vmaprecv),
+    dependencies=dependencies)
+
+  return event
 end
 
 # }}}
