@@ -142,7 +142,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
             volumehyperviscterms!(bl, Val(dim), Val(polyorder), dg.direction,
                                     Qhypervisc_grad.data, Qhypervisc_div.data,
                                     Q.data, auxstate.data,
-                                    vgeo, Dmat,
+                                    vgeo, lgl_weights_vec, Dmat,
                                     topology.realelems, t))
     
     communicate && MPIStateArrays.finish_ghost_recv!(Qhypervisc_div)

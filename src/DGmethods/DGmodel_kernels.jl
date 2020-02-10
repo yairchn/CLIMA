@@ -1657,7 +1657,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
                                ::direction,
                                Qhypervisc_grad, Qhypervisc_div,
                                Q, auxstate,
-                               vgeo, D, elems, t) where {dim, polyorder, direction}
+                               vgeo, ω, D, elems, t) where {dim, polyorder, direction}
   N = polyorder
 
   FT = eltype(Qhypervisc_grad)
@@ -1672,6 +1672,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
 
   s_lap = @shmem FT (Nq, Nq, Nqk, ngradlapstate)
   s_D = @shmem FT (Nq, Nq)
+  s_ω = @shmem FT (Nq, )
   l_Q = @scratch FT (ngradtransformstate, Nq, Nq, Nqk) 3
   l_aux = @scratch FT (nauxstate, Nq, Nq, Nqk) 3
 
@@ -1680,6 +1681,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
 
   @inbounds @loop for k in (1; threadIdx().z)
     @loop for j in (1:Nq; threadIdx().y)
+      s_ω[j] = ω[j]
       @loop for i in (1:Nq; threadIdx().x)
         s_D[i, j] = D[i, j]
       end
@@ -1712,63 +1714,48 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
       @loop for j in (1:Nq; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
           ijk = i + Nq * ((j-1) + Nq * (k-1))
-
+          ξ1x1, ξ1x2, ξ1x3 = vgeo[ijk, _ξ1x1, e], vgeo[ijk, _ξ1x2, e], vgeo[ijk, _ξ1x3, e]
+          if dim == 3 || (dim == 2 && direction == EveryDirection)
+            ξ2x1, ξ2x2, ξ2x3 = vgeo[ijk, _ξ2x1, e], vgeo[ijk, _ξ2x2, e], vgeo[ijk, _ξ2x3, e]
+          end
+          if dim == 3 && direction == EveryDirection
+            ξ3x1, ξ3x2, ξ3x3 = vgeo[ijk, _ξ3x1, e], vgeo[ijk, _ξ3x2, e], vgeo[ijk, _ξ3x3, e]
+          end
           @unroll for s = 1:ngradlapstate
-            lap_ξ1x1 = lap_ξ2x1 = lap_ξ3x1 = zero(FT)
-            lap_ξ1x2 = lap_ξ2x2 = lap_ξ3x2 = zero(FT)
-            lap_ξ1x3 = lap_ξ2x3 = lap_ξ3x3 = zero(FT)
+            lap_ξ1 = lap_ξ2 = lap_ξ3 = zero(FT)
             @unroll for n = 1:Nq
               njk = n + Nq * ((j-1) + Nq * (k-1))
-              M = vgeo[njk, _M, e]
-              ξ1x1 = vgeo[njk, _ξ1x1, e]
-              ξ1x2 = vgeo[njk, _ξ1x2, e]
-              ξ1x3 = vgeo[njk, _ξ1x3, e]
-              Dni = s_D[n, i]
+              Dni = s_D[n, i] * s_ω[n] / s_ω[i]
               lap_njk = s_lap[n, j, k, s] 
-              lap_ξ1x1 += ξ1x1 * M * Dni * lap_njk
-              lap_ξ1x2 += ξ1x2 * M * Dni * lap_njk
-              lap_ξ1x3 += ξ1x3 * M * Dni * lap_njk
+              lap_ξ1 += Dni * lap_njk
               if dim == 3 || (dim == 2 && direction == EveryDirection)
                 ink = i + Nq * ((n-1) + Nq * (k-1))
-                M = vgeo[ink, _M, e]
-                ξ2x1 = vgeo[ink, _ξ2x1, e]
-                ξ2x2 = vgeo[ink, _ξ2x2, e]
-                ξ2x3 = vgeo[ink, _ξ2x3, e]
-                Dnj = s_D[n, j]
+                Dnj = s_D[n, j] * s_ω[n] / s_ω[j]
                 lap_ink = s_lap[i, n, k, s] 
-                lap_ξ2x1 += ξ2x1 * M * Dnj * lap_ink
-                lap_ξ2x2 += ξ2x2 * M * Dnj * lap_ink
-                lap_ξ2x3 += ξ2x3 * M * Dnj * lap_ink
+                lap_ξ2 += Dnj * lap_ink
               end
               if dim == 3 && direction == EveryDirection
                 ijn = i + Nq * ((j-1) + Nq * (n-1))
-                M = vgeo[ijn, _M, e]
-                ξ3x1 = vgeo[ijn, _ξ3x1, e]
-                ξ3x2 = vgeo[ijn, _ξ3x2, e]
-                ξ3x3 = vgeo[ijn, _ξ3x3, e]
-                Dnk = s_D[n, k]
+                Dnk = s_D[n, k] * s_ω[n] / s_ω[k]
                 lap_ijn = s_lap[i, j, n, s] 
-                lap_ξ3x1 += ξ3x1 * M * Dnk * lap_ijn
-                lap_ξ3x2 += ξ3x2 * M * Dnk * lap_ijn
-                lap_ξ3x3 += ξ3x3 * M * Dnk * lap_ijn
+                lap_ξ3 += Dnk * lap_ijn
               end
             end
             
-            MI = vgeo[ijk, _MI, e]
-            l_grad_lap[1, s] = -MI * lap_ξ1x1
-            l_grad_lap[2, s] = -MI * lap_ξ1x2
-            l_grad_lap[3, s] = -MI * lap_ξ1x3
+            l_grad_lap[1, s] = -ξ1x1 * lap_ξ1
+            l_grad_lap[2, s] = -ξ1x2 * lap_ξ1
+            l_grad_lap[3, s] = -ξ1x3 * lap_ξ1
 
             if dim == 3 || (dim == 2 && direction == EveryDirection)
-              l_grad_lap[1, s] -= MI * lap_ξ2x1
-              l_grad_lap[2, s] -= MI * lap_ξ2x2
-              l_grad_lap[3, s] -= MI * lap_ξ2x3
+              l_grad_lap[1, s] -= ξ2x1 * lap_ξ2
+              l_grad_lap[2, s] -= ξ2x2 * lap_ξ2
+              l_grad_lap[3, s] -= ξ2x3 * lap_ξ2
             end
 
             if dim == 3 && direction == EveryDirection
-              l_grad_lap[1, s] -= MI * lap_ξ3x1
-              l_grad_lap[2, s] -= MI * lap_ξ3x2
-              l_grad_lap[3, s] -= MI * lap_ξ3x3
+              l_grad_lap[1, s] -= ξ3x1 * lap_ξ3
+              l_grad_lap[2, s] -= ξ3x2 * lap_ξ3
+              l_grad_lap[3, s] -= ξ3x3 * lap_ξ3
             end
           end
 
@@ -1793,7 +1780,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
                                ::VerticalDirection,
                                Qhypervisc_grad, Qhypervisc_div,
                                Q, auxstate,
-                               vgeo, D, elems, t) where {dim, polyorder}
+                               vgeo, ω, D, elems, t) where {dim, polyorder}
   N = polyorder
 
   FT = eltype(Qhypervisc_grad)
@@ -1808,6 +1795,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
 
   s_lap = @shmem FT (Nq, Nq, Nqk, ngradlapstate)
   s_D = @shmem FT (Nq, Nq)
+  s_ω = @shmem FT (Nq, )
   l_Q = @scratch FT (ngradtransformstate, Nq, Nq, Nqk) 3
   l_aux = @scratch FT (nauxstate, Nq, Nq, Nqk) 3
 
@@ -1816,6 +1804,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
 
   @inbounds @loop for k in (1; threadIdx().z)
     @loop for j in (1:Nq; threadIdx().y)
+      s_ω[j] = ω[j]
       @loop for i in (1:Nq; threadIdx().x)
         s_D[i, j] = D[i, j]
       end
@@ -1848,38 +1837,30 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
       @loop for j in (1:Nq; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
           ijk = i + Nq * ((j-1) + Nq * (k-1))
+          if dim == 2
+            ξvx1, ξvx2, ξvx3 = vgeo[ijk, _ξ2x1, e], vgeo[ijk, _ξ2x2, e], vgeo[ijk, _ξ2x3, e]
+          else
+            ξvx1, ξvx2, ξvx3 = vgeo[ijk, _ξ3x1, e], vgeo[ijk, _ξ3x2, e], vgeo[ijk, _ξ3x3, e]
+          end
           @unroll for s = 1:ngradlapstate
-            lap_ξvx1 = lap_ξvx2 = lap_ξvx3 = zero(FT)
+            lap_ξv = zero(FT)
             @unroll for n = 1:Nq
               if dim == 2
                 ink = i + Nq * ((n-1) + Nq * (k-1))
-                M = vgeo[ink, _M, e]
-                ξ2x1 = vgeo[ink, _ξ2x1, e]
-                ξ2x2 = vgeo[ink, _ξ2x2, e]
-                ξ2x3 = vgeo[ink, _ξ2x3, e]
-                Dnj = s_D[n, j]
+                Dnj = s_D[n, j] * s_ω[n] / s_ω[j]
                 lap_ink = s_lap[i, n, k, s] 
-                lap_ξvx1 += ξ2x1 * M * Dnj * lap_ink
-                lap_ξvx2 += ξ2x2 * M * Dnj * lap_ink
-                lap_ξvx3 += ξ2x3 * M * Dnj * lap_ink
+                lap_ξv += Dnj * lap_ink
               else
                 ijn = i + Nq * ((j-1) + Nq * (n-1))
-                M = vgeo[ijn, _M, e]
-                ξ3x1 = vgeo[ijn, _ξ3x1, e]
-                ξ3x2 = vgeo[ijn, _ξ3x2, e]
-                ξ3x3 = vgeo[ijn, _ξ3x3, e]
-                Dnk = s_D[n, k]
+                Dnk = s_D[n, k] * s_ω[n] / s_ω[k]
                 lap_ijn = s_lap[i, j, n, s] 
-                lap_ξvx1 += ξ3x1 * M * Dnk * lap_ijn
-                lap_ξvx2 += ξ3x2 * M * Dnk * lap_ijn
-                lap_ξvx3 += ξ3x3 * M * Dnk * lap_ijn
+                lap_ξv += Dnk * lap_ijn
               end
             end
             
-            MI = vgeo[ijk, _MI, e]
-            l_grad_lap[1, s] = -MI * lap_ξvx1
-            l_grad_lap[2, s] = -MI * lap_ξvx2
-            l_grad_lap[3, s] = -MI * lap_ξvx3
+            l_grad_lap[1, s] = -ξvx1 * lap_ξv
+            l_grad_lap[2, s] = -ξvx2 * lap_ξv
+            l_grad_lap[3, s] = -ξvx3 * lap_ξv
           end
 
           fill!(l_Qhypervisc, -zero(eltype(l_Qhypervisc)))

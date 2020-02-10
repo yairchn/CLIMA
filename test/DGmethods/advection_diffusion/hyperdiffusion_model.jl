@@ -9,8 +9,7 @@ import CLIMA.DGmethods: BalanceLaw,
                         vars_gradient_laplacian, vars_hyperdiffusive,
                         hyperdiffusive!
 using CLIMA.DGmethods.NumericalFluxes: NumericalFluxNonDiffusive,
-                                       NumericalFluxDiffusive,
-                                       GradNumericalPenalty
+                                       NumericalFluxDiffusive
 
 abstract type HyperDiffusionProblem end
 struct HyperDiffusion{dim, P} <: BalanceLaw
@@ -70,6 +69,7 @@ function gradvariables!(m::HyperDiffusion, transform::Vars, state::Vars,
   transform.ρ = state.ρ
 end
 
+diffusive!(m::HyperDiffusion, _...) = nothing
 function hyperdiffusive!(m::HyperDiffusion, auxHDG::Vars, gradvars::Grad,
                          state::Vars, aux::Vars, t::Real)
   ∇Δρ = gradvars.ρ

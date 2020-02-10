@@ -100,7 +100,7 @@ function run(mpicomm, dim, topl, N, timeend, FT, direction,
                grid,
                CentralNumericalFluxNonDiffusive(),
                CentralNumericalFluxDiffusive(),
-               CentralGradPenalty(),
+               CentralNumericalFluxGradient(),
                direction=direction())
 
   Q = init_ode_state(dg, FT(0))
