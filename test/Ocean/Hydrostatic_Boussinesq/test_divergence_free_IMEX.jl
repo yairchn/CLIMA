@@ -8,13 +8,16 @@ using CLIMA.MPIStateArrays
 using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
-using CLIMA.VariableTemplates: flattenednames
+using CLIMA.VariableTemplates: flattenednames, Vars
 using CLIMA.HydrostaticBoussinesq
 using LinearAlgebra
 using StaticArrays
 using Logging, Printf, Dates
 using CLIMA.VTK
 using CLIMA.PlanetParameters: grav
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.GeneralizedMinimalResidualSolver
+using CLIMA.ColumnwiseLUSolver: ManyColumnLU, SingleColumnLU
 import CLIMA.HydrostaticBoussinesq: ocean_init_aux!, ocean_init_state!,
                                     ocean_boundary_state!,
                                     CoastlineFreeSlip, CoastlineNoSlip,
@@ -23,8 +26,7 @@ import CLIMA.HydrostaticBoussinesq: ocean_init_aux!, ocean_init_state!,
                                     OceanSurfaceStressNoForcing,
                                     OceanSurfaceNoStressForcing,
                                     OceanSurfaceStressForcing
-import CLIMA.DGmethods: update_aux!, vars_state, vars_aux
-using CLIMA.VariableTemplates
+import CLIMA.DGmethods: update_aux!, vars_state, vars_aux, VerticalDirection
 using Test
 using GPUifyLoops
 
@@ -80,18 +82,111 @@ function ocean_init_state!(p::HSBox, state, aux, coords, t)
   state.θ = 20
 end
 
-###################
-# PARAM SELECTION #
-###################
+function main()
+  CLIMA.init()
+  mpicomm = MPI.COMM_WORLD
+
+  ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
+  loglevel = ll == "DEBUG" ? Logging.Debug :
+             ll == "WARN"  ? Logging.Warn  :
+             ll == "ERROR" ? Logging.Error : Logging.Info
+  logger_stream = MPI.Comm_rank(mpicomm) == 0 ? stderr : devnull
+  global_logger(ConsoleLogger(logger_stream, loglevel))
+
+  brickrange = (xrange, yrange, zrange)
+  topl = StackedBrickTopology(mpicomm, brickrange;
+                              periodicity = (false, false, false),
+                              boundary = ((1, 1), (1, 1), (2, 3)))
+  dt = 60
+  nout = ceil(Int64, tout / dt)
+  dt = tout / nout
+
+  grid = DiscontinuousSpectralElementGrid(topl,
+                                          FloatType = FT,
+                                          DeviceArray = ArrayType,
+                                          polynomialorder = N,
+                                         )
+
+
+  prob = HSBox{FT}(Lˣ, Lʸ, H, τₒ, fₒ, β)
+
+  model = HBModel{typeof(prob),FT}(prob, cʰ, cʰ, cᶻ, αᵀ, νʰ, νᶻ, κʰ, κᶻ)
+
+  linearmodel = LinearHBModel(model)
+
+  dg = OceanDGModel(model,
+                    grid,
+                    Rusanov(),
+                    CentralNumericalFluxDiffusive(),
+                    CentralNumericalFluxGradient())
+
+  lineardg = DGModel(linearmodel,
+                     grid,
+                     Rusanov(),
+                     CentralNumericalFluxDiffusive(),
+                     CentralNumericalFluxGradient();
+                     direction=VerticalDirection(),
+                     auxstate=dg.auxstate)
+
+  Q = init_ode_state(dg, FT(0); forcecpu=true)
+  update_aux!(dg, model, Q, FT(0))
+
+  linearsolver = SingleColumnLU() # ManyColumnLU()
+
+  odesolver = ARK2GiraldoKellyConstantinescu(dg, lineardg, linearsolver, Q;
+                                             dt = dt, t0 = 0,
+                                             split_nonlinear_linear=false)
+
+  cbvector = make_callbacks(step, nout, mpicomm, odesolver, dg, model, Q)
+
+  eng0 = norm(Q)
+  @info @sprintf """Starting
+  norm(Q₀) = %.16e
+  ArrayType = %s""" eng0 ArrayType
+
+  solve!(Q, odesolver, nothing; timeend=timeend, callbacks=cbvector, adjustfinalstep=false)
+
+  maxQ =  Vars{vars_state(model, FT)}(maximum(Q, dims=(1,3)))
+  minQ =  Vars{vars_state(model, FT)}(minimum(Q, dims=(1,3)))
+
+  @test maxQ.θ ≈ minQ.θ
+
+  return nothing
+end
+
+function make_callbacks(step, nout, mpicomm, odesolver, dg, model, Q)
+  starttime = Ref(now())
+  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(60, mpicomm) do (s=false)
+    if s
+      starttime[] = now()
+    else
+      energy = norm(Q)
+      @info @sprintf("""Update
+                     simtime = %.16e
+                     runtime = %s
+                     norm(Q) = %.16e""", ODESolvers.gettime(odesolver),
+                     Dates.format(convert(Dates.DateTime,
+                                          Dates.now()-starttime[]),
+                                  Dates.dateformat"HH:MM:SS"),
+                     energy)
+    end
+  end
+
+  return (cbinfo,)
+end
+
+#################
+# RUN THE TESTS #
+#################
 FT = Float64
 
-const timeend = 0.5 * 86400   # s
+const timeend = 3600 # s
 const tout    = 60 * 60 # s
 
 const N  = 4
 const Nˣ = 20
 const Nʸ = 20
-const Nᶻ = 20
+const Nᶻ = 50
 const Lˣ = 4e6   # m
 const Lʸ = 4e6   # m
 const H  = 400   # m
@@ -113,85 +208,4 @@ const νᶻ = 5e-3  # m^2 / s
 const κʰ = 1e3   # m^2 / s
 const κᶻ = 1e-10  # m^2 / s
 
-let
-  CLIMA.init()
-  mpicomm = MPI.COMM_WORLD
-
-  ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
-  loglevel = ll == "DEBUG" ? Logging.Debug :
-             ll == "WARN"  ? Logging.Warn  :
-             ll == "ERROR" ? Logging.Error : Logging.Info
-  logger_stream = MPI.Comm_rank(mpicomm) == 0 ? stderr : devnull
-  global_logger(ConsoleLogger(logger_stream, loglevel))
-
-  brickrange = (xrange, yrange, zrange)
-  topl = StackedBrickTopology(mpicomm, brickrange;
-                              periodicity = (false, false, false),
-                              boundary = ((1, 1), (1, 1), (2, 3)))
-  dt = 120 # (Lˣ / cʰ) / Nˣ / N²
-  nout = ceil(Int64, tout / dt)
-  dt = tout / nout
-
-  grid = DiscontinuousSpectralElementGrid(topl,
-                                          FloatType = FT,
-                                          DeviceArray = ArrayType,
-                                          polynomialorder = N,
-                                         )
-
-
-  prob = HSBox{FT}(Lˣ, Lʸ, H, τₒ, fₒ, β)
-
-  model = HBModel{typeof(prob),FT}(prob, cʰ, cʰ, cᶻ, αᵀ, νʰ, νᶻ, κʰ, κᶻ)
-
-  dg = OceanDGModel(model,
-                    grid,
-                    Rusanov(),
-                    CentralNumericalFluxDiffusive(),
-                    CentralNumericalFluxGradient())
-
-  Q = init_ode_state(dg, FT(0); forcecpu=true)
-  update_aux!(dg, model, Q, FT(0))
-
-  starttime = Ref(now())
-  cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
-    if s
-      starttime[] = now()
-    else
-      energy = norm(Q)
-      maxQ =  Vars{vars_state(model, FT)}(maximum(Q, dims=(1,3)))
-      minQ =  Vars{vars_state(model, FT)}(minimum(Q, dims=(1,3)))
-      @info @sprintf("""Update
-                     simtime = %.16e
-                     runtime = %s
-                     norm(Q) = %.16e
-                     extrema(θ) = (%.16e, %.16e)
-                     Δθ = %.16e
-                     """,
-                     ODESolvers.gettime(lsrk),
-                     Dates.format(convert(Dates.DateTime,
-                                          Dates.now()-starttime[]),
-                                  Dates.dateformat"HH:MM:SS"),
-                     energy,
-                     maxQ.θ,
-                     minQ.θ,
-                     maxQ.θ - minQ.θ)
-      return nothing
-    end
-  end
-
-  lsrk = LSRK144NiegemannDiehlBusch(dg, Q; dt = dt, t0 = 0)
-
-  eng0 = norm(Q)
-  @info @sprintf """Starting
-  norm(Q₀) = %.16e
-  ArrayType = %s""" eng0 ArrayType
-
-  solve!(Q, lsrk, nothing; timeend=timeend, callbacks=(cbinfo,))
-
-  maxQ =  Vars{vars_state(model, FT)}(maximum(Q, dims=(1,3)))
-  minQ =  Vars{vars_state(model, FT)}(minimum(Q, dims=(1,3)))
-
-  @test maxQ.θ ≈ minQ.θ
-
-  return nothing
-end
+main()
