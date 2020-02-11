@@ -6,6 +6,8 @@ using CLIMA
 using CLIMA.Atmos
 using CLIMA.GenericCallbacks
 using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.ColumnwiseLUSolver: ManyColumnLU
 using CLIMA.Mesh.Filters
 using CLIMA.Mesh.Grids
 using CLIMA.MoistThermodynamics
@@ -99,17 +101,23 @@ function main()
     N = 5
 
     # Domain resolution
-    nelem_horz = 6
-    nelem_vert = 8
+    nelem_horz = 10
+    nelem_vert = 5
     resolution = (nelem_horz, nelem_vert)
 
     t0 = FT(0)
-    timeend = FT(60) # 400day
+    timeend = FT(600) # 400day
 
     driver_config = config_heldsuarez(FT, N, resolution)
-    ode_solver_type = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
+    #ode_solver_type = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
+    ode_solver_type = CLIMA.IMEXSolverType(linear_solver=ManyColumnLU,
+                                           solver_method=ARK2GiraldoKellyConstantinescu)
     solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
-                                       ode_solver_type=ode_solver_type)
+                                       ode_solver_type=ode_solver_type, 
+                                       Courant_number=0.20)
+    #ode_solver_type = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
+    #solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
+    #                                   ode_solver_type=ode_solver_type)
 
     # Set up the filter callback
     filterorder = 14
@@ -122,7 +130,12 @@ function main()
 
     result = CLIMA.invoke!(solver_config;
                            user_callbacks=(cbfilter,),
-                          check_euclidean_distance=true)
+                           check_euclidean_distance=true)
+
+    # Store a NETCDF file with data interpolated onto the sphere from the last
+    # state of the model
+    println(typeof(solver_config.Q))
+
 end
 
 main()
