@@ -9,6 +9,7 @@ using Requires
 
 using ..AdditiveRungeKuttaMethod
 using ..Atmos
+using ..VTK
 using ..ColumnwiseLUSolver
 using ..Diagnostics
 using ..GenericCallbacks
@@ -195,6 +196,7 @@ struct SolverConfiguration{FT}
     timeend::FT
     dt::FT
     forcecpu::Bool
+    init_args
     solver
 end
 
@@ -204,9 +206,11 @@ end
 Set up the DG model per the specified driver configuration and set up the ODE solver.
 """
 function setup_solver(t0::FT, timeend::FT,
-                      driver_config::DriverConfiguration;
+                      driver_config::DriverConfiguration,
+                      init_args...;
                       forcecpu=false,
                       ode_solver_type=nothing,
+                      ode_dt=nothing,
                       Courant_number=0.4,
                       T=FT(290)
                      ) where {FT<:AbstractFloat}
@@ -216,7 +220,7 @@ function setup_solver(t0::FT, timeend::FT,
     dg = DGModel(driver_config.bl, driver_config.grid, driver_config.numfluxnondiff,
                  driver_config.numfluxdiff, driver_config.gradnumflux)
     @info @sprintf("Initializing %s", driver_config.name)
-    Q = init_ode_state(dg, FT(0), forcecpu=forcecpu)
+    Q = init_ode_state(dg, FT(0), init_args...; forcecpu=forcecpu)
 
     # if solver has been specified, use it
     if ode_solver_type !== nothing
@@ -227,7 +231,11 @@ function setup_solver(t0::FT, timeend::FT,
 
     if isa(solver_type, ExplicitSolverType)
 
-        dt = Courant_number * min_node_distance(dg.grid, VerticalDirection()) / soundspeed_air(T)
+        if ode_dt !== nothing
+            dt = ode_dt
+        else
+            dt = Courant_number * min_node_distance(dg.grid, VerticalDirection()) / soundspeed_air(T)
+        end
         numberofsteps = convert(Int64, cld(timeend, dt))
         dt = timeend / numberofsteps
 
@@ -235,7 +243,11 @@ function setup_solver(t0::FT, timeend::FT,
 
     else # solver_type === IMEXSolverType
 
-        dt = Courant_number * min_node_distance(dg.grid, HorizontalDirection()) / soundspeed_air(T)
+        if ode_dt !== nothing
+            dt = ode_dt
+        else
+            dt = Courant_number * min_node_distance(dg.grid, HorizontalDirection()) / soundspeed_air(T)
+        end
         numberofsteps = convert(Int64, cld(timeend, dt))
         dt = timeend / numberofsteps
 
@@ -245,13 +257,13 @@ function setup_solver(t0::FT, timeend::FT,
                       driver_config.numfluxdiff, driver_config.gradnumflux,
                       auxstate=dg.auxstate, direction=VerticalDirection())
 
-        solver = solver_type.solver_method(dg, vdg, SingleColumnLU(), Q; dt=dt, t0=t0)
+        solver = solver_type.solver_method(dg, vdg, solver_type.linear_solver(), Q; dt=dt, t0=t0)
     end
 
     @toc setup_solver
 
     return SolverConfiguration(driver_config.name, driver_config.mpicomm, dg, Q,
-                               t0, timeend, dt, forcecpu, solver)
+                               t0, timeend, dt, forcecpu, init_args, solver)
 end
 
 """
@@ -263,13 +275,15 @@ function invoke!(solver_config::SolverConfiguration;
                  user_callbacks=(),
                  check_euclidean_distance=false,
                  adjustfinalstep=false
-                ) where {FT<:AbstractFloat}
+                )
     mpicomm = solver_config.mpicomm
     dg = solver_config.dg
     bl = dg.balancelaw
     Q = solver_config.Q
+    FT = eltype(Q)
     timeend = solver_config.timeend
     forcecpu = solver_config.forcecpu
+    init_args = solver_config.init_args
     solver = solver_config.solver
 
     # set up callbacks
@@ -312,11 +326,11 @@ function invoke!(solver_config::SolverConfiguration;
         # set up VTK output callback
         step = [0]
         cbvtk = GenericCallbacks.EveryXSimulationSteps(Settings.vtk_interval) do (init=false)
-            vprefix = @sprintf("%s_%dD_mpirank%04d_step%04d", solver_config.name, dim,
+            vprefix = @sprintf("%s_mpirank%04d_step%04d", solver_config.name,
                                MPI.Comm_rank(mpicomm), step[1])
             outprefix = joinpath(Settings.output_dir, vprefix)
-            statenames = flattenednames(vars_state(bl, FT))
-            auxnames = flattenednames(vars_aux(bl, FT))
+            statenames = Atmos.flattenednames(Atmos.vars_state(bl, FT))
+            auxnames = Atmos.flattenednames(Atmos.vars_aux(bl, FT))
             writevtk(outprefix, Q, dg, statenames, dg.auxstate, auxnames)
             # Generate the pvtu file for these vtk files
             if MPI.Comm_rank(mpicomm) == 0
@@ -332,7 +346,7 @@ function invoke!(solver_config::SolverConfiguration;
             step[1] += 1
             nothing
         end
-        callbacks = (callbacks..., cbdiagnostics)
+        callbacks = (callbacks..., cbvtk)
     end
     callbacks = (callbacks..., user_callbacks...)
 
@@ -363,7 +377,7 @@ function invoke!(solver_config::SolverConfiguration;
                    engf-eng0)
 
     if check_euclidean_distance
-        Qe = init_ode_state(dg, timeend, forcecpu=forcecpu)
+        Qe = init_ode_state(dg, timeend, init_args...; forcecpu=forcecpu)
         engfe = norm(Qe)
         errf = euclidean_distance(solver_config.Q, Qe)
         @info @sprintf("""Euclidean distance

@@ -1,6 +1,7 @@
 module HydrostaticBoussinesq
 
-export HydrostaticBoussinesqModel, HydrostaticBoussinesqProblem, OceanDGModel
+export HydrostaticBoussinesqModel, HydrostaticBoussinesqProblem, OceanDGModel,
+       LinearHBModel
 
 using StaticArrays
 using LinearAlgebra: I, dot, Diagonal
@@ -55,6 +56,13 @@ struct HydrostaticBoussinesqModel{P,T} <: BalanceLaw
   κᶻ::T
 end
 
+struct LinearHBModel{M} <: BalanceLaw
+  ocean::M
+  function LinearHBModel(ocean::M) where {M}
+    new{M}(ocean)
+  end
+end
+
 HBModel   = HydrostaticBoussinesqModel
 HBProblem = HydrostaticBoussinesqProblem
 
@@ -89,8 +97,8 @@ function vars_aux(m::HBModel, T)
     θʳ::T           # SST given    # TODO: Should be 2D
     f::T            # coriolis
     τ::T            # wind stress  # TODO: Should be 2D
-    # κ::SMatrix{3, 3, T, 9} # diffusivity tensor (for convective adjustment)
-    κᶻ::T
+    ν::SVector{3, T}
+    κ::SVector{3, T}
   end
 end
 
@@ -180,11 +188,8 @@ end
 
 @inline function flux_diffusive!(m::HBModel, F::Grad, Q::Vars, D::Vars, ::Vars,
                                  A::Vars, t::Real)
-  ν = Diagonal(@SVector [m.νʰ, m.νʰ, m.νᶻ])
-  F.u -= ν * D.∇u
-
-  κ = Diagonal(@SVector [m.κʰ, m.κʰ, A.κᶻ])
-  F.θ -= κ * D.∇θ
+  F.u -= Diagonal(A.ν) * D.∇u
+  F.θ -= Diagonal(A.κ) * D.∇θ
 
   return nothing
 end
@@ -252,9 +257,7 @@ function update_aux_diffusive!(dg::DGModel, m::HBModel, Q::MPIStateArray, t::Rea
     @inbounds begin
       A.w = -(D.∇u[1,1] + D.∇u[2,2])
 
-      # κʰ = m.κʰ
-      # A.κ = @SMatrix [κʰ -0 -0; -0 κʰ -0; -0 -0 κᶻ]
-      D.∇θ[3] < 0 ? A.κᶻ = 1000 * m.κᶻ : A.κᶻ = m.κᶻ
+      D.∇θ[3] < 0 ? A.κ = (m.κʰ, m.κʰ, 1000 * m.κᶻ) : A.κ = (m.κʰ, m.κʰ, m.κᶻ)
     end
 
     return nothing
@@ -287,6 +290,7 @@ end
                                  Q⁻::Vars, A⁻::Vars, bctype, t, _...)
   return ocean_boundary_state!(m, bctype, nf, Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
 end
+
 @inline function boundary_state!(nf, m::HBModel,
                                  Q⁺::Vars, D⁺::Vars, A⁺::Vars,
                                  n⁻,
@@ -306,62 +310,87 @@ end
 @inline function ocean_boundary_state!(::HBModel, ::CoastlineFreeSlip,
                                        ::CentralNumericalFluxDiffusive, Q⁺,
                                        D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
-  D⁺.∇u = -D⁻.∇u
+  D⁺.∇u = Diagonal(A⁺.ν) \ (Diagonal(A⁻.ν) * -D⁻.∇u)
 
-  D⁺.∇θ = -D⁻.∇θ
-
-  return nothing
-end
-
-@inline function ocean_boundary_state!(::HBModel, ::CoastlineNoSlip,
-                                       ::Union{Rusanov,
-                                               CentralNumericalFluxGradient},
-                                       Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
-  Q⁺.u = -Q⁻.u
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ)
 
   return nothing
 end
 
 @inline function ocean_boundary_state!(::HBModel, ::CoastlineNoSlip,
+                                       ::Rusanov,
+                                       Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
+  Q⁺.u = -Q⁻.u
+
+  return nothing
+end
+
+@inline function ocean_boundary_state!(::HBModel, ::CoastlineNoSlip,
+                                       ::CentralNumericalFluxGradient,
+                                       Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
+  FT = eltype(Q⁺)
+  Q⁺.u = SVector(-zero(FT), -zero(FT))
+
+  return nothing
+end
+
+@inline function ocean_boundary_state!(::HBModel, ::CoastlineNoSlip,
                                        ::CentralNumericalFluxDiffusive, Q⁺,
                                        D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
   Q⁺.u = -Q⁻.u
 
-  D⁺.∇θ = -D⁻.∇θ
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ)
 
   return nothing
 end
 
 @inline function ocean_boundary_state!(m::HBModel, ::OceanFloorFreeSlip,
-                                       ::Union{Rusanov,
-                                               CentralNumericalFluxGradient},
+                                       ::Rusanov,
                                        Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
   A⁺.w = -A⁻.w
 
   return nothing
 end
 
+@inline function ocean_boundary_state!(m::HBModel, ::OceanFloorFreeSlip,
+                                       ::CentralNumericalFluxGradient,
+                                       Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
+  FT = eltype(Q⁺)
+  A⁺.w = -zero(FT)
+
+  return nothing
+end
+
+
 
 @inline function ocean_boundary_state!(m::HBModel, ::OceanFloorFreeSlip,
                                        ::CentralNumericalFluxDiffusive, Q⁺,
                                        D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
   A⁺.w = -A⁻.w
-  D⁺.∇u = -D⁻.∇u
+  D⁺.∇u = Diagonal(A⁺.ν) \ (Diagonal(A⁻.ν) * -D⁻.∇u)
 
-  D⁺.∇θ = -D⁻.∇θ
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ)
 
   return nothing
 end
 
 @inline function ocean_boundary_state!(m::HBModel, ::OceanFloorNoSlip,
-                                       ::Union{Rusanov,
-                                               CentralNumericalFluxGradient},
+                                       ::Rusanov,
                                        Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
   Q⁺.u = -Q⁻.u
   A⁺.w = -A⁻.w
 
   return nothing
 end
+@inline function ocean_boundary_state!(m::HBModel, ::OceanFloorNoSlip,
+                                       ::CentralNumericalFluxGradient,
+                                       Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
+  FT = eltype(Q⁺)
+  Q⁺.u = SVector(-zero(FT), -zero(FT))
+  A⁺.w = -zero(FT)
+
+  return nothing
+end
 
 
 @inline function ocean_boundary_state!(m::HBModel, ::OceanFloorNoSlip,
@@ -371,7 +400,7 @@ end
   Q⁺.u = -Q⁻.u
   A⁺.w = -A⁻.w
 
-  D⁺.∇θ = -D⁻.∇θ
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ)
 
   return nothing
 end
@@ -391,9 +420,9 @@ end
                                        ::OceanSurfaceNoStressNoForcing,
                                        ::CentralNumericalFluxDiffusive,
                                        Q⁺, D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
-  D⁺.∇u = -D⁻.∇u
+  D⁺.∇u = Diagonal(A⁺.ν) \ (Diagonal(A⁻.ν) * -D⁻.∇u)
 
-  D⁺.∇θ = -D⁻.∇θ
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ)
 
   return nothing
 end
@@ -402,12 +431,10 @@ end
                                        ::OceanSurfaceStressNoForcing,
                                        ::CentralNumericalFluxDiffusive,
                                        Q⁺, D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
-  τ = A⁻.τ
-  D⁺.∇u = -D⁻.∇u + 2 * @SMatrix [ -0 -0;
-                                  -0 -0;
-                                  τ / 1000 -0]
+  τ = @SMatrix [ -0 -0; -0 -0; A⁺.τ / 1000 -0]
+  D⁺.∇u = Diagonal(A⁺.ν) \ (Diagonal(A⁻.ν) * -D⁻.∇u + 2 * τ)
 
-  D⁺.∇θ = -D⁻.∇θ
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ)
 
   return nothing
 end
@@ -416,12 +443,14 @@ end
                                        ::OceanSurfaceNoStressForcing,
                                        ::CentralNumericalFluxDiffusive,
                                        Q⁺, D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
-  D⁺.∇u = -D⁻.∇u
+  D⁺.∇u = Diagonal(A⁺.ν) \ (Diagonal(A⁻.ν) * -D⁻.∇u)
 
   θ  = Q⁻.θ
-  θʳ = A⁻.θʳ
+  θʳ = A⁺.θʳ
   λʳ = m.problem.λʳ
-  D⁺.∇θ = -D⁻.∇θ + 2 * @SVector [-0, -0, λʳ * (θʳ - θ)]
+
+  σ = @SVector [-0, -0, λʳ * (θʳ - θ)]
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ + 2 * σ)
 
   return nothing
 end
@@ -430,15 +459,67 @@ end
                                        ::OceanSurfaceStressForcing,
                                        ::CentralNumericalFluxDiffusive,
                                        Q⁺, D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
-  τ = A⁻.τ
-  D⁺.∇u = -D⁻.∇u + 2 * @SMatrix [ -0 -0;
-                                  -0 -0;
-                                  τ / 1000 -0]
+  τ = @SMatrix [ -0 -0; -0 -0; A⁺.τ / 1000 -0]
+  D⁺.∇u = DDiagonal(A⁺.ν) \ (Diagonal(A⁻.ν) * -D⁻.∇u + 2 * τ)
 
   θ  = Q⁻.θ
-  θʳ = A⁻.θʳ
+  θʳ = A⁺.θʳ
   λʳ = m.problem.λʳ
-  D⁺.∇θ = -D⁻.∇θ + 2 * @SVector [-0, -0, λʳ * (θʳ - θ)]
+
+  σ = @SVector [-0, -0, λʳ * (θʳ - θ)]
+  D⁺.∇θ = Diagonal(A⁺.κ) \ (Diagonal(A⁻.κ) * -D⁻.∇θ + 2 * σ)
+
+  return nothing
+end
+
+# Linear model for 1D IMEX
+vars_state(lm::LinearHBModel, FT) = vars_state(lm.ocean,FT)
+vars_gradient(lm::LinearHBModel, FT) = vars_gradient(lm.ocean,FT)
+vars_diffusive(lm::LinearHBModel, FT) = vars_diffusive(lm.ocean,FT)
+vars_aux(lm::LinearHBModel, FT) = vars_aux(lm.ocean,FT)
+vars_integrals(lm::LinearHBModel, FT) = @vars()
+
+@inline integrate_aux!(::LinearHBModel, _...) = nothing
+@inline flux_nondiffusive!(::LinearHBModel, _...) = nothing
+@inline source!(::LinearHBModel, _...) = nothing
+
+function wavespeed(lm::LinearHBModel, n⁻, _...)
+  C = abs(SVector(lm.ocean.c₁, lm.ocean.c₂, lm.ocean.c₃)' * n⁻)
+  return C
+end
+
+@inline function boundary_state!(nf, lm::LinearHBModel, Q⁺::Vars, A⁺::Vars,
+                                 n⁻, Q⁻::Vars, A⁻::Vars, bctype, t, _...)
+  return ocean_boundary_state!(lm.ocean, bctype, nf, Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
+end
+
+@inline function boundary_state!(nf, lm::LinearHBModel, Q⁺::Vars, D⁺::Vars, A⁺::Vars,
+                                 n⁻, Q⁻::Vars, D⁻::Vars, A⁻::Vars, bctype, t, _...)
+  return ocean_boundary_state!(lm.ocean, bctype, nf, Q⁺, D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
+end
+
+init_aux!(lm::LinearHBModel, A::Vars, geom::LocalGeometry) = nothing
+init_state!(lm::LinearHBModel, Q::Vars, A::Vars, coords, t) = nothing
+
+@inline function flux_diffusive!(lm::LinearHBModel, F::Grad, Q::Vars, D::Vars,
+                                 A::Vars, t::Real)
+  F.u -= Diagonal(A.ν) * D.∇u
+  F.θ -= Diagonal(A.κ) * D.∇θ
+
+  return nothing
+end
+
+@inline function gradvariables!(m::LinearHBModel, G::Vars, Q::Vars, A, t)
+  G.u = Q.u
+  G.θ = Q.θ
+
+  return nothing
+end
+
+@inline function diffusive!(lm::LinearHBModel, D::Vars, G::Grad, Q::Vars,
+                            A::Vars, t)
+  D.∇u = G.u
+  D.∇θ = G.θ
 
   return nothing
 end
