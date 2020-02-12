@@ -186,8 +186,8 @@ function update_penalty!(::Rusanov, ::HBModel, n⁻, λ, ΔQ::Vars,
   return nothing
 end
 
-@inline function flux_diffusive!(m::HBModel, F::Grad, Q::Vars, D::Vars, ::Vars,
-                                 A::Vars, t::Real)
+@inline function flux_diffusive!(m::HBModel, F::Grad, Q::Vars, D::Vars,
+                                 HD::Vars, A::Vars, t::Real)
   F.u -= Diagonal(A.ν) * D.∇u
   F.θ -= Diagonal(A.κ) * D.∇θ
 
@@ -502,7 +502,7 @@ init_aux!(lm::LinearHBModel, A::Vars, geom::LocalGeometry) = nothing
 init_state!(lm::LinearHBModel, Q::Vars, A::Vars, coords, t) = nothing
 
 @inline function flux_diffusive!(lm::LinearHBModel, F::Grad, Q::Vars, D::Vars,
-                                 A::Vars, t::Real)
+                                 HD::Vars, A::Vars, t::Real)
   F.u -= Diagonal(A.ν) * D.∇u
   F.θ -= Diagonal(A.κ) * D.∇θ
 
