@@ -64,8 +64,10 @@ thermo_state(moist::DryModel, orientation::Orientation, state::Vars, aux::Vars) 
 Assumes the moisture components are computed via thermodynamic equilibrium.
 """
 Base.@kwdef struct EquilMoist <: MoistureModel
-  maxiter::Int = 3
+  maxiter::Int=3
+  tolerance::Float64=1e-1
 end
+
 vars_state(::EquilMoist,FT) = @vars(ρq_tot::FT)
 vars_gradient(::EquilMoist,FT) = @vars(q_tot::FT, h_tot::FT)
 vars_diffusive(::EquilMoist,FT) = @vars(∇q_tot::SVector{3,FT})
@@ -75,7 +77,7 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT)
                                          state::Vars, aux::Vars, t::Real)
   FT = eltype(state)
   e_int = internal_energy(moist, atmos.orientation, state, aux)
-  TS = PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, moist.maxiter, FT(10))
+  TS = PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, moist.maxiter, FT(moist.tolerance))
   aux.moisture.temperature = air_temperature(TS)
   aux.moisture.θ_v = virtual_pottemp(TS)
   aux.moisture.q_liq = PhasePartition(TS).liq
