@@ -13,6 +13,7 @@ using CLIMA.Mesh.Grids
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
+using CLIMA.Mesh.Interpolation
 
 const p_ground = Float64(MSLP)
 const T_initial = Float64(255)
@@ -106,7 +107,7 @@ function main()
     resolution = (nelem_horz, nelem_vert)
 
     t0 = FT(0)
-    days = 90
+    days = 1
     timeend = FT(days*60*60*24) 
 
     driver_config = config_heldsuarez(FT, N, resolution)
@@ -135,8 +136,20 @@ function main()
 
     # Store a NETCDF file with data interpolated onto the sphere from the last
     # state of the model
-    #println(typeof(solver_config.Q))
+    print(solver_config.Q.data)
+    lat_res  = FT( 1.0 * π / 180.0) # 1 degree resolution
+    long_res = FT( 1.0 * π / 180.0) # 1 degree resolution
 
+    vert_range = grid1d(FT(planet_radius), FT(planet_radius + domain_height), nelem = nelem_vert)
+    nvars = size(solver_config.Q.data, 2)
+
+    intrp_cs = InterpolationCubedSphere(solver_config.dg.grid, collect(vert_range), nelem_horz, lat_res, long_res, r_res); # sets up the interpolation structure
+    iv = DA(Array{FT}(undef, intrp_cs.Npl, nvars)) # allocatind space for the interpolation variable
+    interpolate_local!(intrp_cs, solver_config.Q.data, iv) # interpolation
+
+    filename = "test.nc"
+    varnames = ("ρ", "ρu", "ρv", "ρw", "e")
+    svi = write_interpolated_data(intrp_cs, iv, varnames, filename)  # write interpolated data to file
 end
 
 main()
