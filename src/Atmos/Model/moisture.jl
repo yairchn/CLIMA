@@ -73,8 +73,9 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT)
 
 @inline function atmos_nodal_update_aux!(moist::EquilMoist, atmos::AtmosModel,
                                          state::Vars, aux::Vars, t::Real)
+  FT = eltype(state)
   e_int = internal_energy(moist, atmos.orientation, state, aux)
-  TS = PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, moist.maxiter)
+  TS = PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, moist.maxiter, FT(10))
   aux.moisture.temperature = air_temperature(TS)
   aux.moisture.θ_v = virtual_pottemp(TS)
   aux.moisture.q_liq = PhasePartition(TS).liq
