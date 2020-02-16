@@ -63,9 +63,9 @@ thermo_state(moist::DryModel, orientation::Orientation, state::Vars, aux::Vars) 
 
 Assumes the moisture components are computed via thermodynamic equilibrium.
 """
-Base.@kwdef struct EquilMoist <: MoistureModel
+Base.@kwdef struct EquilMoist{FT} <: MoistureModel
   maxiter::Int=3
-  tolerance::Float64=1e-1
+  tolerance::FT=1e-1
 end
 
 vars_state(::EquilMoist,FT) = @vars(ρq_tot::FT)
