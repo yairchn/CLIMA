@@ -42,16 +42,16 @@ A `BalanceLaw` for atmosphere modeling.
                boundarycondition, init_state)
 
 """
-struct AtmosModel{FT,O,RS,T,M,P,R,SU,S,BC,IS} <: BalanceLaw
+struct AtmosModel{FT,O,RS,T,HD,M,P,R,SU,S,BC,IS} <: BalanceLaw
   orientation::O
   ref_state::RS
   turbulence::T
+  hyperdiffusion::HD
   moisture::M
   precipitation::P
   radiation::R
   subsidence::SU
   source::S
-  # TODO: Probably want to have different bc for state and diffusion...
   boundarycondition::BC
   init_state::IS
 end
@@ -72,6 +72,7 @@ function AtmosModel{FT}(::Type{AtmosLESConfiguration};
                                                                                  FT(grav) / FT(cp_d)),
                                                                                  FT(0)),
                          turbulence::T=SmagorinskyLilly{FT}(0.21),
+                         hyperdiffusion::HD=NoHyperDiffusion(),
                          moisture::M=EquilMoist(),
                          precipitation::P=NoPrecipitation(),
                          radiation::R=NoRadiation(),
@@ -81,13 +82,14 @@ function AtmosModel{FT}(::Type{AtmosLESConfiguration};
                                      GeostrophicForcing{FT}(7.62e-5, 0, 0)),
                          # TODO: Probably want to have different bc for state and diffusion...
                          boundarycondition::BC=NoFluxBC(),
-                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,M,P,R,SU,S,BC,IS}
+                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,HD,M,P,R,SU,S,BC,IS}
   @assert init_state ≠ nothing
 
   atmos = (
         orientation,
         ref_state,
         turbulence,
+        hyperdiffusion,
         moisture,
         precipitation,
         radiation,
@@ -108,18 +110,20 @@ function AtmosModel{FT}(::Type{AtmosGCMConfiguration};
                                                     FT(grav) / FT(cp_d)),
                                                   FT(0)),
                          turbulence::T         = SmagorinskyLilly{FT}(0.21),
+                         hyperdiffusion::HD    = NoHyperDiffusion(),
                          moisture::M           = EquilMoist(),
                          precipitation::P      = NoPrecipitation(),
                          radiation::R          = NoRadiation(),
                          subsidence::SU        = NoSubsidence{FT}(),
                          source::S             = (Gravity(), Coriolis()),
                          boundarycondition::BC = NoFluxBC(),
-                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,M,P,R,SU,S,BC,IS}
+                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,HD,M,P,R,SU,S,BC,IS}
   @assert init_state ≠ nothing
   atmos = (
         orientation,
         ref_state,
         turbulence,
+        hyperdiffusion,
         moisture,
         precipitation,
         radiation,
@@ -189,6 +193,7 @@ include("source.jl")
 include("boundaryconditions.jl")
 include("linear.jl")
 include("remainder.jl")
+include("hyperdiffusion.jl")
 
 """
     flux_nondiffusive!(m::AtmosModel, flux::Grad, state::Vars, aux::Vars,
@@ -261,7 +266,7 @@ end
   d_h_tot = -D_t .* diffusive.∇h_tot
   flux_diffusive!(atmos, flux, state, τ, d_h_tot)
   flux_diffusive!(atmos.moisture, flux, state, diffusive, aux, t, D_t)
-  flux_diffusive!(atmos.turbulence, flux, state, diffusive, aux, t, D_t)
+  flux_hyperdiffusive!(atmos.hyperdiffusion, flux, state, diffusive, hyperdiffusive, aux, t)
 end
 
 #TODO: Consider whether to not pass ρ and ρu (not state), foc BCs reasons
