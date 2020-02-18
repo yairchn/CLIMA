@@ -266,7 +266,7 @@ end
   d_h_tot = -D_t .* diffusive.∇h_tot
   flux_diffusive!(atmos, flux, state, τ, d_h_tot)
   flux_diffusive!(atmos.moisture, flux, state, diffusive, aux, t, D_t)
-  flux_hyperdiffusive!(atmos.hyperdiffusion, flux, state, diffusive, hyperdiffusive, aux, t)
+  flux_diffusive!(atmos.hyperdiffusion, flux, state, diffusive, hyperdiffusive, aux, t)
 end
 
 #TODO: Consider whether to not pass ρ and ρu (not state), foc BCs reasons
