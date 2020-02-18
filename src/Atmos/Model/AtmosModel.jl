@@ -252,6 +252,7 @@ function gradvariables!(atmos::AtmosModel, transform::Vars, state::Vars, aux::Va
 
   gradvariables!(atmos.moisture, transform, state, aux, t)
   gradvariables!(atmos.turbulence, transform, state, aux, t)
+  gradvariables!(atmos.hyperdiffusion, atmos, transform, state, aux, t)
 end
 
 function diffusive!(atmos::AtmosModel, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
