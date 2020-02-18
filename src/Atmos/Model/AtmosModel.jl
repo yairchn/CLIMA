@@ -143,6 +143,7 @@ function vars_state(m::AtmosModel, FT)
     ρu::SVector{3,FT}
     ρe::FT
     turbulence::vars_state(m.turbulence, FT)
+    hyperdiffusion::vars_state(m.hyperdiffusion, FT)
     moisture::vars_state(m.moisture, FT)
     radiation::vars_state(m.radiation, FT)
   end
@@ -152,6 +153,7 @@ function vars_gradient(m::AtmosModel, FT)
     u::SVector{3,FT}
     h_tot::FT
     turbulence::vars_gradient(m.turbulence,FT)
+    hyperdiffusion::vars_gradient(m.hyperdiffusion, FT)
     moisture::vars_gradient(m.moisture,FT)
   end
 end
@@ -160,6 +162,7 @@ function vars_diffusive(m::AtmosModel, FT)
     ∇h_tot::SVector{3,FT}
     turbulence::vars_diffusive(m.turbulence,FT)
     moisture::vars_diffusive(m.moisture,FT)
+    hyperdiffusion::vars_diffusive(m.hyperdiffusion, FT)
   end
 end
 
@@ -172,6 +175,7 @@ function vars_aux(m::AtmosModel, FT)
     orientation::vars_aux(m.orientation, FT)
     ref_state::vars_aux(m.ref_state,FT)
     turbulence::vars_aux(m.turbulence,FT)
+    hyperdiffusion::vars_aux(m.hyperdiffusion,FT)
     moisture::vars_aux(m.moisture,FT)
     radiation::vars_aux(m.radiation,FT)
   end
