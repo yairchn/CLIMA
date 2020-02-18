@@ -31,12 +31,12 @@ diffusive!(::HorizontalHyperDiffusion, _...) = nothing
 function gradvariables!(::HorizontalHyperDiffusion, transform::Vars, state::Vars, aux::Vars, t::Real)
   transform.ρu = state.ρu
 end
-function hyperdiffusive!(h::HyperDiffusion, hypertransform::Vars, transform::Grad,
+function hyperdiffusive!(h::HyperDiffusion, hyperdiffusive::Vars, hypertransform::Grad,
                          state::Vars, aux::Vars, t::Real)
-  ∇Δρu = transform.ρu
+  ∇Δρu = hypertransform.ρu
   #TODO update coefficient
   D = SDiagonal(1,1,1)
-  hypertransform.σ_horz = D * ∇Δρu
+  hyperdiffusive.σ_horz = D * ∇Δρu
 end
 function flux_nondiffusive!(h::HyperDiffusion, flux::Grad, state::Vars, aux::Vars, t::Real) end
 function flux_diffusive!(h::HyperDiffusion, flux::Grad, state::Vars,
