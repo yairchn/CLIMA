@@ -15,5 +15,6 @@ src/**/Manifest.toml
 *.swp
 *.png
 *.nc
+*.jld2
 !docs/src/assets/*.png
 *~
