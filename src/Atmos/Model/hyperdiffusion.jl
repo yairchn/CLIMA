@@ -11,6 +11,7 @@ vars_aux(::HyperDiffusion, FT) = @vars()
 vars_gradient(::HyperDiffusion, FT) = @vars()
 vars_diffusive(::HyperDiffusion, FT) = @vars()
 vars_hyperdiffusive(::HyperDiffusion, FT) = @vars()
+vars_gradient_laplacian(::HyperDiffusion, FT) = @vars()
 function atmos_init_aux!(::HyperDiffusion, ::AtmosModel, aux::Vars, geom::LocalGeometry) end
 function atmos_nodal_update_aux!(::HyperDiffusion, ::AtmosModel, state::Vars, aux::Vars, t::Real) end
 function gradvariables!(::HyperDiffusion, ::AtmosModel, transform::Vars, state::Vars, aux::Vars, t::Real) end
@@ -43,26 +44,26 @@ end
 function gradvariables!(::HorizontalHyperDiffusion, atmos::AtmosModel, transform::Vars, state::Vars, aux::Vars, t::Real)
   u = state.ρu / state.ρ
   I = SDiagonal(1,1,1)
-  k̂ = vertical_unit_vector(atmos.orientation,aux)
-  u_horz = (I - k̂*k̂') * u
-  transform.u_horz = u_horz
-  transform.h_tot = total_specific_enthalpy(atmos.moisture, atmos.orientation, state, aux)
+  k̂ = vertical_unit_vector(atmos.orientation, aux)
+  transform.hyperdiffusion.u_horz = (I .- k̂*k̂') * u
+  transform.hyperdiffusion.h_tot = total_specific_enthalpy(atmos.moisture, atmos.orientation, state, aux)
 end
 
 function hyperdiffusive!(h::HorizontalHyperDiffusion, hyperdiffusive::Vars, hypertransform::Grad,
                          state::Vars, aux::Vars, t::Real)
-  ∇Δu_horz = hypertransform.u_horz
-  ∇Δh_tot = hypertransform.h_tot
+  ∇Δu_horz = hypertransform.hyperdiffusion.u_horz
+  ∇Δh_tot = hypertransform.hyperdiffusion.h_tot
   #TODO update coefficient
   τ_timescale = 3600 * 8 
   ν₄ = (aux.hyperdiffusion.Δ/2)^4 / 2 / τ_timescale
-  hyperdiffusive.∇³u_horz = ν₄ * ∇Δu_horz
-  hyperdiffusive.∇³h_tot  = ν₄ * ∇Δh_tot
+  hyperdiffusive.hyperdiffusion.∇³u_horz = ν₄ * ∇Δu_horz
+  hyperdiffusive.hyperdiffusion.∇³h_tot  = ν₄ * ∇Δh_tot
 end
 
 function flux_nondiffusive!(h::HorizontalHyperDiffusion, flux::Grad, state::Vars, aux::Vars, t::Real) end
 
 function flux_diffusive!(h::HorizontalHyperDiffusion, flux::Grad, state::Vars,
                          diffusive::Vars, hyperdiffusive::Vars, aux::Vars, t::Real) 
-  flux.ρu += 1/state.ρ * hyperdiffusive.∇³u_horz
+  flux.ρu += 1/state.ρ * hyperdiffusive.hyperdiffusion.∇³u_horz
+  flux.ρe += 1/state.ρ * hyperdiffusive.hyperdiffusion.∇³h_tot
 end
