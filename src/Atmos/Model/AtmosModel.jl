@@ -18,6 +18,7 @@ using ..Mesh.Grids: VerticalDirection, HorizontalDirection, min_node_distance
 
 import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
                         vars_diffusive, vars_integrals, flux_nondiffusive!,
+                        vars_gradient_laplacian, vars_hyperdiffusive, hyperdiffusive!,
                         flux_diffusive!, source!, wavespeed, boundary_state!,
                         gradvariables!, diffusive!, init_aux!, init_state!,
                         update_aux!, integrate_aux!, LocalGeometry, lengthscale,
@@ -29,7 +30,9 @@ import ..DGmethods.NumericalFluxes: boundary_state!,
                                     boundary_flux_diffusive!,
                                     NumericalFluxNonDiffusive,
                                     NumericalFluxGradient,
-                                    NumericalFluxDiffusive
+                                    NumericalFluxDiffusive, 
+                                    CentralHyperDiffusiveFlux, 
+                                    CentralDivPenalty
 
 """
     AtmosModel <: BalanceLaw
@@ -136,7 +139,6 @@ function AtmosModel{FT}(::Type{AtmosGCMConfiguration};
   return AtmosModel{FT,typeof.(atmos)...}(atmos...)
 end
 
-
 function vars_state(m::AtmosModel, FT)
   @vars begin
     ρ::FT
@@ -165,8 +167,16 @@ function vars_diffusive(m::AtmosModel, FT)
     hyperdiffusion::vars_diffusive(m.hyperdiffusion, FT)
   end
 end
-
-
+function vars_gradient_laplacian(m::AtmosModel,FT)
+  @vars begin
+    hyperdiffusion::vars_gradient_laplacian(m.hyperdiffusion, FT)
+  end
+end
+function vars_hyperdiffusive(m::AtmosModel,FT)
+  @vars begin
+    hyperdiffusion::vars_hyperdiffusive(m.hyperdiffusion,FT)
+  end
+end
 function vars_aux(m::AtmosModel, FT)
   @vars begin
     ∫dz::vars_integrals(m, FT)
@@ -264,6 +274,11 @@ function diffusive!(atmos::AtmosModel, diffusive::Vars, ∇transform::Grad, stat
   diffusive!(atmos.moisture, diffusive, ∇transform, state, aux, t)
 end
 
+function hyperdiffusive!(atmos::AtmosModel, hyperdiffusive::Vars, hypertransform::Grad,
+                         state::Vars, aux::Vars, t::Real)
+  hyperdiffusive!(atmos.hyperdiffusion, hyperdiffusive, hypertransform, state, aux, t)
+end
+
 @inline function flux_diffusive!(atmos::AtmosModel, flux::Grad, state::Vars,
                                  diffusive::Vars, hyperdiffusive::Vars, aux::Vars, t::Real)
   ν, τ = turbulence_tensors(atmos.turbulence, state, diffusive, aux, t)
@@ -320,6 +335,7 @@ function init_aux!(m::AtmosModel, aux::Vars, geom::LocalGeometry)
   atmos_init_aux!(m.orientation, m, aux, geom)
   atmos_init_aux!(m.ref_state, m, aux, geom)
   atmos_init_aux!(m.turbulence, m, aux, geom)
+  atmos_init_aux!(m.hyperdiffusion, m, aux, geom)
 end
 
 """
@@ -338,15 +354,29 @@ end
 boundary_state!(nf, m::AtmosModel, x...) =
   atmos_boundary_state!(nf, m.boundarycondition, m, x...)
 
-function init_state!(m::AtmosModel, state::Vars, aux::Vars, coords, t, args...)
+  function init_state!(m::AtmosModel, state::Vars, aux::Vars, coords, t, args...)
   m.init_state(state, aux, coords, t, args...)
 end
 
 boundary_flux_diffusive!(nf::NumericalFluxDiffusive,
                          atmos::AtmosModel,
                          F,
+                         state⁺, diff⁺, aux⁺, n⁻,
+                         state⁻, diff⁻, aux⁻,
+                         bctype, t,
+                         state1⁻, diff1⁻, aux1⁻) =
+  atmos_boundary_flux_diffusive!(nf, atmos.boundarycondition, atmos,
+                                 F,
+                                 state⁺, diff⁺, aux⁺, n⁻,
+                                 state⁻, diff⁻, aux⁻,
+                                 bctype, t,
+                                 state1⁻, diff1⁻, aux1⁻)
+
+boundary_flux_diffusive!(nf::CentralHyperDiffusiveFlux,
+                         atmos::AtmosModel,
+                         F,
                          state⁺, diff⁺, hyperdiff⁺, aux⁺, n⁻,
-                         state⁻, diff⁻, hyperdiff⁻, aux⁻,
+                         state⁻, diff⁻, hyperdiff⁻,aux⁻,
                          bctype, t,
                          state1⁻, diff1⁻, aux1⁻) =
   atmos_boundary_flux_diffusive!(nf, atmos.boundarycondition, atmos,
@@ -355,5 +385,4 @@ boundary_flux_diffusive!(nf::NumericalFluxDiffusive,
                                  state⁻, diff⁻, hyperdiff⁻, aux⁻,
                                  bctype, t,
                                  state1⁻, diff1⁻, aux1⁻)
-
 end # module
