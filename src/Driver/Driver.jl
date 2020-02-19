@@ -31,7 +31,6 @@ Base.@kwdef mutable struct CLIMA_Settings
     vtk_interval::Int = 10000
     log_level::String = "INFO"
     output_dir::String = "output"
-    output_nc_dir::String = "output/nc"
     integration_testing::Bool = false
     array_type
 end
@@ -158,7 +157,6 @@ function init(; disable_gpu=false)
         Settings.enable_vtk = parsed_args["enable-vtk"]
         Settings.vtk_interval = parsed_args["vtk-interval"]
         Settings.output_dir = parsed_args["output-dir"]
-        Settings.output_nc_dir = parsed_args["output-nc-dir"]
         Settings.integration_testing = parsed_args["integration-testing"]
         Settings.log_level = uppercase(parsed_args["log-level"])
     catch
@@ -375,8 +373,8 @@ function invoke!(solver_config::SolverConfiguration;
     end
 
     step = [0]
-    mkpath(Settings.output_nc_dir)
-    cbnc = GenericCallbacks.EveryXSimulationSteps(1) do (init=false) # - roughset
+    mkpath(joinpath(Settings.output_dir, "nc"))
+    cbnc = GenericCallbacks.EveryXSimulationSteps(100) do (init=false) # - roughset
         domain_height = FT(30e3) # already defined in heldsuarez! - import
         # these params need to be taken out into the hledsuarez.jl file or Settingas
         lat_res  = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
@@ -385,8 +383,8 @@ function invoke!(solver_config::SolverConfiguration;
         DA = array_type()
         
         # filename (may also want to take out)
-        nprefix = @sprintf("hs_test_step%04d.nc", step[1])
-        filename = joinpath(Settings.output_nc_dir, nprefix)
+        nprefix = @sprintf("nc/hs_test_step%04d.nc", step[1])
+        filename = joinpath(Settings.output_dir, nprefix)
         varnames = ("ro", "rou", "rov", "row", "roe") # didn't use greek - some non-julia analysis software may struggle?
         
         # get dg grid resolution
