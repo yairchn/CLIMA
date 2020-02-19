@@ -19,7 +19,6 @@ using ..MPIStateArrays
 using ..DGmethods: update_aux!, update_aux_diffusive!
 using ..TicToc
 using ..Mesh.Interpolation
-using ..AtmosDiagnostics
 
 Base.@kwdef mutable struct CLIMA_Settings
     disable_gpu::Bool = false

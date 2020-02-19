@@ -11,6 +11,7 @@ using FileIO
 using JLD2
 using MPI
 using StaticArrays
+using Printf
 
 using ..DGmethods
 using ..DGmethods: num_state, vars_state, num_aux, vars_aux, vars_diffusive, num_diffusive
@@ -142,6 +143,7 @@ function collect(currtime)
 
     # collect diagnostics
     diagnostics = collect(Settings.dg.balancelaw, currtime)
+    
 
     # write results
     if mpirank == 0 && diagnostics !== nothing
