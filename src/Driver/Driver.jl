@@ -18,6 +18,8 @@ using ..MoistThermodynamics
 using ..MPIStateArrays
 using ..DGmethods: update_aux!, update_aux_diffusive!
 using ..TicToc
+using ..Mesh.Interpolation
+using ..AtmosDiagnostics
 
 Base.@kwdef mutable struct CLIMA_Settings
     disable_gpu::Bool = false
@@ -30,6 +32,7 @@ Base.@kwdef mutable struct CLIMA_Settings
     vtk_interval::Int = 10000
     log_level::String = "INFO"
     output_dir::String = "output"
+    output_nc_dir::String = "output/nc"
     integration_testing::Bool = false
     array_type
 end
@@ -92,21 +95,21 @@ function parse_commandline()
         "--update-interval"
             help = "interval in seconds for showing simulation updates"
             arg_type = Int
-            default = 60
+            default = 2
         "--disable-diagnostics"
             help = "disable the collection of diagnostics to <output-dir>"
             action = :store_true
         "--diagnostics-interval"
             help = "interval in simulation steps for gathering diagnostics"
             arg_type = Int
-            default = 10000
+            default = 1
         "--enable-vtk"
             help = "output VTK to <output-dir> every <vtk-interval> simulation steps"
             action = :store_true
         "--vtk-interval"
             help = "interval in simulation steps for VTK output"
             arg_type = Int
-            default = 10000
+            default = 4
         "--log-level"
             help = "set the log level to one of debug/info/warn/error"
             arg_type = String
@@ -118,7 +121,12 @@ function parse_commandline()
         "--integration-testing"
             help = "enable integration testing"
             action = :store_true
+        "--output-nc-dir"
+            help = "directory for ncfile output"
+            arg_type = String
+            default = "output/nc"
     end
+
 
     return parse_args(s)
 end
@@ -151,6 +159,7 @@ function init(; disable_gpu=false)
         Settings.enable_vtk = parsed_args["enable-vtk"]
         Settings.vtk_interval = parsed_args["vtk-interval"]
         Settings.output_dir = parsed_args["output-dir"]
+        Settings.output_nc_dir = parsed_args["output-nc-dir"]
         Settings.integration_testing = parsed_args["integration-testing"]
         Settings.log_level = uppercase(parsed_args["log-level"])
     catch
