@@ -205,6 +205,7 @@ struct SolverConfiguration{FT}
     timeend::FT
     dt::FT
     forcecpu::Bool
+    numberofsteps::Int
     init_args
     solver
 end
@@ -265,7 +266,7 @@ function setup_solver(t0::FT, timeend::FT,
     else
         dt = calculate_dt(grid, dtmodel, Courant_number)
     end
-    numberofsteps = convert(Int64, cld(timeend, dt))
+    numberofsteps = convert(Int, cld(timeend, dt))
     dt = timeend / numberofsteps
 
     # create the solver
@@ -282,7 +283,8 @@ function setup_solver(t0::FT, timeend::FT,
     @toc setup_solver
 
     return SolverConfiguration(driver_config.name, driver_config.mpicomm, dg, Q,
-                               t0, timeend, dt, forcecpu, init_args, solver)
+                               t0, timeend, dt, forcecpu, numberofsteps,
+                               init_args, solver)
 end
 
 """
@@ -309,13 +311,13 @@ function invoke!(solver_config::SolverConfiguration;
     callbacks = ()
     if Settings.show_updates
         # set up the information callback
-        starttime = Ref(now())
+        upd_starttime = Ref(now())
         cbinfo = GenericCallbacks.EveryXWallTimeSeconds(Settings.update_interval, mpicomm) do (init=false)
             if init
-                starttime[] = now()
+                upd_starttime[] = now()
             else
                 runtime = Dates.format(convert(Dates.DateTime,
-                                               Dates.now()-starttime[]),
+                                               Dates.now()-upd_starttime[]),
                                        Dates.dateformat"HH:MM:SS")
                 energy = norm(solver_config.Q)
                 @info @sprintf("""Update
@@ -331,12 +333,17 @@ function invoke!(solver_config::SolverConfiguration;
         callbacks = (callbacks..., cbinfo)
     end
     if Settings.enable_diagnostics
-        # set up diagnostics callback
-        diagnostics_time_str = replace(string(now()), ":" => ".")
+        # set up diagnostics to be collected via callback
         cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(Settings.diagnostics_interval) do (init=false)
-            sim_time_str = string(ODESolvers.gettime(solver))
-            gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
-                               Settings.output_dir, ODESolvers.gettime(solver))
+            if init
+                dia_starttime = replace(string(now()), ":" => ".")
+                Diagnostics.init(mpicomm, dg, Q, dia_starttime, Settings.output_dir)
+            end
+            currtime = ODESolvers.gettime(solver)
+            @info @sprintf("""Diagnostics
+                           collecting at %s""",
+                           string(currtime))
+            Diagnostics.collect(currtime)
             nothing
         end
         callbacks = (callbacks..., cbdiagnostics)
@@ -367,54 +374,19 @@ function invoke!(solver_config::SolverConfiguration;
         end
         callbacks = (callbacks..., cbvtk)
     end
-
-    step = [0]
-    mkpath(Settings.output_nc_dir)
-    cbnc = GenericCallbacks.EveryXSimulationSteps(1) do (init=false) # - roughset
-        domain_height = FT(30e3) # already defined in heldsuarez! - import
-        # these params need to be taken out into the hledsuarez.jl file or Settingas
-        lat_res  = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
-        long_res = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
-        nel_vert_grd  = 20 # - roughset
-        DA = array_type()
-        
-        # filename (may also want to take out)
-        nprefix = @sprintf("hs_test_step%04d.nc", step[1])
-        filename = joinpath(Settings.output_nc_dir, nprefix)
-        varnames = ("ro", "rou", "rov", "row", "roe") # didn't use greek - some non-julia analysis software may struggle?
-        
-        # get dg grid resolution
-        topology = dg.grid.topology
-        nelem_tot = length(topology.elems)
-        numelem_vert = topology.stacksize
-        nhor = trunc(Int64, √( nelem_tot / numelem_vert / 6))
-        nvars = size(Q.data,2)
-        vert_range = grid1d(FT(planet_radius), FT(planet_radius + domain_height), nelem = numelem_vert)
-        rad_res    = FT((vert_range[end] - vert_range[1])/FT(nel_vert_grd)) 
-        
-        # get the z, lat, lon grid
-        intrp_cs = InterpolationCubedSphere(dg.grid, vert_range, nhor, lat_res, long_res, rad_res)
-        iv = DA(Array{FT}(undef, intrp_cs.Npl, nvars))
-        
-        # interpolate and save 
-        interpolate_local!(intrp_cs, Q.data, iv)
-        svi = write_interpolated_data(intrp_cs, iv, varnames, filename)
-        step[1] += 1
-       nothing
-     end
-    callbacks = (callbacks..., cbnc)
-
     callbacks = (callbacks..., user_callbacks...)
 
     # initial condition norm
     eng0 = norm(Q)
     @info @sprintf("""Starting %s
-                   dt                      = %.5e
-                   timeend                 = %.5e
-                   norm(Q)                 = %.16e""",
+                   dt              = %.5e
+                   timeend         = %.5e
+                   number of steps = %d
+                   norm(Q)         = %.16e""",
                    solver_config.name,
                    solver_config.dt,
                    solver_config.timeend,
+                   solver_config.numberofsteps,
                    eng0)
 
     # run the simulation
@@ -425,9 +397,9 @@ function invoke!(solver_config::SolverConfiguration;
     engf = norm(solver_config.Q)
 
     @info @sprintf("""Finished
-                   norm(Q)                 = %.16e
-                   norm(Q) / norm(Q₀)      = %.16e
-                   norm(Q) - norm(Q₀)      = %.16e""",
+                   norm(Q)            = %.16e
+                   norm(Q) / norm(Q₀) = %.16e
+                   norm(Q) - norm(Q₀) = %.16e""",
                    engf,
                    engf/eng0,
                    engf-eng0)
