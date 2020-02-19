@@ -205,6 +205,7 @@ struct SolverConfiguration{FT}
     timeend::FT
     dt::FT
     forcecpu::Bool
+    numberofsteps::Int
     init_args
     solver
 end
@@ -265,7 +266,7 @@ function setup_solver(t0::FT, timeend::FT,
     else
         dt = calculate_dt(grid, dtmodel, Courant_number)
     end
-    numberofsteps = convert(Int64, cld(timeend, dt))
+    numberofsteps = convert(Int, cld(timeend, dt))
     dt = timeend / numberofsteps
 
     # create the solver
@@ -282,7 +283,8 @@ function setup_solver(t0::FT, timeend::FT,
     @toc setup_solver
 
     return SolverConfiguration(driver_config.name, driver_config.mpicomm, dg, Q,
-                               t0, timeend, dt, forcecpu, init_args, solver)
+                               t0, timeend, dt, forcecpu, numberofsteps,
+                               init_args, solver)
 end
 
 """
@@ -309,13 +311,13 @@ function invoke!(solver_config::SolverConfiguration;
     callbacks = ()
     if Settings.show_updates
         # set up the information callback
-        starttime = Ref(now())
+        upd_starttime = Ref(now())
         cbinfo = GenericCallbacks.EveryXWallTimeSeconds(Settings.update_interval, mpicomm) do (init=false)
             if init
-                starttime[] = now()
+                upd_starttime[] = now()
             else
                 runtime = Dates.format(convert(Dates.DateTime,
-                                               Dates.now()-starttime[]),
+                                               Dates.now()-upd_starttime[]),
                                        Dates.dateformat"HH:MM:SS")
                 energy = norm(solver_config.Q)
                 @info @sprintf("""Update
@@ -331,12 +333,17 @@ function invoke!(solver_config::SolverConfiguration;
         callbacks = (callbacks..., cbinfo)
     end
     if Settings.enable_diagnostics
-        # set up diagnostics callback
-        diagnostics_time_str = replace(string(now()), ":" => ".")
+        # set up diagnostics to be collected via callback
         cbdiagnostics = GenericCallbacks.EveryXSimulationSteps(Settings.diagnostics_interval) do (init=false)
-            sim_time_str = string(ODESolvers.gettime(solver))
-            gather_diagnostics(mpicomm, dg, Q, diagnostics_time_str, sim_time_str,
-                               Settings.output_dir, ODESolvers.gettime(solver))
+            if init
+                dia_starttime = replace(string(now()), ":" => ".")
+                Diagnostics.init(mpicomm, dg, Q, dia_starttime, Settings.output_dir)
+            end
+            currtime = ODESolvers.gettime(solver)
+            @info @sprintf("""Diagnostics
+                           collecting at %s""",
+                           string(currtime))
+            Diagnostics.collect(currtime)
             nothing
         end
         callbacks = (callbacks..., cbdiagnostics)
@@ -409,12 +416,14 @@ function invoke!(solver_config::SolverConfiguration;
     # initial condition norm
     eng0 = norm(Q)
     @info @sprintf("""Starting %s
-                   dt                      = %.5e
-                   timeend                 = %.5e
-                   norm(Q)                 = %.16e""",
+                   dt              = %.5e
+                   timeend         = %.5e
+                   number of steps = %d
+                   norm(Q)         = %.16e""",
                    solver_config.name,
                    solver_config.dt,
                    solver_config.timeend,
+                   solver_config.numberofsteps,
                    eng0)
 
     # run the simulation
@@ -425,9 +434,9 @@ function invoke!(solver_config::SolverConfiguration;
     engf = norm(solver_config.Q)
 
     @info @sprintf("""Finished
-                   norm(Q)                 = %.16e
-                   norm(Q) / norm(Q₀)      = %.16e
-                   norm(Q) - norm(Q₀)      = %.16e""",
+                   norm(Q)            = %.16e
+                   norm(Q) / norm(Q₀) = %.16e
+                   norm(Q) - norm(Q₀) = %.16e""",
                    engf,
                    engf/eng0,
                    engf-eng0)
