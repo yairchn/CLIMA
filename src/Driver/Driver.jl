@@ -19,6 +19,7 @@ using ..MPIStateArrays
 using ..DGmethods: update_aux!, update_aux_diffusive!
 using ..TicToc
 using ..Mesh.Interpolation
+using ..AtmosDiagnostics
 
 Base.@kwdef mutable struct CLIMA_Settings
     disable_gpu::Bool = false
@@ -101,7 +102,7 @@ function parse_commandline()
         "--diagnostics-interval"
             help = "interval in simulation steps for gathering diagnostics"
             arg_type = Int
-            default = 100
+            default = 1
         "--enable-vtk"
             help = "output VTK to <output-dir> every <vtk-interval> simulation steps"
             action = :store_true
@@ -378,10 +379,9 @@ function invoke!(solver_config::SolverConfiguration;
         DA = array_type()
         
         # filename (may also want to take out)
-        nprefix = @sprintf("hs_test_step%04d_notworking.nc", step[1])
-        #nprefix = "Ltest.nc"
+        nprefix = @sprintf("hs_test_step%04d.nc", step[1])
         filename = joinpath(Settings.output_nc_dir, nprefix)
-        varnames = ("ro", "rou", "rov", "row", "e") # didn't use greek - some non-julia analysis software may struggle?
+        varnames = ("ro", "rou", "rov", "row", "roe") # didn't use greek - some non-julia analysis software may struggle?
         
         # get dg grid resolution
         topology = dg.grid.topology
