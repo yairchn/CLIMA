@@ -3,6 +3,7 @@ using DocStringExtensions
 using CLIMA.PlanetParameters
 using CLIMA.SubgridScaleParameters
 export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss, DynamicSubgridStabilization
+export turbulence_tensors
 
 abstract type TurbulenceClosure end
 

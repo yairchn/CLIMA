@@ -23,8 +23,6 @@ using CLIMA.VTK
 using Random
 using CLIMA.Atmos: vars_state, vars_aux
 
-const ArrayType = CLIMA.array_type()
-
 if !@isdefined integration_testing
   const integration_testing =
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
@@ -55,7 +53,7 @@ eprint = {https://onlinelibrary.wiley.com/doi/pdf/10.1002/fld.1650170103},
 year = {1993}
 }
 """
-function Initialise_Density_Current!(state::Vars, aux::Vars, (x1,x2,x3), t)
+function Initialise_Density_Current!(bl, state::Vars, aux::Vars, (x1,x2,x3), t)
   FT                = eltype(state)
   R_gas::FT         = R_d
   c_p::FT           = cp_d
@@ -96,7 +94,7 @@ function Initialise_Density_Current!(state::Vars, aux::Vars, (x1,x2,x3), t)
   state.moisture.ρq_tot = FT(0)
 end
 # --------------- Driver definition ------------------ #
-function run(mpicomm,
+function run(mpicomm, ArrayType,
              topl, dim, Ne, polynomialorder,
              timeend, FT, dt)
   # -------------- Define grid ----------------------------------- #
@@ -106,14 +104,13 @@ function run(mpicomm,
                                           polynomialorder = polynomialorder
                                            )
   # -------------- Define model ---------------------------------- #
-  model = AtmosModel(FlatOrientation(),
-                     NoReferenceState(),
-                     AnisoMinDiss{FT}(1),
-                     EquilMoist(),
-                     NoPrecipitation(),
-                     NoRadiation(),
-                     NoSubsidence{FT}(),
-                     Gravity(), NoFluxBC(), Initialise_Density_Current!)
+  source = Gravity()
+  model = AtmosModel{FT}(AtmosLESConfiguration;
+                         ref_state=NoReferenceState(),
+                        turbulence=AnisoMinDiss{FT}(1),
+                            source=source,
+                 boundarycondition=NoFluxBC(),
+                        init_state=Initialise_Density_Current!)
   # -------------- Define dgbalancelaw --------------------------- #
   dg = DGModel(model,
                grid,
@@ -180,6 +177,7 @@ end
 using Test
 let
   CLIMA.init()
+  ArrayType = CLIMA.array_type()
   mpicomm = MPI.COMM_WORLD
   ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
   loglevel = ll == "DEBUG" ? Logging.Debug :
@@ -193,7 +191,7 @@ let
                   range(FT(ymin); length=Ne[2]+1, stop=ymax),
                   range(FT(zmin); length=Ne[3]+1, stop=zmax))
     topl = StackedBrickTopology(mpicomm, brickrange, periodicity = (false, true, false))
-    engf_eng0 = run(mpicomm,
+    engf_eng0 = run(mpicomm, ArrayType,
                     topl, dim, Ne, polynomialorder,
                     timeend, FT, dt)
     @test engf_eng0 ≈ FT(9.9999970927037096e-01)

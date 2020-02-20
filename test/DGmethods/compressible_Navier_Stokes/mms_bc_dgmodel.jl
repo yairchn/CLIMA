@@ -13,8 +13,6 @@ using StaticArrays
 using Logging, Printf, Dates
 using CLIMA.VTK
 
-const ArrayType = CLIMA.array_type()
-
 if !@isdefined integration_testing
   const integration_testing =
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
@@ -26,7 +24,7 @@ include("mms_model.jl")
 
 # initial condition
 
-function run(mpicomm, dim, topl, warpfun, N, timeend, FT, dt)
+function run(mpicomm, ArrayType, dim, topl, warpfun, N, timeend, FT, dt)
 
   grid = DiscontinuousSpectralElementGrid(topl,
                                           FloatType = FT,
@@ -90,6 +88,8 @@ end
 using Test
 let
   CLIMA.init()
+  ArrayType = CLIMA.array_type()
+
   mpicomm = MPI.COMM_WORLD
   ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
   loglevel = ll == "DEBUG" ? Logging.Debug :
@@ -101,10 +101,11 @@ let
   polynomialorder = 4
   base_num_elem = 4
 
-  expected_result = [1.5606126271800713e-01 5.3315235468489059e-03 2.2572701271271977e-04;
-                     2.5754410198969766e-02 1.1781217145186925e-03 6.1752962472852435e-05]
+  expected_result = [1.6694721292986181e-01 5.4178750150416337e-03 2.3066867400713085e-04;
+                     3.3672443923201158e-02 1.7603832251132654e-03 9.1108401774885506e-05]
   lvls = integration_testing ? size(expected_result, 2) : 1
 
+  @testset "mms_bc_dgmodel" begin
     for FT in (Float64,) #Float32)
       result = zeros(FT, lvls)
       for dim = 2:3
@@ -139,7 +140,7 @@ let
           dt = timeend / nsteps
 
           @info (ArrayType, FT, dim)
-          result[l] = run(mpicomm, dim, topl, warpfun,
+          result[l] = run(mpicomm, ArrayType, dim, topl, warpfun,
                           polynomialorder, timeend, FT, dt)
           @test result[l] ≈ FT(expected_result[dim-1, l])
         end
@@ -155,6 +156,7 @@ let
         end
       end
     end
+  end
 end
 
 nothing

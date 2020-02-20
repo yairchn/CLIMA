@@ -1,11 +1,12 @@
 using Test
 using MPI
+using CLIMA
 using CLIMA.MPIStateArrays
 using CLIMA.Mesh.BrickMesh
 using Pkg
 
-const ArrayType = CLIMA.array_type()
 CLIMA.init()
+const ArrayType = CLIMA.array_type()
 const comm = MPI.COMM_WORLD
 
 

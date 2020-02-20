@@ -34,8 +34,6 @@ using CLIMA.VTK
 using CLIMA.LinearSolvers
 using CLIMA.GeneralizedConjugateResidualSolver
 
-const ArrayTypes = (CLIMA.array_type(),)
-
 if !@isdefined integration_testing
   const integration_testing =
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
@@ -267,7 +265,7 @@ function main(mpicomm, FT, topl::AbstractTopology{dim}, N, timeend,
   Q = MPIStateArray(nonlin_spacedisc, initialcondition)
   dQ = similar(Q)
 
-  linearsolver = GeneralizedConjugateResidual(3, Q, 1e-10)
+  linearsolver = GeneralizedConjugateResidual(3, Q, rtol=1e-10)
   ark = ARK548L2SA2KennedyCarpenter(nonlin_spacedisc, lin_spacedisc,
                                     linearsolver, Q; dt = dt, t0 = 0)
 
@@ -338,6 +336,8 @@ end
 using Test
 let
   CLIMA.init()
+  ArrayTypes = (CLIMA.array_type(),)
+
   mpicomm = MPI.COMM_WORLD
   ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
   loglevel = ll == "DEBUG" ? Logging.Debug :

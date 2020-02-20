@@ -23,8 +23,6 @@ import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
 import CLIMA.DGmethods.NumericalFluxes: NumericalFluxDiffusive,
                                         numerical_flux_diffusive!
                                                               
-const ArrayType = CLIMA.array_type()
-
 if !@isdefined integration_testing
   const integration_testing =
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
@@ -133,6 +131,8 @@ end
 
 let
   CLIMA.init()
+  ArrayType = CLIMA.array_type()
+
   mpicomm = MPI.COMM_WORLD
   ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
   loglevel = ll == "DEBUG" ? Logging.Debug :
@@ -145,8 +145,8 @@ let
   base_num_elem = 4
   tol = 1e-9
 
-  linmethods = (b -> GeneralizedConjugateResidual(3, b, tol),
-                b -> GeneralizedMinimalResidual(7, b, tol)
+  linmethods = (b -> GeneralizedConjugateResidual(3, b, rtol=tol),
+                b -> GeneralizedMinimalResidual(b, M=7, rtol=tol)
                )
 
   expected_result = Array{Float64}(undef, 2, 2, 3) # method, dim-1, lvl

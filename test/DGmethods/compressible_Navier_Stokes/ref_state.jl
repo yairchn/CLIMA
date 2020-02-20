@@ -17,8 +17,6 @@ using StaticArrays
 using Logging, Printf, Dates
 using CLIMA.VTK
 
-const ArrayType = CLIMA.array_type()
-
 if !@isdefined integration_testing
   const integration_testing =
     parse(Bool, lowercase(get(ENV,"JULIA_CLIMA_INTEGRATION_TESTING","false")))
@@ -28,12 +26,12 @@ using CLIMA.Atmos
 using CLIMA.Atmos: internal_energy, thermo_state
 import CLIMA.Atmos: MoistureModel, temperature, pressure, soundspeed
 
-init_state!(state, aux, coords, t) = nothing
+init_state!(bl, state, aux, coords, t) = nothing
 
 # initial condition
 using CLIMA.Atmos: vars_aux
 
-function run1(mpicomm, dim, topl, N, timeend, FT, dt)
+function run1(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt)
 
   grid = DiscontinuousSpectralElementGrid(topl,
                                           FloatType = FT,
@@ -43,16 +41,9 @@ function run1(mpicomm, dim, topl, N, timeend, FT, dt)
 
   T_s = 320.0
   RH = 0.01
-  model = AtmosModel(FlatOrientation(),
-                     HydrostaticState(IsothermalProfile(T_s), RH),
-                     ConstantViscosityWithDivergence(FT(1)),
-                     EquilMoist(),
-                     NoPrecipitation(),
-                     NoRadiation(),
-                     NoSubsidence{FT}(),
-                     nothing,
-                     NoFluxBC(),
-                     init_state!)
+  model = AtmosModel{FT}(AtmosLESConfiguration;
+                         ref_state=HydrostaticState(IsothermalProfile(T_s), RH),
+                        init_state=init_state!)
 
   dg = DGModel(model,
                grid,
@@ -68,7 +59,7 @@ function run1(mpicomm, dim, topl, N, timeend, FT, dt)
   return FT(0)
 end
 
-function run2(mpicomm, dim, topl, N, timeend, FT, dt)
+function run2(mpicomm, ArrayType, dim, topl, N, timeend, FT, dt)
 
   grid = DiscontinuousSpectralElementGrid(topl,
                                           FloatType = FT,
@@ -78,16 +69,9 @@ function run2(mpicomm, dim, topl, N, timeend, FT, dt)
 
   T_min, T_s, Γ = FT(290), FT(320), FT(6.5*10^-3)
   RH = 0.01
-  model = AtmosModel(FlatOrientation(),
-                     HydrostaticState(LinearTemperatureProfile(T_min, T_s, Γ), RH),
-                     ConstantViscosityWithDivergence(FT(1)),
-                     EquilMoist(),
-                     NoPrecipitation(),
-                     NoRadiation(),
-                     NoSubsidence{FT}(),
-                     nothing,
-                     NoFluxBC(),
-                     init_state!)
+  model = AtmosModel{FT}(AtmosLESConfiguration;
+                         ref_state=HydrostaticState(LinearTemperatureProfile(T_min, T_s, Γ), RH),
+                         init_state=init_state!)
 
   dg = DGModel(model,
                grid,
@@ -106,6 +90,8 @@ end
 using Test
 let
   CLIMA.init()
+  ArrayType = CLIMA.array_type()
+
   mpicomm = MPI.COMM_WORLD
   ll = uppercase(get(ENV, "JULIA_LOG_LEVEL", "INFO"))
   loglevel = ll == "DEBUG" ? Logging.Debug :
@@ -140,9 +126,9 @@ for FT in (Float64,) #Float32)
     dt = timeend / nsteps
 
     @info (ArrayType, FT, dim)
-    result[l] = run1(mpicomm, dim, topl,
+    result[l] = run1(mpicomm, ArrayType, dim, topl,
                     polynomialorder, timeend, FT, dt)
-    result[l] = run2(mpicomm, dim, topl,
+    result[l] = run2(mpicomm, ArrayType, dim, topl,
                     polynomialorder, timeend, FT, dt)
   end
   if integration_testing

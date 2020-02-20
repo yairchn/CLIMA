@@ -2,7 +2,9 @@ module Atmos
 
 export AtmosModel,
        AtmosAcousticLinearModel, AtmosAcousticGravityLinearModel,
-       RemainderModel
+       RemainderModel,
+       AtmosLESConfiguration,
+       AtmosGCMConfiguration
 
 using LinearAlgebra, StaticArrays
 using ..VariableTemplates
@@ -12,6 +14,7 @@ import ..MoistThermodynamics: internal_energy
 using ..SubgridScaleParameters
 using GPUifyLoops
 using ..MPIStateArrays: MPIStateArray
+using ..Mesh.Grids: VerticalDirection, HorizontalDirection, min_node_distance
 
 import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
                         vars_diffusive, vars_integrals, flux_nondiffusive!,
@@ -20,11 +23,13 @@ import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
                         update_aux!, dynsgs!, integrate_aux!, LocalGeometry, lengthscale,
                         resolutionmetric, DGModel, num_integrals,
                         nodal_update_aux!, indefinite_stack_integral!,
-                        reverse_indefinite_stack_integral!, num_state
-import ..DGmethods.NumericalFluxes: boundary_state!, Rusanov,
-                                    CentralNumericalFluxGradient,
-                                    CentralNumericalFluxDiffusive,
-                                    boundary_flux_diffusive!
+                        reverse_indefinite_stack_integral!, num_state,
+                        calculate_dt
+import ..DGmethods.NumericalFluxes: boundary_state!,
+                                    boundary_flux_diffusive!,
+                                    NumericalFluxNonDiffusive,
+                                    NumericalFluxGradient,
+                                    NumericalFluxDiffusive
 
 """
     AtmosModel <: BalanceLaw
@@ -37,7 +42,7 @@ A `BalanceLaw` for atmosphere modeling.
                boundarycondition, init_state)
 
 """
-struct AtmosModel{O,RS,T,M,P,R,SU,S,BC,IS} <: BalanceLaw
+struct AtmosModel{FT,O,RS,T,M,P,R,SU,S,BC,IS} <: BalanceLaw
   orientation::O
   ref_state::RS
   turbulence::T
@@ -50,6 +55,83 @@ struct AtmosModel{O,RS,T,M,P,R,SU,S,BC,IS} <: BalanceLaw
   boundarycondition::BC
   init_state::IS
 end
+
+function calculate_dt(grid, model::AtmosModel, Courant_number)
+    T = 290.0
+    return Courant_number * min_node_distance(grid, VerticalDirection()) / soundspeed_air(T)
+end
+
+abstract type AtmosConfiguration end
+struct AtmosLESConfiguration <: AtmosConfiguration end
+struct AtmosGCMConfiguration <: AtmosConfiguration end
+
+function AtmosModel{FT}(::Type{AtmosLESConfiguration};
+                         orientation::O=FlatOrientation(),
+                         ref_state::RS=HydrostaticState(LinearTemperatureProfile(FT(200),
+                                                                                 FT(280),
+                                                                                 FT(grav) / FT(cp_d)),
+                                                                                 FT(0)),
+                         turbulence::T=SmagorinskyLilly{FT}(0.21),
+                         moisture::M=EquilMoist(),
+                         precipitation::P=NoPrecipitation(),
+                         radiation::R=NoRadiation(),
+                         subsidence::SU=NoSubsidence{FT}(),
+                         source::S=( Gravity(),
+                                     Coriolis(),
+                                     GeostrophicForcing{FT}(7.62e-5, 0, 0)),
+                         # TODO: Probably want to have different bc for state and diffusion...
+                         boundarycondition::BC=NoFluxBC(),
+                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,M,P,R,SU,S,BC,IS}
+  @assert init_state ≠ nothing
+
+  atmos = (
+        orientation,
+        ref_state,
+        turbulence,
+        moisture,
+        precipitation,
+        radiation,
+        subsidence,
+        source,
+        boundarycondition,
+        init_state,
+       )
+
+  return AtmosModel{FT,typeof.(atmos)...}(atmos...)
+end
+function AtmosModel{FT}(::Type{AtmosGCMConfiguration};
+                         orientation::O        = SphericalOrientation(),
+                         ref_state::RS         = HydrostaticState(
+                                                   LinearTemperatureProfile(
+                                                    FT(200),
+                                                    FT(280),
+                                                    FT(grav) / FT(cp_d)),
+                                                  FT(0)),
+                         turbulence::T         = SmagorinskyLilly{FT}(0.21),
+                         moisture::M           = EquilMoist(),
+                         precipitation::P      = NoPrecipitation(),
+                         radiation::R          = NoRadiation(),
+                         subsidence::SU        = NoSubsidence{FT}(),
+                         source::S             = (Gravity(), Coriolis()),
+                         boundarycondition::BC = NoFluxBC(),
+                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,M,P,R,SU,S,BC,IS}
+  @assert init_state ≠ nothing
+  atmos = (
+        orientation,
+        ref_state,
+        turbulence,
+        moisture,
+        precipitation,
+        radiation,
+        subsidence,
+        source,
+        boundarycondition,
+        init_state,
+       )
+
+  return AtmosModel{FT,typeof.(atmos)...}(atmos...)
+end
+
 
 function vars_state(m::AtmosModel, FT)
   @vars begin
@@ -247,21 +329,21 @@ end
 boundary_state!(nf, m::AtmosModel, x...) =
   atmos_boundary_state!(nf, m.boundarycondition, m, x...)
 
-# FIXME: This is probably not right....
-boundary_state!(::CentralNumericalFluxGradient, bl::AtmosModel, _...) = nothing
-
 function init_state!(m::AtmosModel, state::Vars, aux::Vars, coords, t, args...)
-  m.init_state(state, aux, coords, t, args...)
+  m.init_state(m, state, aux, coords, t, args...)
 end
 
-boundary_flux_diffusive!(nf::CentralNumericalFluxDiffusive, atmos::AtmosModel,
-                         F⁺, state⁺, diff⁺, aux⁺, n⁻,
-                         F⁻, state⁻, diff⁻, aux⁻,
+boundary_flux_diffusive!(nf::NumericalFluxDiffusive,
+                         atmos::AtmosModel,
+                         F,
+                         state⁺, diff⁺, aux⁺, n⁻,
+                         state⁻, diff⁻, aux⁻,
                          bctype, t,
                          state1⁻, diff1⁻, aux1⁻) =
   atmos_boundary_flux_diffusive!(nf, atmos.boundarycondition, atmos,
-                                 F⁺, state⁺, diff⁺, aux⁺, n⁻,
-                                 F⁻, state⁻, diff⁻, aux⁻,
+                                 F,
+                                 state⁺, diff⁺, aux⁺, n⁻,
+                                 state⁻, diff⁻, aux⁻,
                                  bctype, t,
                                  state1⁻, diff1⁻, aux1⁻)
 
