@@ -6,6 +6,8 @@ using CLIMA
 using CLIMA.Atmos
 using CLIMA.GenericCallbacks
 using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.AdditiveRungeKuttaMethod
+using CLIMA.ColumnwiseLUSolver: ManyColumnLU
 using CLIMA.Mesh.Filters
 using CLIMA.Mesh.Grids
 using CLIMA.MoistThermodynamics
@@ -109,20 +111,24 @@ function main()
     N = 5
 
     # Domain resolution
-    nelem_horz = 6
+    nelem_horz = 15
     nelem_vert = 8
     resolution = (nelem_horz, nelem_vert)
 
     t0 = FT(0)
-    timeend = FT(60) # 400day
+    days = 30
+    timeend = FT(days*24*60*60) # 400day
 
     driver_config = config_heldsuarez(FT, N, resolution)
-    ode_solver_type = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
+    #ode_solver_type = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
+    ode_solver_type = CLIMA.IMEXSolverType(linear_solver=ManyColumnLU,
+                                           solver_method=ARK2GiraldoKellyConstantinescu)
     solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
-                                       ode_solver_type=ode_solver_type)
+                                       ode_solver_type=ode_solver_type, 
+                                       Courant_number=0.40)
 
     # Set up the filter callback
-    filterorder = 14
+    filterorder = 8
     filter = ExponentialFilter(solver_config.dg.grid, 0, filterorder)
     cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do
         Filters.apply!(solver_config.Q, 1:size(solver_config.Q, 2),
