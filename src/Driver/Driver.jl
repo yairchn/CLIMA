@@ -93,7 +93,7 @@ function parse_commandline()
         "--update-interval"
             help = "interval in seconds for showing simulation updates"
             arg_type = Int
-            default = 2
+            default = 60
         "--disable-diagnostics"
             help = "disable the collection of diagnostics to <output-dir>"
             action = :store_true
