@@ -100,6 +100,7 @@ function linearsolve!(
     args...;
     max_iters = length(Q),
     cvg = Ref{Bool}(),
+    applyPC = (x, y) -> (x .= y)
 )
     converged = false
     iters = 0
