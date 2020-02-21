@@ -6,6 +6,7 @@ using Logging
 using MPI
 using Printf
 using Requires
+using ..Atmos: flattenednames, vars_aux, vars_state
 
 using ..AdditiveRungeKuttaMethod
 using ..VTK
@@ -107,7 +108,7 @@ function parse_commandline()
         "--vtk-interval"
             help = "interval in simulation steps for VTK output"
             arg_type = Int
-            default = 4
+            default = 1
         "--log-level"
             help = "set the log level to one of debug/info/warn/error"
             arg_type = String
@@ -373,36 +374,51 @@ function invoke!(solver_config::SolverConfiguration;
     end
 
     step = [0]
-    mkpath(joinpath(Settings.output_dir, "nc"))
-    cbnc = GenericCallbacks.EveryXSimulationSteps(100) do (init=false) # - roughset
+    mkpath(Settings.output_dir)
+    cbnc = GenericCallbacks.EveryXSimulationSteps(1) do (init=false) # - roughset
         domain_height = FT(30e3) # already defined in heldsuarez! - import
         # these params need to be taken out into the hledsuarez.jl file or Settingas
         lat_res  = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
         long_res = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
         nel_vert_grd  = 20 # - roughset
         DA = array_type()
-        
+
         # filename (may also want to take out)
-        nprefix = @sprintf("nc/hs_test_step%04d.nc", step[1])
-        filename = joinpath(Settings.output_dir, nprefix)
+        nprefix = @sprintf("hs_step%04d", step[1])
+        filename = joinpath(Settings.output_dir,string(nprefix,".nc"))
+        filename_aux = joinpath(Settings.output_dir,string(nprefix,"_aux.nc"))
         varnames = ("ro", "rou", "rov", "row", "roe") # didn't use greek - some non-julia analysis software may struggle?
         
+        auxnames = flattenednames(vars_aux(bl, FT))
+        statenames = flattenednames(vars_state(bl, FT))
+        
+        varnames_aux = (auxnames) 
+        #aux_list = (dg.auxstate.temperature)
+        aux_list = dg.auxstate.data
+        
+        print(statenames)
+
         # get dg grid resolution
         topology = dg.grid.topology
         nelem_tot = length(topology.elems)
         numelem_vert = topology.stacksize
         nhor = trunc(Int64, √( nelem_tot / numelem_vert / 6))
         nvars = size(Q.data,2)
+        nvars_aux = size(aux_list,2)
+
         vert_range = grid1d(FT(planet_radius), FT(planet_radius + domain_height), nelem = numelem_vert)
         rad_res    = FT((vert_range[end] - vert_range[1])/FT(nel_vert_grd)) 
         
         # get the z, lat, lon grid
         intrp_cs = InterpolationCubedSphere(dg.grid, vert_range, nhor, lat_res, long_res, rad_res)
         iv = DA(Array{FT}(undef, intrp_cs.Npl, nvars))
-        
+        iv_aux = DA(Array{FT}(undef, intrp_cs.Npl, nvars_aux))
+
         # interpolate and save 
         interpolate_local!(intrp_cs, Q.data, iv)
+        interpolate_local!(intrp_cs, aux_list, iv_aux)
         svi = write_interpolated_data(intrp_cs, iv, varnames, filename)
+        svi = write_interpolated_data(intrp_cs, iv_aux, varnames_aux, filename_aux)
         step[1] += 1
        nothing
      end
