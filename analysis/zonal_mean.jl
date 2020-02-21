@@ -6,9 +6,11 @@ using Printf
 
 
 # analysis folder
-#ana_folder = "/central/scratch/bischtob/heldsuarez/nc"
-ana_folder = "/Users/lenka/Desktop/CLIMA/output"
-num_avg = 6
+ana_folder = "/central/scratch/bischtob/heldsuarez/nc"
+#ana_folder = "/Users/lenka/Desktop/CLIMA/output"
+num_avg_a = 350
+num_avg_b = num_avg_a + 12
+num_avg = num_avg_b - num_avg_a + 1
 
 # read the Netcdf files from disk
 function read_ncfiles(filename, filename_aux, pinfo)
@@ -41,6 +43,7 @@ u_a = zeros(num_avg, size(rad)[1], size(lat)[1], size(lon)[1])
 e_a = zeros(num_avg, size(rad)[1], size(lat)[1], size(lon)[1])
 T_a = zeros(num_avg, size(rad)[1], size(lat)[1], size(lon)[1])
 for i in 1:num_avg
+  ind = num_avg_a + i - 1
   lon, lat, rad, ρ_a[i,:,:,:], u_a[i,:,:,:], e_a[i,:,:,:], T_a[i,:,:,:] = read_ncfiles(@sprintf("hs_step000%s.nc",i), @sprintf("hs_step000%s_aux.nc",i), false)
 end
 
