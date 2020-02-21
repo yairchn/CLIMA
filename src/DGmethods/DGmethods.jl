@@ -9,6 +9,8 @@ using ..SpaceMethods
 using ..VariableTemplates
 using DocStringExtensions
 using GPUifyLoops
+import KernelAbstractions
+import KernelAbstractions.@index
 
 export BalanceLaw, DGModel, init_ode_state
 

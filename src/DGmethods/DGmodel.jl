@@ -91,10 +91,14 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   ###################
   # RHS Computation #
   ###################
-  @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
-          volumerhs!(bl, Val(dim), Val(N), dg.direction, dQdt.data,
-                     Q.data, Qvisc.data, auxstate.data, grid.vgeo, t,
-                     grid.ω, grid.D, topology.realelems, increment))
+
+  kernel! = volumerhs!(KernelAbstractions.CUDA(),
+                       KernelAbstractions.StaticSize(Nq * Nq * Nqk),
+                       KernelAbstractions.StaticSize(Nq * Nq * Nqk * nrealelem))
+  event = kernel!(bl, Val(dim), Val(N), dg.direction, dQdt.data,
+                  Q.data, Qvisc.data, auxstate.data, grid.vgeo, t,
+                  grid.ω, grid.D, topology.realelems, increment)
+  wait(event)
 
   if communicate
     if nviscstate > 0
