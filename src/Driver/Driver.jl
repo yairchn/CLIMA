@@ -94,21 +94,21 @@ function parse_commandline()
         "--update-interval"
             help = "interval in seconds for showing simulation updates"
             arg_type = Int
-            default = 60
+            default = 100
         "--disable-diagnostics"
             help = "disable the collection of diagnostics to <output-dir>"
             action = :store_true
         "--diagnostics-interval"
             help = "interval in simulation steps for gathering diagnostics"
             arg_type = Int
-            default = 1
+            default = 100
         "--enable-vtk"
             help = "output VTK to <output-dir> every <vtk-interval> simulation steps"
             action = :store_true
         "--vtk-interval"
             help = "interval in simulation steps for VTK output"
             arg_type = Int
-            default = 1
+            default = 100
         "--log-level"
             help = "set the log level to one of debug/info/warn/error"
             arg_type = String
@@ -375,7 +375,7 @@ function invoke!(solver_config::SolverConfiguration;
 
     step = [0]
     mkpath(Settings.output_dir)
-    cbnc = GenericCallbacks.EveryXSimulationSteps(1) do (init=false) # - roughset
+    cbnc = GenericCallbacks.EveryXSimulationSteps(500) do (init=false) # - roughset
         domain_height = FT(30e3) # already defined in heldsuarez! - import
         # these params need to be taken out into the hledsuarez.jl file or Settingas
         lat_res  = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
@@ -396,7 +396,7 @@ function invoke!(solver_config::SolverConfiguration;
         #aux_list = (dg.auxstate.temperature)
         aux_list = dg.auxstate.data
         
-        print(statenames)
+        #print(statenames)
 
         # get dg grid resolution
         topology = dg.grid.topology

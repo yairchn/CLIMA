@@ -105,7 +105,7 @@ end
 function main()
     CLIMA.init()
 
-    FT = Float64
+    FT = Float32
 
     # DG polynomial order
     N = 5
