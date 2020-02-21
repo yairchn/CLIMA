@@ -79,16 +79,16 @@ solution.  The arguments `args` is passed to `linearoperator!` when it is
 called.
 """
 function linearsolve!(linearoperator!, solver::AbstractIterativeLinearSolver, Q, Qrhs, args...;
-                      max_iters=length(Q), cvg=Ref{Bool}())
+                      max_iters=length(Q), cvg=Ref{Bool}(), applyPC = (x, y) -> (x .= y))
   converged = false
   iters = 0
 
-  converged, threshold = initialize!(linearoperator!, Q, Qrhs, solver, args...)
+  converged, threshold = initialize!(linearoperator!, Q, Qrhs, solver, applyPC, args...)
   converged && return iters
 
   while !converged && iters < max_iters
     converged, inner_iters, residual_norm =
-      doiteration!(linearoperator!, Q, Qrhs, solver, threshold, args...)
+      doiteration!(linearoperator!, Q, Qrhs, solver, threshold, applyPC, args...)
 
     iters += inner_iters
 
