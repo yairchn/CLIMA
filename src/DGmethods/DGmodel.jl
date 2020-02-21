@@ -42,7 +42,9 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   communicate = !(isstacked(topology) &&
                   typeof(dg.direction) <: VerticalDirection)
 
+  @tic update_aux!
   aux_comm = update_aux!(dg, bl, Q, t)
+  @toc update_aux!
   @assert typeof(aux_comm) == Bool
 
   ########################
@@ -57,10 +59,12 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
 
   if nviscstate > 0
 
+    @tic volumeviscterms!
     @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
             volumeviscterms!(bl, Val(dim), Val(N), dg.direction, Q.data,
                              Qvisc.data, auxstate.data, grid.vgeo, t, grid.D,
                              topology.realelems))
+    @toc volumeviscterms!
 
     if communicate
       MPIStateArrays.finish_ghost_recv!(Q)
@@ -69,17 +73,21 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
       end
     end
 
+    @tic faceviscterms!
     @launch(device, threads=Nfp, blocks=nrealelem,
             faceviscterms!(bl, Val(dim), Val(N), dg.direction,
                            dg.gradnumflux, Q.data, Qvisc.data, auxstate.data,
                            grid.vgeo, grid.sgeo, t, grid.vmapM, grid.vmapP, grid.elemtobndy,
                            topology.realelems))
+    @toc faceviscterms!
 
     if communicate
       MPIStateArrays.start_ghost_exchange!(Qvisc)
     end
 
+    @tic update_aux_diffusive!
     aux_comm = update_aux_diffusive!(dg, bl, Q, t)
+    @toc update_aux_diffusive!
     @assert typeof(aux_comm) == Bool
 
     if aux_comm
@@ -91,10 +99,12 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   ###################
   # RHS Computation #
   ###################
+  @tic volumerhs!
   @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
           volumerhs!(bl, Val(dim), Val(N), dg.direction, dQdt.data,
                      Q.data, Qvisc.data, auxstate.data, grid.vgeo, t,
                      grid.ω, grid.D, topology.realelems, increment))
+  @toc volumerhs!
 
   if communicate
     if nviscstate > 0
@@ -110,6 +120,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     end
   end
 
+  @tic facerhs!
   @launch(device, threads=Nfp, blocks=nrealelem,
           facerhs!(bl, Val(dim), Val(N), dg.direction,
                    dg.numfluxnondiff,
@@ -117,6 +128,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
                    dQdt.data, Q.data, Qvisc.data,
                    auxstate.data, grid.vgeo, grid.sgeo, t, grid.vmapM, grid.vmapP, grid.elemtobndy,
                    topology.realelems))
+  @toc facerhs!
 
   # Just to be safe, we wait on the sends we started.
   if communicate

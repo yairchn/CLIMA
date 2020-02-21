@@ -9,6 +9,7 @@ using ..SpaceMethods
 using ..VariableTemplates
 using DocStringExtensions
 using GPUifyLoops
+using ..TicToc
 
 export BalanceLaw, DGModel, init_ode_state
 

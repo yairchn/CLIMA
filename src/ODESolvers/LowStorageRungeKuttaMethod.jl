@@ -9,6 +9,7 @@ using ..ODESolvers
 ODEs = ODESolvers
 using ..SpaceMethods
 using ..MPIStateArrays: device, realview
+using ..TicToc
 
 """
     LowStorageRungeKutta2N(f, RKA, RKB, RKC, Q; dt, t0 = 0)
@@ -128,9 +129,11 @@ function ODEs.dostep!(Q, lsrk::LowStorageRungeKutta2N, p, time::Real,
       slow_scaling = in_slow_scaling
     end
     # update solution and scale RHS
+    @tic update!
     @launch(device(Q), threads=threads, blocks=blocks,
             update!(rv_dQ, rv_Q, RKA[s%length(RKA)+1], RKB[s], dt,
                     slow_δ, slow_rv_dQ, slow_scaling))
+    @toc update!
   end
 end
 
