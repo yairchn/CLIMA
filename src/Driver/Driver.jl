@@ -382,6 +382,7 @@ function invoke!(solver_config::SolverConfiguration;
                    eng0)
 
     # run the simulation
+    callbacks=user_callbacks
     @tic solve!
     solve!(Q, solver; timeend=timeend, callbacks=callbacks, adjustfinalstep=adjustfinalstep)
     @toc solve!

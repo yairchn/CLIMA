@@ -366,6 +366,8 @@ function main()
     result = CLIMA.invoke!(solver_config;
                           user_callbacks=(cbtmarfilter,),
                           check_euclidean_distance=true)
+
+    TicToc.print_timing_info()
 end
 
 main()
