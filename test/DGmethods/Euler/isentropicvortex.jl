@@ -19,6 +19,7 @@ using CLIMA.Atmos: AtmosModel, NoOrientation, NoReferenceState,
 using CLIMA.VariableTemplates: flattenednames
 
 using MPI, Logging, StaticArrays, LinearAlgebra, Printf, Dates, Test
+using CUDAdrv
 
 if !@isdefined integration_testing
   const integration_testing =
@@ -89,8 +90,8 @@ function main()
   expected_error[Float32, 3, Central, 4] = 2.1023442968726158e-02
 
   @testset "$(@__FILE__)" begin
-    for FT in (Float64, Float32), dims in (2, 3)
-      for NumericalFlux in (Rusanov, Central)
+    for FT in (Float64,), dims in (3)
+      for NumericalFlux in (Rusanov,)
         @info @sprintf """Configuration
                           ArrayType     = %s
                           FT        = %s
@@ -102,7 +103,7 @@ function main()
         errors = Vector{FT}(undef, numlevels)
 
         for level in 1:numlevels
-          numelems = ntuple(dim -> dim == 3 ? 1 : 2 ^ (level - 1) * 5, dims)
+          numelems = ntuple(dim -> 2 ^ (level - 1) * 50, dims)
           errors[level] =
             run(mpicomm, ArrayType, polynomialorder, numelems,
                 NumericalFlux, setup, FT, dims, level)
@@ -112,8 +113,8 @@ function main()
           if FT === Float32 && ArrayType !== Array
             rtol *= 10 # why does this factor have to be so big :(
           end
-          @test isapprox(errors[level],
-                         expected_error[FT, dims, NumericalFlux, level]; rtol = rtol)
+          #@test isapprox(errors[level],
+          #               expected_error[FT, dims, NumericalFlux, level]; rtol = rtol)
         end
 
         rates = @. log2(first(errors[1:numlevels-1]) / first(errors[2:numlevels]))
@@ -210,7 +211,8 @@ function run(mpicomm, ArrayType, polynomialorder, numelems,
     callbacks = (callbacks..., cbvtk)
   end
 
-  solve!(Q, lsrk; timeend=timeend, callbacks=callbacks)
+  solve!(Q, lsrk; timeend=dt, callbacks=callbacks)
+  @CUDAdrv.profile solve!(Q, lsrk; timeend=2dt, callbacks=callbacks)
 
   # final statistics
   Qe = init_ode_state(dg, timeend)

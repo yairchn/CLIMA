@@ -20,6 +20,7 @@ end
 function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   bl = dg.balancelaw
   device = typeof(Q.data) <: Array ? CPU() : CUDA()
+  ka_device = typeof(Q.data) <: Array ? KernelAbstractions.CPU() : KernelAbstractions.CUDA()
 
   grid = dg.grid
   topology = grid.topology
@@ -92,7 +93,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   # RHS Computation #
   ###################
 
-  kernel! = volumerhs!(KernelAbstractions.CUDA(),
+  kernel! = volumerhs!(ka_device,
                        KernelAbstractions.StaticSize(Nq * Nq * Nqk),
                        KernelAbstractions.StaticSize(Nq * Nq * Nqk * nrealelem))
   event = kernel!(bl, Val(dim), Val(N), dg.direction, dQdt.data,
