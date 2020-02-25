@@ -17,14 +17,19 @@ using ..MPIStateArrays: MPIStateArray
 using ..Mesh.Grids: VerticalDirection, HorizontalDirection, min_node_distance
 
 import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state, vars_gradient,
-                        vars_diffusive, vars_integrals, flux_nondiffusive!,
+                        vars_diffusive, flux_nondiffusive!,
                         flux_diffusive!, source!, wavespeed, boundary_state!,
                         gradvariables!, diffusive!, init_aux!, init_state!,
-                        update_aux!, integrate_aux!, LocalGeometry, lengthscale,
-                        resolutionmetric, DGModel, num_integrals,
-                        nodal_update_aux!, indefinite_stack_integral!,
-                        reverse_indefinite_stack_integral!, num_state,
-                        calculate_dt
+                        update_aux!, LocalGeometry, lengthscale,
+                        resolutionmetric, DGModel, calculate_dt,
+                        nodal_update_aux!, num_state,
+                        num_integrals,
+                        vars_integrals, vars_reverse_integrals,
+                        indefinite_stack_integral!,
+                        reverse_indefinite_stack_integral!,
+                        integral_load_aux!, integral_set_aux!,
+                        reverse_integral_load_aux!,
+                        reverse_integral_set_aux!
 import ..DGmethods.NumericalFluxes: boundary_state!,
                                     boundary_flux_diffusive!,
                                     NumericalFluxNonDiffusive,
@@ -42,14 +47,13 @@ A `BalanceLaw` for atmosphere modeling.
                boundarycondition, init_state)
 
 """
-struct AtmosModel{FT,O,RS,T,M,P,R,SU,S,BC,IS} <: BalanceLaw
+struct AtmosModel{FT,O,RS,T,M,P,R,S,BC,IS} <: BalanceLaw
   orientation::O
   ref_state::RS
   turbulence::T
   moisture::M
   precipitation::P
   radiation::R
-  subsidence::SU
   source::S
   # TODO: Probably want to have different bc for state and diffusion...
   boundarycondition::BC
@@ -75,13 +79,12 @@ function AtmosModel{FT}(::Type{AtmosLESConfiguration};
                          moisture::M=EquilMoist(),
                          precipitation::P=NoPrecipitation(),
                          radiation::R=NoRadiation(),
-                         subsidence::SU=NoSubsidence{FT}(),
                          source::S=( Gravity(),
                                      Coriolis(),
                                      GeostrophicForcing{FT}(7.62e-5, 0, 0)),
                          # TODO: Probably want to have different bc for state and diffusion...
                          boundarycondition::BC=NoFluxBC(),
-                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,M,P,R,SU,S,BC,IS}
+                         init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,M,P,R,S,BC,IS}
   @assert init_state ≠ nothing
 
   atmos = (
@@ -91,7 +94,6 @@ function AtmosModel{FT}(::Type{AtmosLESConfiguration};
         moisture,
         precipitation,
         radiation,
-        subsidence,
         source,
         boundarycondition,
         init_state,
@@ -111,7 +113,6 @@ function AtmosModel{FT}(::Type{AtmosGCMConfiguration};
                          moisture::M           = EquilMoist(),
                          precipitation::P      = NoPrecipitation(),
                          radiation::R          = NoRadiation(),
-                         subsidence::SU        = NoSubsidence{FT}(),
                          source::S             = (Gravity(), Coriolis()),
                          boundarycondition::BC = NoFluxBC(),
                          init_state::IS=nothing) where {FT<:AbstractFloat,O,RS,T,M,P,R,SU,S,BC,IS}
@@ -123,7 +124,6 @@ function AtmosModel{FT}(::Type{AtmosGCMConfiguration};
         moisture,
         precipitation,
         radiation,
-        subsidence,
         source,
         boundarycondition,
         init_state,
@@ -163,7 +163,7 @@ end
 function vars_aux(m::AtmosModel, FT)
   @vars begin
     ∫dz::vars_integrals(m, FT)
-    ∫dnz::vars_integrals(m, FT)
+    ∫dnz::vars_reverse_integrals(m, FT)
     coord::SVector{3,FT}
     orientation::vars_aux(m.orientation, FT)
     ref_state::vars_aux(m.ref_state,FT)
@@ -177,13 +177,17 @@ function vars_integrals(m::AtmosModel,FT)
     radiation::vars_integrals(m.radiation,FT)
   end
 end
+function vars_reverse_integrals(m::AtmosModel,FT)
+  @vars begin
+    radiation::vars_reverse_integrals(m.radiation,FT)
+  end
+end
 
 include("orientation.jl")
 include("ref_state.jl")
 include("turbulence.jl")
 include("moisture.jl")
 include("precipitation.jl")
-include("subsidence.jl")
 include("radiation.jl")
 include("source.jl")
 include("boundaryconditions.jl")
@@ -213,15 +217,11 @@ Where
   ρinv = 1/ρ
   ρu = state.ρu
   u = ρinv * ρu
-  z  = altitude(m.orientation, aux)
 
   # advective terms
-  usub = subsidence_velocity(m.subsidence, z)
-  ẑ = vertical_unit_vector(m.orientation, aux)
-  u_tot = u .- usub * ẑ
-  flux.ρ   = ρ * u_tot
-  flux.ρu  = ρ * u_tot .* u_tot'
-  flux.ρe  = u_tot * state.ρe
+  flux.ρ   = ρ * u
+  flux.ρu  = ρ * u .* u'
+  flux.ρe  = u * state.ρe
 
   # pressure terms
   p = pressure(m.moisture, m.orientation, state, aux)
@@ -284,7 +284,7 @@ function update_aux!(dg::DGModel, m::AtmosModel, Q::MPIStateArray, t::Real)
 
   if num_integrals(m, FT) > 0
     indefinite_stack_integral!(dg, m, Q, auxstate, t)
-    reverse_indefinite_stack_integral!(dg, m, auxstate, t)
+    reverse_indefinite_stack_integral!(dg, m, Q, auxstate, t)
   end
 
   nodal_update_aux!(atmos_nodal_update_aux!, dg, m, Q, t)
@@ -299,8 +299,20 @@ function atmos_nodal_update_aux!(m::AtmosModel, state::Vars, aux::Vars,
   atmos_nodal_update_aux!(m.turbulence, m, state, aux, t)
 end
 
-function integrate_aux!(m::AtmosModel, integ::Vars, state::Vars, aux::Vars)
-  integrate_aux!(m.radiation, integ, state, aux)
+function integral_load_aux!(m::AtmosModel, integ::Vars, state::Vars, aux::Vars)
+  integral_load_aux!(m.radiation, integ, state, aux)
+end
+
+function integral_set_aux!(m::AtmosModel, aux::Vars, integ::Vars)
+  integral_set_aux!(m.radiation, aux, integ)
+end
+
+function reverse_integral_load_aux!(m::AtmosModel, integ::Vars, state::Vars, aux::Vars)
+  reverse_integral_load_aux!(m.radiation, integ, state, aux)
+end
+
+function reverse_integral_set_aux!(m::AtmosModel, aux::Vars, integ::Vars)
+  reverse_integral_set_aux!(m.radiation, aux, integ)
 end
 
 # TODO: figure out a nice way to handle this
@@ -312,7 +324,7 @@ function init_aux!(m::AtmosModel, aux::Vars, geom::LocalGeometry)
 end
 
 """
-    source!(m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
+    source!(m::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 Computes flux `S(Y)` in:
 ```
 ∂Y
@@ -320,15 +332,15 @@ Computes flux `S(Y)` in:
 ∂t
 ```
 """
-function source!(m::AtmosModel, source::Vars, state::Vars, aux::Vars, t::Real)
-  atmos_source!(m.source, m, source, state, aux, t)
+function source!(m::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  atmos_source!(m.source, m, source, state, diffusive, aux, t)
 end
 
 boundary_state!(nf, m::AtmosModel, x...) =
   atmos_boundary_state!(nf, m.boundarycondition, m, x...)
 
 function init_state!(m::AtmosModel, state::Vars, aux::Vars, coords, t, args...)
-  m.init_state(state, aux, coords, t, args...)
+  m.init_state(m, state, aux, coords, t, args...)
 end
 
 boundary_flux_diffusive!(nf::NumericalFluxDiffusive,

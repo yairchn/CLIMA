@@ -5,7 +5,7 @@ using Test
 using CLIMA
 using CLIMA.Atmos
 using CLIMA.GenericCallbacks
-using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.ODESolvers
 using CLIMA.Mesh.Filters
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
@@ -26,7 +26,7 @@ using CLIMA.VariableTemplates
 # 8) Default settings can be found in `src/Driver/Configurations.jl`
 # ------------------------ Description ------------------------- #
 
-function init_risingbubble!(state, aux, (x,y,z), t)
+function init_risingbubble!(bl, state, aux, (x,y,z), t)
   FT            = eltype(state)
   R_gas::FT     = R_d
   c_p::FT       = cp_d

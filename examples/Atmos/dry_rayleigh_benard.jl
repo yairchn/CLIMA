@@ -9,7 +9,7 @@ using CLIMA
 using CLIMA.Atmos
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.GenericCallbacks
-using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.ODESolvers
 using CLIMA.Mesh.Filters
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
@@ -113,7 +113,7 @@ const T_bot              = 299
 const T_lapse            = grav/cp_d
 const T_top              = T_bot - T_lapse*zmax
 
-function init_problem!(state, aux, (x,y,z), t)
+function init_problem!(bl, state, aux, (x,y,z), t)
   FT            = eltype(state)
   R_gas::FT     = R_d
   c_p::FT       = cp_d

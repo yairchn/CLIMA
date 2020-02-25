@@ -9,14 +9,14 @@ using CLIMA
 using CLIMA.Atmos
 using CLIMA.Diagnostics
 using CLIMA.GenericCallbacks
-using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.ODESolvers
 using CLIMA.Mesh.Filters
 using CLIMA.MoistThermodynamics
 using CLIMA.ODESolvers
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
 
-function init_sin_test!(state, aux, (x,y,z), t)
+function init_sin_test!(bl, state, aux, (x,y,z), t)
     FT = eltype(state)
 
     z = FT(z)
