@@ -196,7 +196,7 @@ friendlysynchronize(::Nothing) = nothing
     end
     function copybuffer!(A::Array, B::CuArray; async=true, stream=nothing)
         @assert sizeof(A) == sizeof(B)
-        isnothing(stream) && stream=CuDefaultStream()
+        isnothing(stream) && (stream=CuDefaultStream())
         async_copy!(A, B, length(A), stream)
         if !async
             friendlysynchronize(stream)
@@ -204,7 +204,7 @@ friendlysynchronize(::Nothing) = nothing
     end
     function copybuffer!(A::CuArray, B::Array; async=true, stream=nothing)
         @assert sizeof(A) == sizeof(B)
-        isnothing(stream) && stream=CuDefaultStream()
+        isnothing(stream) && (stream=CuDefaultStream())
         async_copy!(A, B, length(A), stream)
         if !async
             friendlysynchronize(stream)

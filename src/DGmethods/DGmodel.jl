@@ -72,15 +72,22 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   end
 
   if nviscstate > 0
+    if device == CPU() && communicate
+      MPIStateArrays.start_ghost_send!(Q)
+      aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
+    end
+
     @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem, stream=cmdx_stream,
             volumeviscterms!(bl, Val(dim), Val(N), dg.direction, Q.data,
                              Qvisc.data, auxstate.data, grid.vgeo, t, grid.D,
                              topology.realelems))
 
-    if communicate
-      device == CUDA() && friendlysynchronize(copy_stream)
+    if device == CUDA() && communicate
+      friendlysynchronize(copy_stream)
       MPIStateArrays.start_ghost_send!(Q)
       aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
+    end
+    if communicate
       MPIStateArrays.finish_ghost_recv!(Q; stream=copy_stream, async=true)
       aux_comm && MPIStateArrays.finish_ghost_recv!(auxstate;
                                                     stream=copy_stream,
@@ -122,10 +129,26 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
                      Q.data, Qvisc.data, auxstate.data, grid.vgeo, t,
                      grid.ω, grid.D, topology.realelems, increment))
 
-  if communicate
-    device == CUDA() && friendlysynchronize(copy_stream)
+  if communicate && device == CUDA()
+    friendlysynchronize(copy_stream)
     MPIStateArrays.start_ghost_send!((nviscstate > 0) ? Qvisc : Q)
     aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
+  end
+
+  @launch(device, threads=Nfp, blocks=nrealelem, stream=cmdx_stream,
+          facerhs!(bl, Val(dim), Val(N), dg.direction,
+                   dg.numfluxnondiff,
+                   dg.numfluxdiff,
+                   dQdt.data, Q.data, Qvisc.data,
+                   auxstate.data, grid.vgeo, grid.sgeo, t, grid.vmapM,
+                   grid.vmapP, grid.elemtobndy,
+                   topology.realelems))
+
+  if communicate && device == CPU()
+    MPIStateArrays.start_ghost_send!((nviscstate > 0) ? Qvisc : Q)
+    aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
+  end
+  if communicate
     MPIStateArrays.finish_ghost_recv!((nviscstate > 0) ? Qvisc : Q,
                                       stream=copy_stream,
                                       async=true)
@@ -140,15 +163,6 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
       CUDAdrv.wait(event, cmdx_stream)
     end
   end
-
-  @launch(device, threads=Nfp, blocks=nrealelem, stream=cmdx_stream,
-          facerhs!(bl, Val(dim), Val(N), dg.direction,
-                   dg.numfluxnondiff,
-                   dg.numfluxdiff,
-                   dQdt.data, Q.data, Qvisc.data,
-                   auxstate.data, grid.vgeo, grid.sgeo, t, grid.vmapM,
-                   grid.vmapP, grid.elemtobndy,
-                   topology.realelems))
 
   # Just to be safe, we wait on the sends we started.
   if communicate
