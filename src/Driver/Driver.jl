@@ -241,6 +241,34 @@ function setup_solver(t0::FT, timeend::FT,
 
         solver = solver_type.solver_method(dg, Q; dt=dt, t0=t0)
 
+    else if isa(solver_type, MultiRateSolverType)
+
+        if ode_dt !== nothing
+            slow_dt = ode_dt
+            fast_dt = slow_dt / 10
+        else
+            slow_dt = Courant_number * min_node_distance(dg.grid, VerticalDirection()) / soundspeed_air(T)
+            fast_dt = slow_dt / 10
+        end
+        numberofsteps = convert(Int64, cld(timeend, dt))
+        dt = timeend / numberofsteps
+        #
+        linmodel = solver_type.linear_model(driver_config.bl)
+        
+        fast_dg = DGModel(fast_model, driver_config.grid, driver_config.numfluxnondiff,
+                          driver_config.numfluxdiff, driver_config.gradnumflux,
+                          auxstate=dg.auxstate, direction=VerticalDirection())
+
+        slow_dg = DGModel(slow_model, driver_config.grid, driver_config.numfluxnondiff,
+                          driver_config.numfluxdiff, driver_config.gradnumflux,
+                          auxstate=dg.auxstate, direction=VerticalDirection())
+
+        slow_ode_solver = LSRK54CarpenterKennedy(slow_dg, Q; dt = slow_dt)
+        fast_ode_solver = LSRK54CarpenterKennedy(fast_dg, Q; dt = fast_dt)
+        
+        solver = solver_type.solver_method(dg, fast_dg, solver_type.linear_solver(), Q; dt=dt, t0=t0)
+        #
+                
     else # solver_type === IMEXSolverType
 
         if ode_dt !== nothing

@@ -22,6 +22,20 @@ struct ExplicitSolverType <: AbstractSolverType
     solver_method::Function
     ExplicitSolverType(;solver_method=LSRK54CarpenterKennedy) = new(solver_method)
 end
+#
+struct MultiRateSolverType <: AbstractSolverType
+    fast_model::Type
+    slow_model::Type
+    slow_solver_method::Function
+    fast_solver_method::Function
+    function MultiRateSolverType(;fast_model = AtmosAcousticLinearModel,
+                                  slow_model = RemainderModel,
+                                  slow_solver_method = LSRK54CarpenterKennedy,
+                                  fast_solver_method = LSRK54CarpenterKennedy)
+        new(fast_model, slow_solver, slow_solver_method, fast_solver_method)
+    end
+end
+#
 struct IMEXSolverType <: AbstractSolverType
     linear_model::Type
     linear_solver::Type
