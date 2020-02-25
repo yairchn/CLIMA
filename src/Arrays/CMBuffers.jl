@@ -86,19 +86,19 @@ function get_transfer(buf::CMBuffer)
     end
 end
 
-function prepare_transfer!(buf::CMBuffer)
+function prepare_transfer!(buf::CMBuffer; async=false, stream=nothing)
     if buf.transfer === nothing
         # nothing to do here
     else
-        copybuffer!(buf.transfer, buf.stage, async=false)
+        copybuffer!(buf.transfer, buf.stage, async=async, stream=stream)
     end
 end
 
-function prepare_stage!(buf::CMBuffer)
+function prepare_stage!(buf::CMBuffer; async=false, stream=nothing)
     if buf.transfer === nothing
         # nothing to do here
     else
-        copybuffer!(buf.stage, buf.transfer, async=false)
+        copybuffer!(buf.stage, buf.transfer, async=async, stream=stream)
     end
 end
 
@@ -109,17 +109,21 @@ register(x) = nothing
 unregister(x) = nothing
 
 """
-    copybuffer!(A, B; async=true)
+    copybuffer!(A, B; async=true, stream)
 
 Copy a buffer from device to host or vice-versa. Internally this uses
-`cudaMemcpyAsync` on the `CuDefaultStream`. The keyword argument 
-`async` determines whether it is asynchronous with regard to the host.
+`cudaMemcpyAsync` on the given stream or `CuDefaultStream` by default. The
+keyword argument `async` determines whether it is asynchronous with regard to
+the host.
 """
 function copybuffer! end
 
-function copybuffer!(A::AbstractArray, B::AbstractArray; async=true)
+function copybuffer!(A::AbstractArray, B::AbstractArray; async=true,
+                     stream=nothing)
     copy!(A, B)
 end
+
+friendlysynchronize(::Nothing) = nothing
 
 @init @require CUDAdrv = "c5f51814-7f29-56b8-a69c-e4d8f6be1fde" @require CuArrays = "3a865a2d-5b23-5a0f-bc46-62713ec82fae" begin
     using .CUDAdrv
@@ -190,17 +194,17 @@ end
             unsafe_copyto!(ptrA, ptrB, N, async=true, stream=stream)
         end
     end
-    function copybuffer!(A::Array, B::CuArray; async=true)
+    function copybuffer!(A::Array, B::CuArray; async=true, stream=nothing)
         @assert sizeof(A) == sizeof(B)
-        stream = CuDefaultStream()
+        isnothing(stream) && stream=CuDefaultStream()
         async_copy!(A, B, length(A), stream)
         if !async
             friendlysynchronize(stream)
         end
     end
-    function copybuffer!(A::CuArray, B::Array; async=true)
+    function copybuffer!(A::CuArray, B::Array; async=true, stream=nothing)
         @assert sizeof(A) == sizeof(B)
-        stream = CuDefaultStream()
+        isnothing(stream) && stream=CuDefaultStream()
         async_copy!(A, B, length(A), stream)
         if !async
             friendlysynchronize(stream)

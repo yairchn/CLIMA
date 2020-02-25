@@ -2,6 +2,7 @@ module DGmethods
 
 using MPI
 using ..MPIStateArrays
+using ..MPIStateArrays.CMBuffers: friendlysynchronize
 using ..Mesh.Grids
 using ..Mesh.Topologies
 using StaticArrays
