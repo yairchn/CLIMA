@@ -37,7 +37,7 @@ See [`odefun!`](@ref) for usage.
 """
 
 @KernelAbstractions.kernel function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
-                    rhs, Q, Qvisc, auxstate, vgeo, t,
+                                               rhs, @Const(Q), @Const(Qvisc), @Const(auxstate), @Const(vgeo), t,
                     ω, D, elems, increment) where {dim, polyorder, direction}
   N = polyorder
   FT = eltype(Q)
@@ -52,16 +52,17 @@ See [`odefun!`](@ref) for usage.
   s_F = @KernelAbstractions.localmem FT (3, Nq, Nq, Nqk, nstate)
   s_ω = @KernelAbstractions.localmem FT (Nq, )
   s_D = @KernelAbstractions.localmem FT (Nq, Nq)
-  l_rhs = @KernelAbstractions.private FT (nstate, Nq, Nq, Nqk)
 
   source! !== nothing && (l_S = MArray{Tuple{nstate}, FT}(undef))
   l_Q = MArray{Tuple{nstate}, FT}(undef)
   l_Qvisc = MArray{Tuple{nviscstate}, FT}(undef)
   l_aux = MArray{Tuple{nauxstate}, FT}(undef)
   l_F = MArray{Tuple{3, nstate}, FT}(undef)
+  l_rhs = MArray{Tuple{3, nstate}, FT}(undef)
+  @inbounds @views begin
 
   G = @index(Global, Linear)
-  e = div(G - 1, KernelAbstractions.groupsize()) + 1
+  e = div(G - 1, prod(KernelAbstractions.groupsize())) + 1
 
   L = @index(Local, Linear)
   i = (L - 1) % Nq + 1
@@ -69,7 +70,6 @@ See [`odefun!`](@ref) for usage.
   j = tmp_jk % Nq + 1
   k = div(tmp_jk, Nq) + 1
 
-  @inbounds @views begin
     s_ω[j] = ω[j]
     s_D[i, j] = D[i, j]
 
@@ -90,7 +90,7 @@ See [`odefun!`](@ref) for usage.
     end
 
     @unroll for s = 1:nstate
-      l_rhs[s, i, j, k] = increment ? rhs[ijk, s, e] : zero(FT)
+      l_rhs[s] = increment ? rhs[ijk, s, e] : zero(FT)
     end
 
     @unroll for s = 1:nstate
@@ -148,7 +148,7 @@ See [`odefun!`](@ref) for usage.
             Vars{vars_aux(bl,FT)}(l_aux), t)
 
     @unroll for s = 1:nstate
-      l_rhs[s, i, j, k] += l_S[s]
+      l_rhs[s] += l_S[s]
     end
     @KernelAbstractions.synchronize
 
@@ -157,21 +157,21 @@ See [`odefun!`](@ref) for usage.
     @unroll for s = 1:nstate
       @unroll for n = 1:Nq
         # ξ1-grid lines
-        l_rhs[s, i, j, k] += MI * s_D[n, i] * s_F[1, n, j, k, s]
+        l_rhs[s] += MI * s_D[n, i] * s_F[1, n, j, k, s]
 
         # ξ2-grid lines
         if dim == 3 || (dim == 2 && direction == EveryDirection)
-          l_rhs[s, i, j, k] += MI * s_D[n, j] * s_F[2, i, n, k, s]
+          l_rhs[s] += MI * s_D[n, j] * s_F[2, i, n, k, s]
         end
 
         # ξ3-grid lines
         if dim == 3 && direction == EveryDirection
-          l_rhs[s, i, j, k] += MI * s_D[n, k] * s_F[3, i, j, n, s]
+          l_rhs[s] += MI * s_D[n, k] * s_F[3, i, j, n, s]
         end
       end
     end
     @unroll for s = 1:nstate
-      rhs[ijk, s, e] = l_rhs[s, i, j, k]
+      rhs[ijk, s, e] = l_rhs[s]
     end
     @KernelAbstractions.synchronize
   end

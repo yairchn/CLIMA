@@ -94,8 +94,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   ###################
 
   kernel! = volumerhs!(ka_device,
-                       KernelAbstractions.StaticSize(Nq * Nq * Nqk),
-                       KernelAbstractions.StaticSize(Nq * Nq * Nqk * nrealelem))
+                       (Nq, Nq, Nqk),
+                       (Nq, Nq, Nqk,nrealelem))
   event = kernel!(bl, Val(dim), Val(N), dg.direction, dQdt.data,
                   Q.data, Qvisc.data, auxstate.data, grid.vgeo, t,
                   grid.ω, grid.D, topology.realelems, increment)
