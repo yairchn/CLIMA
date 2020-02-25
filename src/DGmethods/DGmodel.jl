@@ -45,28 +45,34 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   aux_comm = update_aux!(dg, bl, Q, t)
   @assert typeof(aux_comm) == Bool
 
+  # The pattern to overlap communication and computation
+  # [device: copy] Start device to host data transfer
+  # [device: cmdx] Start the volume kernel (and maybe some face?)
+  # [host        ] Start MPI Sends (wait on copy stream)
+  # [host        ] Wait  MPI Recv
+  # [device: copy] transfer data from device to host and fill Q -> event (a)
+  # [device: cmdx] Wait on event (a)
+  # [device: cmdx] do face computation
+
   ########################
   # Gradient Computation #
   ########################
   if communicate
-    MPIStateArrays.start_ghost_exchange!(Q)
-    if aux_comm
-      MPIStateArrays.start_ghost_exchange!(auxstate)
-    end
+    MPIStateArrays.start_ghost_data_transfer!(Q)
+    aux_comm && MPIStateArrays.start_ghost_data_transfer!(auxstate)
   end
 
   if nviscstate > 0
-
     @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
             volumeviscterms!(bl, Val(dim), Val(N), dg.direction, Q.data,
                              Qvisc.data, auxstate.data, grid.vgeo, t, grid.D,
                              topology.realelems))
 
     if communicate
+      MPIStateArrays.start_ghost_send!(Q)
+      aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
       MPIStateArrays.finish_ghost_recv!(Q)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
-      end
+      aux_comm && MPIStateArrays.finish_ghost_recv!(auxstate)
     end
 
     @launch(device, threads=Nfp, blocks=nrealelem,
@@ -75,16 +81,12 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
                            grid.vgeo, grid.sgeo, t, grid.vmapM, grid.vmapP, grid.elemtobndy,
                            topology.realelems))
 
-    if communicate
-      MPIStateArrays.start_ghost_exchange!(Qvisc)
-    end
+    communicate && MPIStateArrays.start_ghost_data_transfer!(Qvisc)
 
     aux_comm = update_aux_diffusive!(dg, bl, Q, t)
     @assert typeof(aux_comm) == Bool
 
-    if aux_comm
-      MPIStateArrays.start_ghost_exchange!(auxstate)
-    end
+    aux_comm && MPIStateArrays.start_ghost_data_transfer!(auxstate)
   end
 
 
@@ -97,17 +99,10 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
                      grid.ω, grid.D, topology.realelems, increment))
 
   if communicate
-    if nviscstate > 0
-      MPIStateArrays.finish_ghost_recv!(Qvisc)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
-      end
-    else
-      MPIStateArrays.finish_ghost_recv!(Q)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
-      end
-    end
+    MPIStateArrays.start_ghost_send!((nviscstate > 0) ? Qvisc : Q)
+    aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
+    MPIStateArrays.finish_ghost_recv!((nviscstate > 0) ? Qvisc : Q)
+    aux_comm && MPIStateArrays.finish_ghost_recv!(auxstate)
   end
 
   @launch(device, threads=Nfp, blocks=nrealelem,
