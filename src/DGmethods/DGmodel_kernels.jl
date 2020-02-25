@@ -59,7 +59,7 @@ See [`odefun!`](@ref) for usage.
   l_aux = MArray{Tuple{nauxstate}, FT}(undef)
   l_F = MArray{Tuple{3, nstate}, FT}(undef)
   l_rhs = MArray{Tuple{3, nstate}, FT}(undef)
-  l_rhs = @private FT (nstate,)
+  l_rhs = @KernelAbstractions.private FT (nstate,)
   @inbounds @views begin
 
   G = @index(Global, Linear)
