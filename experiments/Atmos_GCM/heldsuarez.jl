@@ -16,6 +16,10 @@ using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
 
 
+# Import directional keywords (CLIMA.Mesh.Grids)
+import CLIMA.Mesh.Grids: VerticalDirection, HorizontalDirection, EveryDirection
+
+
 struct HeldSuarezDataConfig{FT}
   p_sfc::FT
   T_init::FT

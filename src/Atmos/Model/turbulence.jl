@@ -2,7 +2,7 @@
 using DocStringExtensions
 using CLIMA.PlanetParameters
 using CLIMA.SubgridScaleParameters
-export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss
+export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss, ConstantViscousSponge
 export turbulence_tensors
 
 abstract type TurbulenceClosure end
@@ -106,12 +106,64 @@ end
 function turbulence_tensors(m::ConstantViscosityWithDivergence,
     state::Vars, diffusive::Vars, aux::Vars, t::Real)
 
+  FT = eltype(state)
   S = diffusive.turbulence.S
   ν = m.ρν / state.ρ
   τ = (-2*ν) * S + (2*ν/3)*tr(S) * I
   return ν, τ
 end
 
+"""
+    ConstantViscousSponge <: TurbulenceClosure
+
+Turbulence with constant dynamic viscosity (`ρν`).
+Divergence terms are included in the momentum flux tensor.
+
+# Fields
+
+$(DocStringExtensions.FIELDS)
+"""
+struct ConstantViscousSponge{FT} <: TurbulenceClosure
+  "Dynamic Viscosity [kg/m/s]"
+  ρν::FT
+  "Maximum domain altitude (m)"
+  z_max::FT
+  "Altitude at with sponge starts (m)"
+  z_sponge::FT
+  "Sponge Strength 0 ⩽ α_max ⩽ 1"
+  α_max::FT
+  "Sponge exponent"
+  γ::FT
+end
+
+# Default calling option
+# ConstantViscousSponge{FT}(<viscous coeff>, 30000, 15000, 1, 4)
+
+vars_gradient(::ConstantViscousSponge,FT) = @vars()
+vars_diffusive(::ConstantViscousSponge, FT) =
+  @vars(S::SHermitianCompact{3,FT,6})
+
+function diffusive!(::ConstantViscousSponge, ::Orientation,
+    diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
+
+  diffusive.turbulence.S = symmetrize(∇transform.u)
+end
+
+function turbulence_tensors(m::ConstantViscousSponge,
+    state::Vars, diffusive::Vars, aux::Vars, t::Real)
+
+  FT = eltype(state)
+  S = diffusive.turbulence.S
+  z = altitude(atmos.orientation,aux)
+  ν = m.ρν / state.ρ
+  if altitude >= FT(m.z_sponge)
+    r = (altitude - FT(m.z_sponge))/(s.m.z_max-m.z_sponge)
+    β_sponge = s.α_max * sinpi(r/2)^s.γ
+    ν += β_sponge*ν
+  end
+  τ = (-2*ν) * S + (2*ν/3)*tr(S) * I
+  return ν, τ
+end
 
 
 """

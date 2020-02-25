@@ -99,14 +99,14 @@ function parse_commandline()
         "--diagnostics-interval"
             help = "interval in simulation steps for gathering diagnostics"
             arg_type = Int
-            default = 10000
+            default = 1
         "--enable-vtk"
             help = "output VTK to <output-dir> every <vtk-interval> simulation steps"
             action = :store_true
         "--vtk-interval"
             help = "interval in simulation steps for VTK output"
             arg_type = Int
-            default = 10000
+            default = 4
         "--log-level"
             help = "set the log level to one of debug/info/warn/error"
             arg_type = String
