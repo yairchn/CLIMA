@@ -17,7 +17,7 @@ function DGModel(balancelaw, grid, numfluxnondiff, numfluxdiff, gradnumflux;
           diffstate, direction, modeldata)
 end
 
-
+using CUDAapi
 if CUDAapi.has_cuda_gpu()
   const cuda_copy_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
   const cuda_cmdx_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
