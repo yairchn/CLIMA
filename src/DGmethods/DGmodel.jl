@@ -17,6 +17,12 @@ function DGModel(balancelaw, grid, numfluxnondiff, numfluxdiff, gradnumflux;
           diffstate, direction, modeldata)
 end
 
+
+if CUDAapi.has_cuda_gpu()
+  const cuda_copy_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
+  const cuda_cmdx_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
+end
+
 function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   bl = dg.balancelaw
   device = typeof(Q.data) <: Array ? CPU() : CUDA()
@@ -53,10 +59,10 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   # [device: copy] transfer data from device to host and fill Q -> event (a)
   # [device: cmdx] Wait on event (a)
   # [device: cmdx] do face computation
-
+  #
   if device == CUDA()
-    copy_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
-    cmdx_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
+    copy_stream = cuda_copy_stream
+    cmdx_stream = cuda_cmdx_stream
   else
     copy_stream = cmdx_stream = nothing
   end
@@ -170,6 +176,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     MPIStateArrays.finish_ghost_send!(Q)
     MPIStateArrays.finish_ghost_send!(auxstate)
   end
+  friendlysynchronize(copy_stream)
+  friendlysynchronize(cmdx_stream)
 end
 
 function init_ode_state(dg::DGModel, args...;
