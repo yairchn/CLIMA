@@ -368,7 +368,7 @@ function finish_ghost_recv!(Q::MPIStateArray; stream=nothing,
   # copy data to state vectors
   prepare_stage!(Q.recv_buffer, async=async, stream=stream)
   stage = get_stage(Q.recv_buffer)
-  transferrecvbuf!(Q.data, stage, Q.vmaprecv)
+  transferrecvbuf!(Q.data, stage, Q.vmaprecv, stream)
   @toc mpi_recvcopy
 end
 
@@ -403,16 +403,22 @@ function fillsendbuf!(sendbuf, buf, vmapsend, stream)
   end
 end
 
-function transferrecvbuf!(buf, recvbuf, vmaprecv)
+function transferrecvbuf!(buf, recvbuf, vmaprecv, stream)
   if length(vmaprecv) > 0
     Np = size(buf, 1)
     nvar = size(buf, 2)
 
     threads = 256
     blocks = div(length(vmaprecv) + threads - 1, threads)
-    @launch(device(buf), threads=threads, blocks=blocks,
-            knl_transferrecvbuf!(Val(Np), Val(nvar), buf, recvbuf,
-                                 vmaprecv, length(vmaprecv)))
+    if isnothing(stream)
+      @launch(device(buf), threads=threads, blocks=blocks,
+              knl_transferrecvbuf!(Val(Np), Val(nvar), buf, recvbuf,
+                                   vmaprecv, length(vmaprecv)))
+    else
+      @launch(device(buf), threads=threads, blocks=blocks, stream=stream,
+              knl_transferrecvbuf!(Val(Np), Val(nvar), buf, recvbuf,
+                                   vmaprecv, length(vmaprecv)))
+    end
   end
 end
 
