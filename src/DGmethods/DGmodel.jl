@@ -72,7 +72,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   end
 
   if nviscstate > 0
-    if device == CPU() && communicate
+    if communicate && device == CPU()
       MPIStateArrays.start_ghost_send!(Q)
       aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
     end
@@ -82,7 +82,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
                              Qvisc.data, auxstate.data, grid.vgeo, t, grid.D,
                              topology.realelems))
 
-    if device == CUDA() && communicate
+    if communicate && device == CUDA()
       friendlysynchronize(copy_stream)
       MPIStateArrays.start_ghost_send!(Q)
       aux_comm && MPIStateArrays.start_ghost_send!(auxstate)

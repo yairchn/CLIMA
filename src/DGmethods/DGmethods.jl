@@ -10,7 +10,7 @@ using ..SpaceMethods
 using ..VariableTemplates
 using DocStringExtensions
 using GPUifyLoops
-using CUDAdrv: CuEvent, CuStream, CuDefaultStream
+using CUDAdrv
 
 export BalanceLaw, DGModel, init_ode_state
 
