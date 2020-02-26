@@ -5,7 +5,6 @@ using CLIMA.Mesh.Grids
 using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.DGBalanceLawDiscretizations.NumericalFluxes
 using CLIMA.MPIStateArrays
-using CLIMA.LowStorageRungeKuttaMethod
 using CLIMA.ODESolvers
 using CLIMA.GenericCallbacks
 using CLIMA.ParametersType
@@ -401,7 +400,7 @@ end
 end
 # -------------------------------------------------------------------------
 
-@inline function source!(S,Q,aux,t)
+@inline function source!(S,Q,diffusive,aux, t)
   # Initialise the final block source term
   S .= 0
 

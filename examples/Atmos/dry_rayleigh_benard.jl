@@ -9,7 +9,7 @@ using CLIMA
 using CLIMA.Atmos
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.GenericCallbacks
-using CLIMA.LowStorageRungeKuttaMethod
+using CLIMA.ODESolvers
 using CLIMA.Mesh.Filters
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
@@ -53,9 +53,9 @@ A ≡ aux
 $(DocStringExtensions.FIELDS)
 """
 struct FixedTempNoSlip{FT} <: BoundaryCondition
-  "Prescribed bottom wall temperature [K]"
+  "Prescribed bottom wall temperature `[K]`"
   T_bot::FT
-  "Prescribed top wall temperature [K]"
+  "Prescribed top wall temperature `[K]`"
   T_top::FT
 end
 # Rayleigh-Benard problem with two fixed walls (prescribed temperatures)
@@ -113,7 +113,7 @@ const T_bot              = 299
 const T_lapse            = grav/cp_d
 const T_top              = T_bot - T_lapse*zmax
 
-function init_problem!(state, aux, (x,y,z), t)
+function init_problem!(bl, state, aux, (x,y,z), t)
   FT            = eltype(state)
   R_gas::FT     = R_d
   c_p::FT       = cp_d
@@ -151,12 +151,12 @@ function config_problem(FT, N, resolution, xmax, ymax, zmax)
                                source=(Gravity(),),
                     boundarycondition=bc,
                            init_state=init_problem!)
-
-    config = CLIMA.LES_Configuration("DryRayleighBenardConvection",
-                                     N, resolution, xmax, ymax, zmax,
-                                     init_problem!,
-                                     solver_type=CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch),
-                                     model=model)
+    ode_solver = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
+    config = CLIMA.Atmos_LES_Configuration("DryRayleighBenardConvection",
+                                           N, resolution, xmax, ymax, zmax,
+                                           init_problem!,
+                                           solver_type=ode_solver,
+                                           model=model)
     return config
 end
 
@@ -177,7 +177,8 @@ function main()
         Δv = Δh
         resolution = (Δh, Δh, Δv)
         driver_config = config_problem(FT, N, resolution, xmax, ymax, zmax)
-        solver_config = CLIMA.setup_solver(t0, timeend, driver_config, forcecpu=true, Courant_number=CFLmax)
+        solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
+                                           forcecpu=true, Courant_number=CFLmax)
         # User defined callbacks (TMAR positivity preserving filter)
         cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
             Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
