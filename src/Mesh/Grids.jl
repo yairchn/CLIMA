@@ -83,6 +83,7 @@ trilinear blend of the element corner locations.
 struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
                                         DAT1, DAT2, DAT3, DAT4,
                                         DAI1, DAI2, DAI3,
+                                        DAB2,
                                         TOP
                                        } <: AbstractGrid{T, dim, N, Np, DA }
   "mesh topology"
@@ -115,6 +116,9 @@ struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
   "An array of ranges in `vmapsend` to send to each neighbor"
   nabrtovmapsend
 
+  "boolean map for ghost degrees of freedom"
+  activeDOF::DAB2
+
   "1-D lvl weights on the device"
   ω::DAT1
 
@@ -136,8 +140,10 @@ struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
     Imat = indefinite_integral_interpolation_matrix(ξ, ω)
     D = Elements.spectralderivative(ξ)
 
-    (vmapM, vmapP) = mappings(N, topology.elemtoelem, topology.elemtoface,
-                              topology.elemtoordr)
+    (vmapM, vmapP, activeDOF) = BrickMesh.mappings(N, topology.elemtoelem,
+                                                   topology.elemtoface,
+                                                   topology.elemtoordr,
+                                                   length(topology.elems))
 
     (vmaprecv, nabrtovmaprecv) =
       BrickMesh.commmapping(N, topology.ghostelems, topology.ghostfaces, topology.nabrtorecv)
@@ -156,6 +162,7 @@ struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
     vmapP = DeviceArray(vmapP)
     vmapsend = DeviceArray(vmapsend)
     vmaprecv = DeviceArray(vmaprecv)
+    activeDOF = DeviceArray(activeDOF)
     ω = DeviceArray(ω)
     D = DeviceArray(D)
     Imat = DeviceArray(Imat)
@@ -172,8 +179,9 @@ struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
     TOP = typeof(topology)
 
     new{FloatType, dim, N, Np, DeviceArray, DAT1, DAT2, DAT3, DAT4, DAI1, DAI2,
-        DAI3, TOP}(topology, vgeo, sgeo, elemtobndy, vmapM, vmapP, vmaprecv, vmapsend,
-                   nabrtovmaprecv, nabrtovmapsend, ω, D, Imat)
+        DAI3, DAB2, TOP}(topology, vgeo, sgeo, elemtobndy, vmapM, vmapP,
+                         vmaprecv, vmapsend, nabrtovmaprecv, nabrtovmapsend,
+                         activeDOF, ω, D, Imat)
   end
 end
 
@@ -233,62 +241,6 @@ function Base.propertynames(G::DiscontinuousSpectralElementGrid)
   (fieldnames(DiscontinuousSpectralElementGrid)...,
    keys(vgeoid)..., keys(sgeoid)...)
 end
-
-# {{{ mappings
-"""
-    mappings(N, elemtoelem, elemtoface, elemtoordr)
-
-This function takes in a polynomial order `N` and parts of a topology (as
-returned from `connectmesh`) and returns index mappings for the element surface
-flux computation.  The returned `Tuple` contains:
-
- - `vmapM` an array of linear indices into the volume degrees of freedom where
-   `vmapM[:,f,e]` are the degrees of freedom indices for face `f` of element
-    `e`.
-
- - `vmapP` an array of linear indices into the volume degrees of freedom where
-   `vmapP[:,f,e]` are the degrees of freedom indices for the face neighboring
-   face `f` of element `e`.
-"""
-function mappings(N, elemtoelem, elemtoface, elemtoordr)
-  nface, nelem = size(elemtoelem)
-
-  d = div(nface, 2)
-  Np, Nfp = (N+1)^d, (N+1)^(d-1)
-
-  p = reshape(1:Np, ntuple(j->N+1, d))
-  fd(f) =   div(f-1,2)+1
-  fe(f) = N*mod(f-1,2)+1
-  fmask = hcat((p[ntuple(j->(j==fd(f)) ? (fe(f):fe(f)) : (:), d)...][:]
-                for f=1:nface)...)
-  inds = LinearIndices(ntuple(j->N+1, d-1))
-
-  vmapM = similar(elemtoelem, Nfp, nface, nelem)
-  vmapP = similar(elemtoelem, Nfp, nface, nelem)
-
-  for e1 = 1:nelem, f1 = 1:nface
-    e2 = elemtoelem[f1,e1]
-    f2 = elemtoface[f1,e1]
-    o2 = elemtoordr[f1,e1]
-
-    vmapM[:,f1,e1] .= Np*(e1-1) .+ fmask[:,f1]
-
-    if o2 == 1
-      vmapP[:,f1,e1] .= Np*(e2-1) .+ fmask[:,f2]
-    elseif d == 3 && o2 == 3
-      n = 1
-      @inbounds for j = 1:N+1, i = N+1:-1:1
-        vmapP[n,f1,e1] = Np*(e2-1) + fmask[inds[i,j],f2]
-        n+=1
-      end
-    else
-      error("Orientation '$o2' with dim '$d' not supported yet")
-    end
-  end
-
-  (vmapM, vmapP)
-end
-# }}}
 
 # {{{ compute geometry
 function computegeometry(topology::AbstractTopology{dim}, D, ξ, ω, meshwarp,

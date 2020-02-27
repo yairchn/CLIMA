@@ -352,11 +352,12 @@ end
     nface = 2d
     Nfp = (N+1)^(d-1)
 
-    vmapM, vmapP = mappings(N, mesh[:elemtoelem], mesh[:elemtoface],
-                            mesh[:elemtoordr])
+    vmapM, vmapP, activeDOF = mappings(N, mesh[:elemtoelem], mesh[:elemtoface],
+                                       mesh[:elemtoordr], nelem)
 
     @test vmapM == reshape([1,4,5,8,9,12,13,16], Nfp, nface, nelem)
     @test vmapP == reshape([16,5,4,9,8,13,12,1], Nfp, nface, nelem)
+    @test all(activeDOF)
   end
 
   let
@@ -371,8 +372,8 @@ end
     nface = 2d
     Nfp = (N+1)^(d-1)
 
-    vmapM, vmapP = mappings(N, mesh[:elemtoelem], mesh[:elemtoface],
-                            mesh[:elemtoordr])
+    vmapM, vmapP, activeDOF = mappings(N, mesh[:elemtoelem], mesh[:elemtoface],
+                                       mesh[:elemtoordr], nelem)
 
     @test vmapM == reshape([ 1, 4, 7,  # f=1 e=1
                              3, 6, 9,  # f=2 e=1
@@ -393,6 +394,7 @@ end
                             16,17,18,  # f=4 e=2
                             10,11,12], # f=3 e=2
                            Nfp, nface, nelem)
+    @test all(activeDOF)
   end
 
   let
@@ -408,8 +410,8 @@ end
     Np = (N+1)^d
     Nfp = (N+1)^(d-1)
 
-    vmapM, vmapP = mappings(N, mesh[:elemtoelem], mesh[:elemtoface],
-                            mesh[:elemtoordr])
+    vmapM, vmapP, activeDOF = mappings(N, mesh[:elemtoelem], mesh[:elemtoface],
+                                       mesh[:elemtoordr], nelem)
 
     fmask = [ 1  3  1  7 1 19
               4  6  2  8 2 20
@@ -438,6 +440,7 @@ end
                             fmask[:,6];
                             fmask[:,6].+Np],
                            Nfp, nface, nelem)
+    @test all(activeDOF)
   end
 end
 
