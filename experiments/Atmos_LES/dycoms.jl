@@ -270,7 +270,7 @@ function init_dycoms!(bl, state, aux, (x,y,z), t)
     r2 = FT(rand(Uniform(-0.00001, 0.00001)))
     r3 = FT(rand(Uniform(-0.001, 0.001)))
     r4 = FT(rand(Uniform(-0.001, 0.001)))
-    if z <= 400.0
+    if z <= 200.0
         θ_liq += r1 * θ_liq
         q_tot += r2 * q_tot
         u     += r3 * u
