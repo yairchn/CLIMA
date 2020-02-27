@@ -17,10 +17,15 @@ function DGModel(balancelaw, grid, numfluxnondiff, numfluxdiff, gradnumflux;
           diffstate, direction, modeldata)
 end
 
-using CUDAapi
-if CUDAapi.has_cuda_gpu()
-  const cuda_copy_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
-  const cuda_cmdx_stream = CuStream(CUDAdrv.STREAM_NON_BLOCKING)
+const STREAMS = CuStream[]
+
+function get_streams()
+  if isempty(STREAMS)
+    push!(STREAMS, CUDAdrv.CuStream(CUDAdrv.STREAM_NON_BLOCKING))
+    push!(STREAMS, CUDAdrv.CuStream(CUDAdrv.STREAM_NON_BLOCKING))
+  end
+  @assert length(STREAMS) == 2
+  @inbounds return (STREAMS[1], STREAMS[2])
 end
 
 function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
@@ -62,8 +67,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   #
   if device == CUDA()
     default_stream = CuDefaultStream()
-    copy_stream = cuda_copy_stream
-    cmdx_stream = cuda_cmdx_stream
+    copy_stream, cmdx_stream = get_streams()
 
     event = CuEvent(CUDAdrv.EVENT_DISABLE_TIMING)
     CUDAdrv.record(event, default_stream)
