@@ -148,27 +148,28 @@ struct DiscontinuousSpectralElementGrid{T, dim, N, Np, DA,
     Np = (N+1)^dim
     @assert Np == size(vgeo, 1)
 
-     # Create arrays on the device
-     vgeo = DeviceArray(vgeo)
-     sgeo = DeviceArray(sgeo)
-     elemtobndy = DeviceArray(topology.elemtobndy)
-     vmapM = DeviceArray(vmapM)
-     vmapP = DeviceArray(vmapP)
-     vmapsend = DeviceArray(vmapsend)
-     vmaprecv = DeviceArray(vmaprecv)
-     ω = DeviceArray(ω)
-     D = DeviceArray(D)
-     Imat = DeviceArray(Imat)
+    # Create arrays on the device
+    vgeo = DeviceArray(vgeo)
+    sgeo = DeviceArray(sgeo)
+    elemtobndy = DeviceArray(topology.elemtobndy)
+    vmapM = DeviceArray(vmapM)
+    vmapP = DeviceArray(vmapP)
+    vmapsend = DeviceArray(vmapsend)
+    vmaprecv = DeviceArray(vmaprecv)
+    ω = DeviceArray(ω)
+    D = DeviceArray(D)
+    Imat = DeviceArray(Imat)
 
-     # FIXME: There has got to be a better way!
-     DAT1 = typeof(ω)
-     DAT2 = typeof(D)
-     DAT3 = typeof(vgeo)
-     DAT4 = typeof(sgeo)
-     DAI1 = typeof(vmapsend)
-     DAI2 = typeof(elemtobndy)
-     DAI3 = typeof(vmapM)
-     TOP = typeof(topology)
+    # FIXME: There has got to be a better way!
+    DAT1 = typeof(ω)
+    DAT2 = typeof(D)
+    DAT3 = typeof(vgeo)
+    DAT4 = typeof(sgeo)
+    DAI1 = typeof(vmapsend)
+    DAI2 = typeof(elemtobndy)
+    DAI3 = typeof(vmapM)
+    DAB2 = typeof(activeDOF)
+    TOP = typeof(topology)
 
     new{FloatType, dim, N, Np, DeviceArray, DAT1, DAT2, DAT3, DAT4, DAI1, DAI2,
         DAI3, TOP}(topology, vgeo, sgeo, elemtobndy, vmapM, vmapP, vmaprecv, vmapsend,
