@@ -263,7 +263,7 @@ function post_Irecvs!(Q::MPIStateArray)
 end
 
 """
-    start_ghost_exchange!(Q::MPIStateArray; dorecvs=true)
+    start_ghost_exchange!(Q::MPIStateArray, [dorecvs=true])
 
 Start the MPI exchange of the data stored in `Q`. If `dorecvs` is `true` then
 `post_Irecvs!(Q)` is called, otherwise the caller is responsible for this.
@@ -272,8 +272,24 @@ This function will fill the send buffer (on the device), copies the data from
 the device to the host, and then issues the send. Previous sends are waited on
 to ensure that they are complete.
 """
-function start_ghost_exchange!(Q::MPIStateArray; dorecvs=true)
+function start_ghost_exchange!(Q::MPIStateArray, dorecvs=true)
+  start_ghost_data_transfer!(Q, dorecvs)
+  start_ghost_send!(Q)
+end
 
+
+"""
+    start_ghost_data_transfer!(Q::MPIStateArray, [dorecvs=true])
+
+Start the MPI transfer of the data stored in `Q` from the device to host. If
+`dorecvs` is `true` then `post_Irecvs!(Q)` is called, otherwise the caller is
+responsible for this.
+
+This function will fill the send buffer (on the device), copies the data from
+the device to the host. Previous sends are waited on to ensure that they are
+complete.
+"""
+function start_ghost_data_transfer!(Q::MPIStateArray, dorecvs=true)
   dorecvs && post_Irecvs!(Q)
 
   # wait on (prior) MPI sends
@@ -285,6 +301,15 @@ function start_ghost_exchange!(Q::MPIStateArray; dorecvs=true)
   fillsendbuf!(stage, Q.data, Q.vmapsend)
   prepare_transfer!(Q.send_buffer)
   @toc mpi_sendcopy
+end
+
+
+"""
+    start_ghost_send!(Q::MPIStateArray)
+
+Post the `MPI.Isend` for this round of communication.
+"""
+function start_ghost_send!(Q::MPIStateArray)
 
   # post MPI sends
   nnabr = length(Q.nabrtorank)
