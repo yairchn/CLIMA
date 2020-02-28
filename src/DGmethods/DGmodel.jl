@@ -242,15 +242,17 @@ function indefinite_stack_integral!(dg::DGModel, m::BalanceLaw,
   FT = eltype(Q)
 
   # do integrals
-  nelem = length(topology.elems)
   nvertelem = topology.stacksize
-  nhorzelem = div(nelem, nvertelem)
+  horzelems = cld.(elems, nvertelem)
+  nhorzelem = length(horzelems)
 
-  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
+  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem, stream=stream,
           knl_indefinite_stack_integral!(m, Val(dim), Val(N),
                                          Val(nvertelem),
                                          Q.data, auxstate.data,
-                                         grid.vgeo, grid.Imat, 1:nhorzelem))
+                                         grid.vgeo, grid.Imat,
+                                         topology.activeDOF,
+                                         horzelems))
 end
 
 function reverse_indefinite_stack_integral!(dg::DGModel,
@@ -273,15 +275,16 @@ function reverse_indefinite_stack_integral!(dg::DGModel,
   FT = eltype(auxstate)
 
   # do integrals
-  nelem = length(topology.elems)
   nvertelem = topology.stacksize
-  nhorzelem = div(nelem, nvertelem)
+  horzelems = cld.(elems, nvertelem)
+  nhorzelem = length(horzelems)
 
-  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
+  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem, stream=stream,
           knl_reverse_indefinite_stack_integral!(m, Val(dim), Val(N),
                                                  Val(nvertelem),
                                                  Q.data, auxstate.data,
-                                                 1:nhorzelem))
+                                                 topology.activeDOF,
+                                                 horzelems))
 end
 
 function nodal_update_aux!(f!, dg::DGModel, m::BalanceLaw, Q::MPIStateArray,
@@ -302,13 +305,13 @@ function nodal_update_aux!(f!, dg::DGModel, m::BalanceLaw, Q::MPIStateArray,
   if diffusive
     @launch(device, threads=(Np,), blocks=nelems, stream=stream,
             knl_nodal_update_aux!(m, Val(dim), Val(N), f!, Q.data,
-                                  dg.auxstate.data, dg.diffstate.data, t, elems,
-                                  topology.activeDOF))
+                                  dg.auxstate.data, dg.diffstate.data, t,
+                                  topology.activeDOF, elems))
   else
     @launch(device, threads=(Np,), blocks=nelems, stream=stream,
             knl_nodal_update_aux!(m, Val(dim), Val(N), f!, Q.data,
-                                  dg.auxstate.data, t, elems,
-                                  topology.activeDOF))
+                                  dg.auxstate.data, t,
+                                  topology.activeDOF, elems))
   end
 end
 
@@ -372,14 +375,14 @@ function copy_stack_field_down!(dg::DGModel, m::BalanceLaw,
   Nqk = dim == 2 ? 1 : Nq
 
   # do integrals
-  nelem = length(topology.elems)
   nvertelem = topology.stacksize
-  nhorzelem = div(nelem, nvertelem)
+  horzelems = cld.(elems, nvertelem)
+  nhorzelem = length(horzelems)
 
   @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
           knl_copy_stack_field_down!(Val(dim), Val(N), Val(nvertelem),
-                                     auxstate.data, 1:nhorzelem, Val(fldin),
-                                     Val(fldout)))
+                                     auxstate.data, topology.activeDOF,
+                                     horzelems, Val(fldin), Val(fldout)))
 end
 
 function MPIStateArrays.MPIStateArray(dg::DGModel, commtag=888)
