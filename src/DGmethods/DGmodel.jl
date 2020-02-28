@@ -53,9 +53,6 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   communicate = !(isstacked(topology) &&
                   typeof(dg.direction) <: VerticalDirection)
 
-  aux_comm = update_aux!(dg, bl, Q, t)
-  @assert typeof(aux_comm) == Bool
-
   # The pattern to overlap communication and computation
   # [device: copy] Start device to host data transfer
   # [device: cmdx] Start the volume kernel (and maybe some face?)
@@ -64,7 +61,6 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   # [device: copy] transfer data from device to host and fill Q -> event (a)
   # [device: cmdx] Wait on event (a)
   # [device: cmdx] do face computation
-  #
   if device == CUDA()
     default_stream = CuDefaultStream()
     copy_stream, cmdx_stream = get_streams()
@@ -82,14 +78,10 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   ########################
   if communicate
     MPIStateArrays.start_ghost_data_transfer!(Q, stream=copy_stream, async=true)
-    aux_comm && MPIStateArrays.start_ghost_data_transfer!(auxstate,
-                                                          stream=copy_stream,
-                                                          async=true)
-    if device == CPU()
-      MPIStateArrays.start_ghost_send!(Q)
-      aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
-    end
+    device == CPU() && MPIStateArrays.start_ghost_send!(Q)
   end
+
+  update_aux!(dg, bl, Q, t, topology.realelems, cmdx_stream)
 
   if nviscstate > 0
     @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem, stream=cmdx_stream,
@@ -101,13 +93,11 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
       if device == CUDA()
         friendlysynchronize(copy_stream)
         MPIStateArrays.start_ghost_send!(Q)
-        aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
       end
 
       MPIStateArrays.finish_ghost_recv!(Q; stream=copy_stream, async=true)
-      aux_comm && MPIStateArrays.finish_ghost_recv!(auxstate;
-                                                    stream=copy_stream,
-                                                    async=true)
+
+      update_aux!(dg, bl, Q, t, topology.ghostelems, cmdx_stream)
 
       # have the cmdx_stream wait on the copy_stream
       if device == CUDA()
@@ -137,21 +127,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
       CUDAdrv.wait(event, default_stream)
     end
 
-    aux_comm = update_aux_diffusive!(dg, bl, Q, t)
-    @assert typeof(aux_comm) == Bool
-
-    if aux_comm && device == CUDA()
-      event = CuEvent(CUDAdrv.EVENT_DISABLE_TIMING)
-      CUDAdrv.record(event, default_stream)
-      CUDAdrv.wait(event, copy_stream)
-      CUDAdrv.wait(event, cmdx_stream)
-    end
-
-    if aux_comm
-      MPIStateArrays.start_ghost_data_transfer!(auxstate, stream=copy_stream,
-                                                async=true)
-      device == CPU() && MPIStateArrays.start_ghost_send!(auxstate)
-    end
+    update_aux_diffusive!(dg, bl, Q, t, topology.realelems, cmdx_stream)
   end
 
 
@@ -168,12 +144,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     if device == CUDA()
       friendlysynchronize(copy_stream)
       MPIStateArrays.start_ghost_send!(Qcomm)
-      aux_comm && MPIStateArrays.start_ghost_send!(auxstate)
     end
     MPIStateArrays.finish_ghost_recv!(Qcomm; stream=copy_stream, async=true)
-    aux_comm && MPIStateArrays.finish_ghost_recv!(auxstate;
-                                                  stream=copy_stream,
-                                                  async=true)
 
     # have the cmdx_stream wait on the copy_stream
     if device == CUDA()
@@ -181,6 +153,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
       CUDAdrv.record(event, copy_stream)
       CUDAdrv.wait(event, cmdx_stream)
     end
+    update_aux_diffusive!(dg, bl, Q, t, topology.realelems, cmdx_stream)
   end
 
   @launch(device, threads=Nfp, blocks=nrealelem, stream=cmdx_stream,
@@ -196,7 +169,6 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   if communicate
     MPIStateArrays.finish_ghost_send!(Qvisc)
     MPIStateArrays.finish_ghost_send!(Q)
-    MPIStateArrays.finish_ghost_send!(auxstate)
   end
   friendlysynchronize(copy_stream)
   friendlysynchronize(cmdx_stream)
@@ -241,18 +213,21 @@ function init_ode_state(dg::DGModel, args...;
 end
 
 # fallback
-function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
-  return false
+function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real,
+                     args...)
+                     nothing
 end
 
-function update_aux_diffusive!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
-  return false
+function update_aux_diffusive!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray,
+                               t::Real, args...)
+                     nothing
 end
 
 function indefinite_stack_integral!(dg::DGModel, m::BalanceLaw,
                                     Q::MPIStateArray,
                                     auxstate::MPIStateArray,
-                                    t::Real)
+                                    t::Real, elems, stream)
+  #FIXME: handle args elems and stream
 
   device = typeof(Q.data) <: Array ? CPU() : CUDA()
 
@@ -281,7 +256,9 @@ end
 function reverse_indefinite_stack_integral!(dg::DGModel,
                                             m::BalanceLaw,
                                             Q::MPIStateArray,
-                                            auxstate::MPIStateArray, t::Real)
+                                            auxstate::MPIStateArray, t::Real,
+                                            elems, stream)
+  #FIXME: handle args elems and stream
 
   device = typeof(auxstate.data) <: Array ? CPU() : CUDA()
 
@@ -308,7 +285,7 @@ function reverse_indefinite_stack_integral!(dg::DGModel,
 end
 
 function nodal_update_aux!(f!, dg::DGModel, m::BalanceLaw, Q::MPIStateArray,
-                           t::Real; diffusive=false)
+                           t::Real, elems, stream; diffusive=false)
   device = typeof(Q.data) <: Array ? CPU() : CUDA()
 
   grid = dg.grid
@@ -317,21 +294,21 @@ function nodal_update_aux!(f!, dg::DGModel, m::BalanceLaw, Q::MPIStateArray,
   dim = dimensionality(grid)
   N = polynomialorder(grid)
   Nq = N + 1
-  nrealelem = length(topology.realelems)
+  nelem = length(elems)
 
   Np = dofs_per_element(grid)
 
   ### update aux variables
   if diffusive
-    @launch(device, threads=(Np,), blocks=nrealelem,
-            knl_nodal_update_aux!(m, Val(dim), Val(N), f!,
-                            Q.data, dg.auxstate.data, dg.diffstate.data, t,
-                            topology.realelems))
+    @launch(device, threads=(Np,), blocks=nelems, stream=stream,
+            knl_nodal_update_aux!(m, Val(dim), Val(N), f!, Q.data,
+                                  dg.auxstate.data, dg.diffstate.data, t, elems,
+                                  topology.activeDOF))
   else
-    @launch(device, threads=(Np,), blocks=nrealelem,
-            knl_nodal_update_aux!(m, Val(dim), Val(N), f!,
-                            Q.data, dg.auxstate.data, t,
-                            topology.realelems))
+    @launch(device, threads=(Np,), blocks=nelems, stream=stream,
+            knl_nodal_update_aux!(m, Val(dim), Val(N), f!, Q.data,
+                                  dg.auxstate.data, t, elems,
+                                  topology.activeDOF))
   end
 end
 
@@ -380,7 +357,9 @@ function courant(local_courant::Function, dg::DGModel, m::BalanceLaw,
 end
 
 function copy_stack_field_down!(dg::DGModel, m::BalanceLaw,
-                                auxstate::MPIStateArray, fldin, fldout)
+                                auxstate::MPIStateArray, fldin, fldout,
+                                elems, stream)
+  #FIXME: handle args elems and stream
 
   device = typeof(auxstate.data) <: Array ? CPU() : CUDA()
 
