@@ -97,7 +97,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
 
       MPIStateArrays.finish_ghost_recv!(Q; stream=copy_stream, async=true)
 
-      update_aux!(dg, bl, Q, t, topology.ghostelems, cmdx_stream)
+      update_aux!(dg, bl, Q, t, topology.ghostelems, copy_stream)
 
       # have the cmdx_stream wait on the copy_stream
       if device == CUDA()
@@ -146,6 +146,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
       MPIStateArrays.start_ghost_send!(Qcomm)
     end
     MPIStateArrays.finish_ghost_recv!(Qcomm; stream=copy_stream, async=true)
+    update_aux_diffusive!(dg, bl, Q, t, topology.realelems, copy_stream)
 
     # have the cmdx_stream wait on the copy_stream
     if device == CUDA()
@@ -153,7 +154,6 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
       CUDAdrv.record(event, copy_stream)
       CUDAdrv.wait(event, cmdx_stream)
     end
-    update_aux_diffusive!(dg, bl, Q, t, topology.realelems, cmdx_stream)
   end
 
   @launch(device, threads=Nfp, blocks=nrealelem, stream=cmdx_stream,
@@ -379,7 +379,7 @@ function copy_stack_field_down!(dg::DGModel, m::BalanceLaw,
   horzelems = cld.(elems, nvertelem)
   nhorzelem = length(horzelems)
 
-  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
+  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem, stream=stream,
           knl_copy_stack_field_down!(Val(dim), Val(N), Val(nvertelem),
                                      auxstate.data, topology.activeDOF,
                                      horzelems, Val(fldin), Val(fldout)))
