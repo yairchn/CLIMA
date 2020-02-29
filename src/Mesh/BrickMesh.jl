@@ -1019,11 +1019,12 @@ function connectmesh(comm::MPI.Comm, elemtovert, elemtocoord, elemtobndy,
 end
 
 """
-    mappings(N, elemtoelem, elemtoface, elemtoordr)
+    mappings(N, elemtoelem, elemtoface, elemtoordr, nrealelem)
 
-This function takes in a polynomial order `N` and parts of a mesh (as returned
-from `connectmesh`) and returns index mappings for the element surface flux
-computation.  The returned `Tuple` contains:
+This function takes in a polynomial order `N` and parts of a topology (as
+returned from `connectmesh`) and returns index mappings for the element surface
+flux computation. `nrealelem` is the number of real elements, which is needed to
+determine the ghostDOFs, The returned `Tuple` contains:
 
  - `vmapM` an array of linear indices into the volume degrees of freedom where
    `vmapM[:,f,e]` are the degrees of freedom indices for face `f` of element
@@ -1032,8 +1033,11 @@ computation.  The returned `Tuple` contains:
  - `vmapP` an array of linear indices into the volume degrees of freedom where
    `vmapP[:,f,e]` are the degrees of freedom indices for the face neighboring
    face `f` of element `e`.
+
+ - `activeDOF` a boolean array indicative if a given degree of freedom is an
+   active for computation.
 """
-function mappings(N, elemtoelem, elemtoface, elemtoordr)
+function mappings(N, elemtoelem, elemtoface, elemtoordr, nrealelem)
   nface, nelem = size(elemtoelem)
 
   d = div(nface, 2)
@@ -1044,23 +1048,42 @@ function mappings(N, elemtoelem, elemtoface, elemtoordr)
   fe(f) = N*mod(f-1,2)+1
   fmask = hcat((p[ntuple(j->(j==fd(f)) ? (fe(f):fe(f)) : (:), d)...][:]
                 for f=1:nface)...)
+  inds = LinearIndices(ntuple(j->N+1, d-1))
 
   vmapM = similar(elemtoelem, Nfp, nface, nelem)
   vmapP = similar(elemtoelem, Nfp, nface, nelem)
+
+  # activeDOF are DOFs which are actually used for computation (real element
+  # DOFs and connected ghost face DOFs)
+  activeDOF = Array{Bool, 2}(undef, Np, nelem)
+  fill!(activeDOF, false)
+  activeDOF[:, 1:nrealelem] .= true
 
   for e1 = 1:nelem, f1 = 1:nface
     e2 = elemtoelem[f1,e1]
     f2 = elemtoface[f1,e1]
     o2 = elemtoordr[f1,e1]
 
-    # TODO support different orientations
-    @assert o2 == 1
-
     vmapM[:,f1,e1] .= Np*(e1-1) .+ fmask[:,f1]
-    vmapP[:,f1,e1] .= Np*(e2-1) .+ fmask[:,f2]
+
+    if o2 == 1
+      vmapP[:,f1,e1] .= Np*(e2-1) .+ fmask[:,f2]
+    elseif d == 3 && o2 == 3
+      n = 1
+      @inbounds for j = 1:N+1, i = N+1:-1:1
+        vmapP[n,f1,e1] = Np*(e2-1) + fmask[inds[i,j],f2]
+        n+=1
+      end
+    else
+      error("Orientation '$o2' with dim '$d' not supported yet")
+    end
+    # set the activeDOF map to true if this e1 is real and e2 is ghost
+    if e1 <= nrealelem && e2 > nrealelem
+      activeDOF[vmapP[:, f1, e1]] .= true
+    end
   end
 
-  (vmapM, vmapP)
+  (vmapM, vmapP, activeDOF)
 end
 
 """
