@@ -1056,7 +1056,7 @@ function knl_indefinite_stack_integral!(bl::BalanceLaw, ::Val{dim}, ::Val{N},
   end
   @synchronize
 
-  @inbounds @loop for eh in (elems; blockIdx().x)
+  @inbounds @loop for eh in (elems; elems[blockIdx().x])
     # Initialize the constant state at zero
     @loop for j in (1:Nqj; threadIdx().y)
       @loop for i in (1:Nq; threadIdx().x)

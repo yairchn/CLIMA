@@ -17,6 +17,17 @@ function DGModel(balancelaw, grid, numfluxnondiff, numfluxdiff, gradnumflux;
           diffstate, direction, modeldata)
 end
 
+const STREAMS = CuStream[]
+
+function get_streams()
+  if isempty(STREAMS)
+    push!(STREAMS, CUDAdrv.CuStream(CUDAdrv.STREAM_NON_BLOCKING))
+    push!(STREAMS, CUDAdrv.CuStream(CUDAdrv.STREAM_NON_BLOCKING))
+  end
+  @assert length(STREAMS) == 2
+  @inbounds return (STREAMS[1], STREAMS[2])
+end
+
 function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   bl = dg.balancelaw
   device = typeof(Q.data) <: Array ? CPU() : CUDA()
@@ -42,80 +53,116 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   communicate = !(isstacked(topology) &&
                   typeof(dg.direction) <: VerticalDirection)
 
-  aux_comm = update_aux!(dg, bl, Q, t)
-  @assert typeof(aux_comm) == Bool
+  # The pattern to overlap communication and computation
+  # [device: copy] Start device to host data transfer
+  # [device: cmdx] Start the volume kernel (and maybe some face?)
+  # [host        ] Start MPI Sends (wait on copy stream)
+  # [host        ] Wait  MPI Recv
+  # [device: copy] transfer data from device to host and fill Q -> event (a)
+  # [device: cmdx] Wait on event (a)
+  # [device: cmdx] do face computation
+  if device == CUDA()
+    default_stream = CuDefaultStream()
+    copy_stream, cmdx_stream = get_streams()
+
+    event = CuEvent(CUDAdrv.EVENT_DISABLE_TIMING)
+    CUDAdrv.record(event, default_stream)
+    CUDAdrv.wait(event, cmdx_stream)
+    CUDAdrv.wait(event, copy_stream)
+  else
+    copy_stream = cmdx_stream = nothing
+  end
 
   ########################
   # Gradient Computation #
   ########################
   if communicate
-    MPIStateArrays.start_ghost_exchange!(Q)
-    if aux_comm
-      MPIStateArrays.start_ghost_exchange!(auxstate)
-    end
+    MPIStateArrays.start_ghost_data_transfer!(Q, stream=copy_stream, async=true)
+    device == CPU() && MPIStateArrays.start_ghost_send!(Q)
   end
 
-  if nviscstate > 0
+  update_aux!(dg, bl, Q, t, topology.realelems, cmdx_stream)
 
-    @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
+  if nviscstate > 0
+    @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem, stream=cmdx_stream,
             volumeviscterms!(bl, Val(dim), Val(N), dg.direction, Q.data,
                              Qvisc.data, auxstate.data, grid.vgeo, t, grid.D,
                              topology.realelems))
 
     if communicate
-      MPIStateArrays.finish_ghost_recv!(Q)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
+      if device == CUDA()
+        friendlysynchronize(copy_stream)
+        MPIStateArrays.start_ghost_send!(Q)
+      end
+
+      MPIStateArrays.finish_ghost_recv!(Q; stream=copy_stream, async=true)
+
+      update_aux!(dg, bl, Q, t, topology.ghostelems, copy_stream)
+
+      # have the cmdx_stream wait on the copy_stream
+      if device == CUDA()
+        event = CuEvent(CUDAdrv.EVENT_DISABLE_TIMING)
+        CUDAdrv.record(event, copy_stream)
+        CUDAdrv.wait(event, cmdx_stream)
       end
     end
 
-    @launch(device, threads=Nfp, blocks=nrealelem,
+    @launch(device, threads=Nfp, blocks=nrealelem, stream=cmdx_stream,
             faceviscterms!(bl, Val(dim), Val(N), dg.direction,
                            dg.gradnumflux, Q.data, Qvisc.data, auxstate.data,
-                           grid.vgeo, grid.sgeo, t, grid.vmapM, grid.vmapP, grid.elemtobndy,
+                           grid.vgeo, grid.sgeo, t, grid.vmapM, grid.vmapP,
+                           grid.elemtobndy,
                            topology.realelems))
 
     if communicate
-      MPIStateArrays.start_ghost_exchange!(Qvisc)
+      MPIStateArrays.start_ghost_data_transfer!(Qvisc,
+                                                stream=copy_stream,
+                                                async=true)
+      device == CPU() && MPIStateArrays.start_ghost_send!(Qvisc)
     end
 
-    aux_comm = update_aux_diffusive!(dg, bl, Q, t)
-    @assert typeof(aux_comm) == Bool
-
-    if aux_comm
-      MPIStateArrays.start_ghost_exchange!(auxstate)
+    if device == CUDA()
+      event = CuEvent(CUDAdrv.EVENT_DISABLE_TIMING)
+      CUDAdrv.record(event, cmdx_stream)
+      CUDAdrv.wait(event, default_stream)
     end
+
+    update_aux_diffusive!(dg, bl, Q, t, topology.realelems, cmdx_stream)
   end
 
 
   ###################
   # RHS Computation #
   ###################
-  @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem,
+  @launch(device, threads=(Nq, Nq, Nqk), blocks=nrealelem, stream=cmdx_stream,
           volumerhs!(bl, Val(dim), Val(N), dg.direction, dQdt.data,
                      Q.data, Qvisc.data, auxstate.data, grid.vgeo, t,
                      grid.ω, grid.D, topology.realelems, increment))
 
   if communicate
-    if nviscstate > 0
-      MPIStateArrays.finish_ghost_recv!(Qvisc)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
-      end
-    else
-      MPIStateArrays.finish_ghost_recv!(Q)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
-      end
+    Qcomm = (nviscstate > 0) ? Qvisc : Q
+    if device == CUDA()
+      friendlysynchronize(copy_stream)
+      MPIStateArrays.start_ghost_send!(Qcomm)
+    end
+    MPIStateArrays.finish_ghost_recv!(Qcomm; stream=copy_stream, async=true)
+    update_aux_diffusive!(dg, bl, Q, t, topology.realelems, copy_stream)
+
+    # have the cmdx_stream wait on the copy_stream
+    if device == CUDA()
+      event = CuEvent(CUDAdrv.EVENT_DISABLE_TIMING)
+      CUDAdrv.record(event, copy_stream)
+      CUDAdrv.wait(event, cmdx_stream)
     end
   end
 
-  @launch(device, threads=Nfp, blocks=nrealelem,
+  @launch(device, threads=Nfp, blocks=nrealelem, stream=cmdx_stream,
           facerhs!(bl, Val(dim), Val(N), dg.direction,
                    dg.numfluxnondiff,
                    dg.numfluxdiff,
                    dQdt.data, Q.data, Qvisc.data,
-                   auxstate.data, grid.vgeo, grid.sgeo, t, grid.vmapM, grid.vmapP, grid.elemtobndy,
+                   auxstate.data, grid.vgeo, grid.sgeo, t, grid.vmapM,
+                   grid.vmapP, grid.elemtobndy,
                    topology.realelems))
 
   # Just to be safe, we wait on the sends we started.
@@ -123,6 +170,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
     MPIStateArrays.finish_ghost_send!(Qvisc)
     MPIStateArrays.finish_ghost_send!(Q)
   end
+  friendlysynchronize(copy_stream)
+  friendlysynchronize(cmdx_stream)
 end
 
 function init_ode_state(dg::DGModel, args...;
@@ -164,18 +213,21 @@ function init_ode_state(dg::DGModel, args...;
 end
 
 # fallback
-function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
-  return false
+function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real,
+                     args...)
+                     nothing
 end
 
-function update_aux_diffusive!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
-  return false
+function update_aux_diffusive!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray,
+                               t::Real, args...)
+                     nothing
 end
 
 function indefinite_stack_integral!(dg::DGModel, m::BalanceLaw,
                                     Q::MPIStateArray,
                                     auxstate::MPIStateArray,
-                                    t::Real)
+                                    t::Real, elems, stream)
+  #FIXME: handle args elems and stream
 
   device = typeof(Q.data) <: Array ? CPU() : CUDA()
 
@@ -190,21 +242,25 @@ function indefinite_stack_integral!(dg::DGModel, m::BalanceLaw,
   FT = eltype(Q)
 
   # do integrals
-  nelem = length(topology.elems)
   nvertelem = topology.stacksize
-  nhorzelem = div(nelem, nvertelem)
+  horzelems = cld.(elems, nvertelem)
+  nhorzelem = length(horzelems)
 
-  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
+  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem, stream=stream,
           knl_indefinite_stack_integral!(m, Val(dim), Val(N),
                                          Val(nvertelem),
                                          Q.data, auxstate.data,
-                                         grid.vgeo, grid.Imat, 1:nhorzelem))
+                                         grid.vgeo, grid.Imat,
+                                         topology.activeDOF,
+                                         horzelems))
 end
 
 function reverse_indefinite_stack_integral!(dg::DGModel,
                                             m::BalanceLaw,
                                             Q::MPIStateArray,
-                                            auxstate::MPIStateArray, t::Real)
+                                            auxstate::MPIStateArray, t::Real,
+                                            elems, stream)
+  #FIXME: handle args elems and stream
 
   device = typeof(auxstate.data) <: Array ? CPU() : CUDA()
 
@@ -219,19 +275,20 @@ function reverse_indefinite_stack_integral!(dg::DGModel,
   FT = eltype(auxstate)
 
   # do integrals
-  nelem = length(topology.elems)
   nvertelem = topology.stacksize
-  nhorzelem = div(nelem, nvertelem)
+  horzelems = cld.(elems, nvertelem)
+  nhorzelem = length(horzelems)
 
-  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
+  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem, stream=stream,
           knl_reverse_indefinite_stack_integral!(m, Val(dim), Val(N),
                                                  Val(nvertelem),
                                                  Q.data, auxstate.data,
-                                                 1:nhorzelem))
+                                                 topology.activeDOF,
+                                                 horzelems))
 end
 
 function nodal_update_aux!(f!, dg::DGModel, m::BalanceLaw, Q::MPIStateArray,
-                           t::Real; diffusive=false)
+                           t::Real, elems, stream; diffusive=false)
   device = typeof(Q.data) <: Array ? CPU() : CUDA()
 
   grid = dg.grid
@@ -240,21 +297,21 @@ function nodal_update_aux!(f!, dg::DGModel, m::BalanceLaw, Q::MPIStateArray,
   dim = dimensionality(grid)
   N = polynomialorder(grid)
   Nq = N + 1
-  nrealelem = length(topology.realelems)
+  nelem = length(elems)
 
   Np = dofs_per_element(grid)
 
   ### update aux variables
   if diffusive
-    @launch(device, threads=(Np,), blocks=nrealelem,
-            knl_nodal_update_aux!(m, Val(dim), Val(N), f!,
-                            Q.data, dg.auxstate.data, dg.diffstate.data, t,
-                            topology.realelems))
+    @launch(device, threads=(Np,), blocks=nelems, stream=stream,
+            knl_nodal_update_aux!(m, Val(dim), Val(N), f!, Q.data,
+                                  dg.auxstate.data, dg.diffstate.data, t,
+                                  topology.activeDOF, elems))
   else
-    @launch(device, threads=(Np,), blocks=nrealelem,
-            knl_nodal_update_aux!(m, Val(dim), Val(N), f!,
-                            Q.data, dg.auxstate.data, t,
-                            topology.realelems))
+    @launch(device, threads=(Np,), blocks=nelems, stream=stream,
+            knl_nodal_update_aux!(m, Val(dim), Val(N), f!, Q.data,
+                                  dg.auxstate.data, t,
+                                  topology.activeDOF, elems))
   end
 end
 
@@ -303,7 +360,9 @@ function courant(local_courant::Function, dg::DGModel, m::BalanceLaw,
 end
 
 function copy_stack_field_down!(dg::DGModel, m::BalanceLaw,
-                                auxstate::MPIStateArray, fldin, fldout)
+                                auxstate::MPIStateArray, fldin, fldout,
+                                elems, stream)
+  #FIXME: handle args elems and stream
 
   device = typeof(auxstate.data) <: Array ? CPU() : CUDA()
 
@@ -316,14 +375,14 @@ function copy_stack_field_down!(dg::DGModel, m::BalanceLaw,
   Nqk = dim == 2 ? 1 : Nq
 
   # do integrals
-  nelem = length(topology.elems)
   nvertelem = topology.stacksize
-  nhorzelem = div(nelem, nvertelem)
+  horzelems = cld.(elems, nvertelem)
+  nhorzelem = length(horzelems)
 
-  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem,
+  @launch(device, threads=(Nq, Nqk, 1), blocks=nhorzelem, stream=stream,
           knl_copy_stack_field_down!(Val(dim), Val(N), Val(nvertelem),
-                                     auxstate.data, 1:nhorzelem, Val(fldin),
-                                     Val(fldout)))
+                                     auxstate.data, topology.activeDOF,
+                                     horzelems, Val(fldin), Val(fldout)))
 end
 
 function MPIStateArrays.MPIStateArray(dg::DGModel, commtag=888)

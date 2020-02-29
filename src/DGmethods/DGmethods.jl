@@ -2,6 +2,7 @@ module DGmethods
 
 using MPI
 using ..MPIStateArrays
+using ..MPIStateArrays.CMBuffers: friendlysynchronize
 using ..Mesh.Grids
 using ..Mesh.Topologies
 using StaticArrays
@@ -9,6 +10,7 @@ using ..SpaceMethods
 using ..VariableTemplates
 using DocStringExtensions
 using GPUifyLoops
+using CUDAdrv
 
 export BalanceLaw, DGModel, init_ode_state
 
