@@ -263,7 +263,7 @@ function post_Irecvs!(Q::MPIStateArray)
 end
 
 """
-    start_ghost_exchange!(Q::MPIStateArray, [dorecvs=true])
+    start_ghost_exchange!(Q::MPIStateArray, [dorecvs=true]; stream, async)
 
 Start the MPI exchange of the data stored in `Q`. If `dorecvs` is `true` then
 `post_Irecvs!(Q)` is called, otherwise the caller is responsible for this.
@@ -271,15 +271,20 @@ Start the MPI exchange of the data stored in `Q`. If `dorecvs` is `true` then
 This function will fill the send buffer (on the device), copies the data from
 the device to the host, and then issues the send. Previous sends are waited on
 to ensure that they are complete.
+
+If `stream ≠ nothing` then this stream is used for all device calls.
+
+If `async` then use asynchronous host to device copy.
 """
-function start_ghost_exchange!(Q::MPIStateArray, dorecvs=true)
-  start_ghost_data_transfer!(Q, dorecvs)
+function start_ghost_exchange!(Q::MPIStateArray, dorecvs=true; stream=nothing,
+                               async=false)
+  start_ghost_data_transfer!(Q, dorecvs; stream=stream, async=async)
   start_ghost_send!(Q)
 end
 
 
 """
-    start_ghost_data_transfer!(Q::MPIStateArray, [dorecvs=true])
+    start_ghost_data_transfer!(Q::MPIStateArray, [dorecvs=true]; stream, async)
 
 Start the MPI transfer of the data stored in `Q` from the device to host. If
 `dorecvs` is `true` then `post_Irecvs!(Q)` is called, otherwise the caller is
@@ -288,8 +293,13 @@ responsible for this.
 This function will fill the send buffer (on the device), copies the data from
 the device to the host. Previous sends are waited on to ensure that they are
 complete.
+
+If `stream ≠ nothing` then this stream is used for all device calls.
+
+If `async` then use asynchronous host to device copy.
 """
-function start_ghost_data_transfer!(Q::MPIStateArray, dorecvs=true)
+function start_ghost_data_transfer!(Q::MPIStateArray, dorecvs=true;
+                                    stream=nothing, async=false)
   dorecvs && post_Irecvs!(Q)
 
   # wait on (prior) MPI sends
@@ -298,8 +308,8 @@ function start_ghost_data_transfer!(Q::MPIStateArray, dorecvs=true)
   @tic mpi_sendcopy
   # pack data in send buffer
   stage = get_stage(Q.send_buffer)
-  fillsendbuf!(stage, Q.data, Q.vmapsend)
-  prepare_transfer!(Q.send_buffer)
+  fillsendbuf!(stage, Q.data, Q.vmapsend, stream)
+  prepare_transfer!(Q.send_buffer, async=async, stream=stream)
   @toc mpi_sendcopy
 end
 
@@ -327,18 +337,27 @@ Complete the exchange of data and fill the data array on the device. Note this
 completes both the send and the receive communication. For more fine level
 control see [`finish_ghost_recv!`](@ref) and
 [`finish_ghost_send!`](@ref)
+
+If `stream ≠ nothing` then this stream is used for all device calls.
+
+If `async` then use asynchronous host to device copy.
 """
-function finish_ghost_exchange!(Q::MPIStateArray)
-  finish_ghost_recv!(Q::MPIStateArray)
+function finish_ghost_exchange!(Q::MPIStateArray; stream=nothing, async=false)
+  finish_ghost_recv!(Q::MPIStateArray, stream=stream, async=async)
   finish_ghost_send!(Q::MPIStateArray)
 end
 
 """
-    finish_ghost_recv!(Q::MPIStateArray)
+    finish_ghost_recv!(Q::MPIStateArray; stream=nothing, async=false)
 
 Complete the receive of data and fill the data array on the device
+
+If `stream ≠ nothing` then this stream is used for all device calls.
+
+If `async` then use asynchronous host to device copy.
 """
-function finish_ghost_recv!(Q::MPIStateArray)
+function finish_ghost_recv!(Q::MPIStateArray; stream=nothing,
+                            async=false)
   @tic mpi_recvwait
   # wait on MPI receives
   MPI.Waitall!(Q.recvreq)
@@ -346,9 +365,9 @@ function finish_ghost_recv!(Q::MPIStateArray)
 
   @tic mpi_recvcopy
   # copy data to state vectors
-  prepare_stage!(Q.recv_buffer)
+  prepare_stage!(Q.recv_buffer, async=async, stream=stream)
   stage = get_stage(Q.recv_buffer)
-  transferrecvbuf!(Q.data, stage, Q.vmaprecv)
+  transferrecvbuf!(Q.data, stage, Q.vmaprecv, stream)
   @toc mpi_recvcopy
 end
 
@@ -364,29 +383,41 @@ function finish_ghost_send!(Q::MPIStateArray)
 end
 
 # {{{ MPI Buffer handling
-function fillsendbuf!(sendbuf, buf, vmapsend)
+function fillsendbuf!(sendbuf, buf, vmapsend, stream)
   if length(vmapsend) > 0
     Np = size(buf, 1)
     nvar = size(buf, 2)
 
     threads = 256
     blocks = div(length(vmapsend) + threads - 1, threads)
-    @launch(device(buf), threads=threads, blocks=blocks,
-            knl_fillsendbuf!(Val(Np), Val(nvar), sendbuf, buf, vmapsend,
-                             length(vmapsend)))
+    if isnothing(stream)
+      @launch(device(buf), threads=threads, blocks=blocks,
+              knl_fillsendbuf!(Val(Np), Val(nvar), sendbuf, buf, vmapsend,
+                               length(vmapsend)))
+    else
+      @launch(device(buf), threads=threads, blocks=blocks, stream=stream,
+              knl_fillsendbuf!(Val(Np), Val(nvar), sendbuf, buf, vmapsend,
+                               length(vmapsend)))
+    end
   end
 end
 
-function transferrecvbuf!(buf, recvbuf, vmaprecv)
+function transferrecvbuf!(buf, recvbuf, vmaprecv, stream)
   if length(vmaprecv) > 0
     Np = size(buf, 1)
     nvar = size(buf, 2)
 
     threads = 256
     blocks = div(length(vmaprecv) + threads - 1, threads)
-    @launch(device(buf), threads=threads, blocks=blocks,
-            knl_transferrecvbuf!(Val(Np), Val(nvar), buf, recvbuf,
-                                 vmaprecv, length(vmaprecv)))
+    if isnothing(stream)
+      @launch(device(buf), threads=threads, blocks=blocks,
+              knl_transferrecvbuf!(Val(Np), Val(nvar), buf, recvbuf,
+                                   vmaprecv, length(vmaprecv)))
+    else
+      @launch(device(buf), threads=threads, blocks=blocks, stream=stream,
+              knl_transferrecvbuf!(Val(Np), Val(nvar), buf, recvbuf,
+                                   vmaprecv, length(vmaprecv)))
+    end
   end
 end
 
