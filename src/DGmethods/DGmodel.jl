@@ -233,11 +233,13 @@ function init_ode_state(dg::DGModel, args...;
 end
 
 # fallback
-function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
+function update_aux!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real,
+                     args...)
   return false
 end
 
-function update_aux_diffusive!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray, t::Real)
+function update_aux_diffusive!(dg::DGModel, bl::BalanceLaw, Q::MPIStateArray,
+                               t::Real, args...)
   return false
 end
 
