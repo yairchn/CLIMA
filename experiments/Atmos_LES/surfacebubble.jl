@@ -100,6 +100,21 @@ function atmos_boundary_flux_diffusive!(nf::CentralNumericalFluxDiffusive,
   end
 end
 
+function atmos_boundary_flux_diffusive!(nf::CentralHyperDiffusiveFlux,
+                                        bc::SurfaceDrivenBubbleBC,
+                                        atmos::AtmosModel,
+                                        F,
+                                        Y⁺, Σ⁺, HΣ⁺, A⁺, n⁻,
+                                        Y⁻, Σ⁻, HΣ⁻, A⁻,
+                                        bctype, t, Y₁⁻, Σ₁⁻, A₁⁻)
+  atmos_boundary_state!(nf, bc, atmos,
+                        Y⁺, Σ⁺,HΣ⁺, A⁺, n⁻,
+                        Y⁻, Σ⁻,HΣ⁻, A⁻,
+                        bctype, t,
+                        Y₁⁻, Σ₁⁻, A₁⁻)
+  flux_diffusive!(atmos, F, Y⁺, Σ⁺, HΣ⁺, A⁺, t)
+end
+
 """
   Surface Driven Thermal Bubble
 """
@@ -155,6 +170,7 @@ function config_surfacebubble(FT, N, resolution, xmax, ymax, zmax)
 
   model = AtmosModel{FT}(AtmosLESConfiguration;
                          turbulence=SmagorinskyLilly{FT}(C_smag),
+                         hyperdiffusion=HorizontalHyperDiffusion{FT}(100),
                          source=(Gravity(),),
                          boundarycondition=bc,
                          moisture=EquilMoist{FT}(),

@@ -79,6 +79,7 @@ function config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
   ref_state = HydrostaticState(DryAdiabaticProfile(typemin(FT), FT(300)), FT(0))
   model = AtmosModel{FT}(AtmosLESConfiguration;
                          turbulence=SmagorinskyLilly{FT}(C_smag),
+                         hyperdiffusion=HorizontalHyperDiffusion{FT}(60),
                          source=(Gravity(),),
                          ref_state=ref_state,
                          init_state=init_risingbubble!)
