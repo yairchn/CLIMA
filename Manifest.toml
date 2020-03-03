@@ -276,7 +276,7 @@ version = "0.21.0"
 
 [[KernelAbstractions]]
 deps = ["Adapt", "CUDAapi", "CUDAdrv", "CUDAnative", "Cassette", "MacroTools", "Requires", "StaticArrays"]
-git-tree-sha1 = "0cf6232ca3e6001706b66f28a3c1bfb1e625229e"
+git-tree-sha1 = "ad38afd7f2638874b13ba9775ff2566c69a1f5be"
 repo-rev = "master"
 repo-url = "https://github.com/JuliaGPU/KernelAbstractions.jl"
 uuid = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
@@ -358,9 +358,9 @@ version = "0.10.0"
 
 [[NNlib]]
 deps = ["BinaryProvider", "Libdl", "LinearAlgebra", "Requires", "Statistics"]
-git-tree-sha1 = "21a3c22bc197b6ae2f8d4d75631876e2b6506dbe"
+git-tree-sha1 = "d9f196d911f55aeaff11b11f681b135980783824"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.6.5"
+version = "0.6.6"
 
 [[NaNMath]]
 git-tree-sha1 = "928b8ca9b2791081dc71a51c55347c27c618760f"
