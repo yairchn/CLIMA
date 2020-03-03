@@ -80,9 +80,10 @@ function config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
 
   # Set up the model
   C_smag = FT(0.23)
+  vis = FT(75.0)
   ref_state = HydrostaticState(DryAdiabaticProfile(typemin(FT), FT(300)), FT(0))
   model = AtmosModel{FT}(AtmosLESConfiguration;
-                         turbulence=SmagorinskyLilly{FT}(C_smag),
+                         turbulence=ConstantViscosityWithDivergence{FT}(vis),
                          source=(Gravity(),),
                          ref_state=ref_state,
                          init_state=init_risingbubble!)
@@ -115,10 +116,11 @@ function main()
     t0 = FT(0)
     timeend = FT(1000)
     # Courant number
-    CFL = FT(0.8)
+    CFL = FT(8)
 
     driver_config = config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
-    solver_config = CLIMA.setup_solver(t0, timeend, driver_config, forcecpu=true, Courant_number=CFL)
+    solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
+                                       forcecpu=true, Courant_number=CFL)
 
     # User defined filter (TMAR positivity preserving filter)
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
@@ -126,9 +128,46 @@ function main()
         nothing
     end
 
+    cbcourantnumbers = GenericCallbacks.EveryXSimulationSteps(5) do
+        dg =  solver_config.dg
+        m = dg.balancelaw
+        Q = solver_config.Q
+        Δt = solver_config.dt
+        cfl_v = courant(nondiffusive_courant, dg, m, Q, Δt, VerticalDirection())
+        cfl_h = courant(nondiffusive_courant, dg, m, Q, Δt, HorizontalDirection())
+        cfla_v = courant(advective_courant, dg, m, Q, Δt, VerticalDirection())
+        cfla_h = courant(advective_courant, dg, m, Q, Δt, HorizontalDirection())
+
+        fΔt = solver_config.solver.fast_solver.dt
+        cflin_v = courant(nondiffusive_courant, dg, m, Q, fΔt, VerticalDirection())
+        cflin_h = courant(nondiffusive_courant, dg, m, Q, fΔt, HorizontalDirection())
+        cflain_v = courant(advective_courant, dg, m, Q, fΔt, VerticalDirection())
+        cflain_h = courant(advective_courant, dg, m, Q, fΔt, HorizontalDirection())
+
+        @info @sprintf """
+        ================================
+        Courant numbers:
+
+        Outer (slow) method:
+        Vertical Acoustic CFL    = %.2g
+        Horizontal Acoustic CFL  = %.2g
+        Vertical Advection CFL   = %.2g
+        Horizontal Advection CFL = %.2g
+
+        Inner (fast) method:
+        Vertical Acoustic CFL    = %.2g
+        Horizontal Acoustic CFL  = %.2g
+        Vertical Advection CFL   = %.2g
+        Horizontal Advection CFL = %.2g
+        ================================
+        """  cfl_v cfl_h cfla_v cfla_h cflin_v cflin_h cflain_v cflain_h
+
+        return nothing
+    end
+
     # Invoke solver (calls solve! function for time-integrator)
     result = CLIMA.invoke!(solver_config;
-                           user_callbacks=(cbtmarfilter,),
+                           user_callbacks=(cbtmarfilter, cbcourantnumbers),
                            check_euclidean_distance=true)
 
     @test isapprox(result,FT(1); atol=1.5e-3)
