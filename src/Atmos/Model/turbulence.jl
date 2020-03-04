@@ -106,8 +106,15 @@ end
 function turbulence_tensors(m::ConstantViscosityWithDivergence,
     state::Vars, diffusive::Vars, aux::Vars, t::Real)
 
+  FT = eltype(state)
   S = diffusive.turbulence.S
+  z = altitude(atmos.orientation,aux)
   ν = m.ρν / state.ρ
+  if altitude >= FT(15000)
+    r = (altitude - FT(15000))/(s.30000-15000)
+    β_sponge = s.α_max * sinpi(r/2)^s.γ
+    ν += β_sponge*ν
+  end
   τ = (-2*ν) * S + (2*ν/3)*tr(S) * I
   return ν, τ
 end
