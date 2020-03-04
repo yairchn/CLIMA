@@ -10,7 +10,13 @@ function atmos_source!(::Nothing, atmos::AtmosModel, source::Vars, state::Vars, 
 end
 # sources are applied additively
 function atmos_source!(stuple::Tuple, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-  map(s -> atmos_source!(s, atmos, source, state, diffusive, aux, t), stuple)
+  ntuple(Val(length(stuple))) do i
+    Base.@_inline_meta
+    s = @inbounds stuple[i]
+    atmos_source!(s, atmos, source, state, diffusive, aux, t)
+    return nothing
+  end
+  return nothing
 end
 
 abstract type Source
