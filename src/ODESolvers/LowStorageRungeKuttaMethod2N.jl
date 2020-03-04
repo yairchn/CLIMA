@@ -56,7 +56,8 @@ end
 
 function LowStorageRungeKutta2N(spacedisc::AbstractSpaceMethod, RKA, RKB, RKC,
                                 Q::AT; dt=0, t0=0) where {AT<:AbstractArray}
-  rhs! = (x...; increment) -> SpaceMethods.odefun!(spacedisc, x..., increment = increment)
+  rhs! = (x...; increment) -> SpaceMethods.odefun!(spacedisc, x...,
+                                                   increment = increment)
   LowStorageRungeKutta2N(rhs!, RKA, RKB, RKC, Q; dt=dt, t0=t0)
 end
 
@@ -142,7 +143,8 @@ equation given by the right-hand-side function `f` with the state `Q`, i.e.,
 with the required time step size `dt` and optional initial time `t0`.  This
 time stepping object is intended to be passed to the `solve!` command.
 
-This method uses the LSRK2N framework to implement a simple Eulerian forward time stepping scheme for the use of debugging.
+This method uses the LSRK2N framework to implement a simple Eulerian forward
+time stepping scheme for the use of debugging.
 
 ### References
 
@@ -188,7 +190,8 @@ and Kennedy (1994) (in their notation (5,4) 2N-Storage RK scheme).
       address = {Langley Research Center, Hampton, VA},
     }
 """
-function LSRK54CarpenterKennedy(F, Q::AT; dt=0, t0=0) where {AT <: AbstractArray}
+function LSRK54CarpenterKennedy(F, Q::AT; dt=0,
+                                t0=0) where {AT <: AbstractArray}
   T = eltype(Q)
   RT = real(T)
 
@@ -233,7 +236,8 @@ Niegemann, Diehl, and Busch (2012) with optimized stability region
 ### References
 
     @article{niegemann2012efficient,
-      title={Efficient low-storage Runge--Kutta schemes with optimized stability regions},
+      title={Efficient low-storage Runge--Kutta schemes with optimized stability
+             regions},
       author={Niegemann, Jens and Diehl, Richard and Busch, Kurt},
       journal={Journal of Computational Physics},
       volume={231},
