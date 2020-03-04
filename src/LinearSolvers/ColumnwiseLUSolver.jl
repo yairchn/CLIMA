@@ -12,6 +12,7 @@ const LS = LinearSolvers
 using ..MPIStateArrays
 using LinearAlgebra
 using KernelAbstractions
+using ..Kernels
 
 include("ColumnwiseLUSolver_kernels.jl")
 
@@ -50,13 +51,6 @@ function LS.prefactorize(op, solver::AbstractColumnLUSolver, Q, args...)
   band_lu!(A, dg)
 
   ColumnwiseLU(dg, A)
-end
-
-sync_device(::CPU) = nothing
-using Requires
-@init @require CUDAdrv = "c5f51814-7f29-56b8-a69c-e4d8f6be1fde" begin
-  using .CUDAdrv
-  sync_device(::CUDA) = synchronize()
 end
 
 function LS.linearsolve!(clu::ColumnwiseLU{F}, ::AbstractColumnLUSolver,
@@ -110,6 +104,7 @@ function band_lu!(A, dg::DGModel)
     A = reshape(A, 1, 1, size(A)..., 1)
   end
 
+  sync_device(device)
   event = band_lu_knl!(device, groupsize, ndrange)(
     A, Val(Nq), Val(groupsize[1]), Val(groupsize[2]),
     Val(nstate), Val(nvertelem), Val(ndrange[end]),
@@ -138,6 +133,7 @@ function band_forward!(Q, A, dg::DGModel)
   nvertelem = topology.stacksize
   nhorzelem = div(nrealelem, nvertelem)
 
+  sync_device(device)
   event = band_forward_knl!(device, (Nq, Nqj), (nhorzelem * Nq, Nqj))(
     Q.data, A, Val(Nq), Val(Nqj), Val(nstate),
     Val(nvertelem), Val(nhorzelem), Val(eband))
@@ -165,6 +161,7 @@ function band_back!(Q, A, dg::DGModel)
   nvertelem = topology.stacksize
   nhorzelem = div(nrealelem, nvertelem)
 
+  sync_device(device)
   event = band_back_knl!(device, (Nq, Nqj), (nhorzelem * Nq, Nqj))(
     Q.data, A, Val(Nq), Val(Nqj), Val(nstate),
     Val(nvertelem), Val(nhorzelem), Val(eband))
@@ -287,6 +284,7 @@ function banded_matrix(f!, dg::DGModel,
     for s = 1:nstate
       for k = 1:Nq
         # Set a single 1 per column and rest 0
+        sync_device(device)
         event = knl_set_banded_data!(device, (Nq, Nqj, Nq), (nvertelem * Nq, nhorzelem * Nqj, Nq))(
           bl, Val(dim), Val(N), Val(nvertelem),
           Q.data, k, s, ev, 1:nhorzelem,
@@ -297,6 +295,7 @@ function banded_matrix(f!, dg::DGModel,
         f!(dQ, Q, args...)
 
         # Store the banded matrix
+        sync_device(device)
         event = knl_set_banded_matrix!(device,
                                        (Nq, Nqj, Nq),
                                        ((2eband + 1) * Nq, nhorzelem * Nqj, Nq))(
@@ -346,6 +345,7 @@ function banded_matrix_vector_product!(dg::DGModel, A, dQ::MPIStateArray,
 
   Nqj = dim == 2 ? 1 : Nq
 
+  sync_device(device)
   event = knl_banded_matrix_vector_product!(device,
                                             (Nq, Nqj, Nq),
                                             (nvertelem * Nq, nhorzelem * Nqj, Nq))(
