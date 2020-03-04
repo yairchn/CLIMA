@@ -2,7 +2,7 @@
 using DocStringExtensions
 using CLIMA.PlanetParameters
 using CLIMA.SubgridScaleParameters
-export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss
+export ConstantViscosityWithDivergence, SmagorinskyLilly, Vreman, AnisoMinDiss, ConstantViscousSponge
 export turbulence_tensors
 
 abstract type TurbulenceClosure end
@@ -136,6 +136,9 @@ struct ConstantViscousSponge{FT} <: TurbulenceClosure
   γ::FT
 end
 
+# Default calling option
+# ConstantViscousSponge{FT}(<viscous coeff>, 30000, 15000, 1, 4)
+
 vars_gradient(::ConstantViscousSponge,FT) = @vars()
 vars_diffusive(::ConstantViscousSponge, FT) =
   @vars(S::SHermitianCompact{3,FT,6})
@@ -153,8 +156,8 @@ function turbulence_tensors(m::ConstantViscousSponge,
   S = diffusive.turbulence.S
   z = altitude(atmos.orientation,aux)
   ν = m.ρν / state.ρ
-  if altitude >= FT(15000)
-    r = (altitude - FT(15000))/(s.30000-15000)
+  if altitude >= FT(m.z_sponge)
+    r = (altitude - FT(m.z_sponge))/(s.m.z_max-m.z_sponge)
     β_sponge = s.α_max * sinpi(r/2)^s.γ
     ν += β_sponge*ν
   end
