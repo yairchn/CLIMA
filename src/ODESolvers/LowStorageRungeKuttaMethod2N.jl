@@ -2,7 +2,7 @@
 export LowStorageRungeKutta2N
 export LSRK54CarpenterKennedy, LSRK144NiegemannDiehlBusch, LSRKEulerMethod
 
-include("LowStorageRungeKuttaMethod_kernels.jl")
+include("LowStorageRungeKuttaMethod2N_kernels.jl")
 
 """
     LowStorageRungeKutta2N(f, RKA, RKB, RKC, Q; dt, t0 = 0)
