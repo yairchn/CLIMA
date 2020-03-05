@@ -14,6 +14,80 @@ import ..DGmethods: BalanceLaw, Grad, Vars, vars_state, vars_diffusive,
                     num_gradient_laplacian, vars_gradient_laplacian,
                     vars_hyperdiffusive, hyperdiffusive!
 
+abstract type NumericalFlux end
+
+# 1) main entry point for all boundary fluxes
+# this looks up the tag in the `boundaryconditions` tuple
+# i.e. `numerical_boundary_flux!(nf, boundaryconditions(bl)[bctag], ...)`
+function numerical_boundary_flux!(
+  nf::NumericalFlux,
+  bctag::Integer,
+  bl::BalanceLaw,
+  numflux,
+  fullstate⁻,
+  fullstate⁺,
+  t,
+  fullstate⁻¹)
+
+  # we unroll the tuple to get the desired boundary condtion
+  bctuple = boundaryconditions(bl)
+
+  ntuple(Val(length(bctuple))) do i
+    Base.@_inline_meta
+    if bctag == i
+      bc = @inbounds bctuple[i]
+      numerical_boundary_flux!(
+        nf,
+        bc,
+        bl,
+        numflux,
+        fullstate⁻,
+        fullstate⁺,
+        t,
+        fullstate⁻¹)
+    end
+    return nothing
+  end
+  return nothing
+end
+
+
+abstract type BoundaryFluxMechanism end
+
+struct BoundaryFluxGhostState <: BoundaryFluxMechanism end
+struct BoundaryFluxBoundaryState <: BoundaryFluxMechanism end
+struct BoundaryFluxDirectNormal <: BoundaryFluxMechanism end
+struct BoundaryFluxDirectFull <: BoundaryFluxMechanism end
+
+
+# 2) Figure out mechanism by which boundary conditions are applied
+function numerical_boundary_flux!(
+  nf::NumericalFlux,
+  bc,
+  bl::BalanceLaw,
+  numflux,
+  fullstate⁻,
+  fullstate⁺,
+  t,
+  fullstate⁻¹)
+
+  bfm = BoundaryFluxMechanism(nf,bc)
+  numerical_boundary_flux!(
+    nf,
+    bfm,
+    bc,
+    bl,
+    numflux,
+    fullstate⁻,
+    fullstate⁺,
+    t,
+    fullstate⁻¹)
+end
+
+
+
+
+
 """
     NumericalFluxGradient
 
@@ -25,7 +99,7 @@ Any `P <: NumericalFluxGradient` should define methods for:
                                      l_aux⁻, l_G⁺, l_Q⁺, l_aux⁺, bctype, t)
 
 """
-abstract type NumericalFluxGradient end
+abstract type NumericalFluxGradient <: NumericalFlux end
 
 """
     CentralNumericalFluxGradient <: NumericalFluxGradient
@@ -33,7 +107,7 @@ abstract type NumericalFluxGradient end
 """
 struct CentralNumericalFluxGradient <: NumericalFluxGradient end
 
-function numerical_flux_gradient!(::CentralNumericalFluxGradient, bl::BalanceLaw,
+function numerical_flux!(::CentralNumericalFluxGradient, bl::BalanceLaw,
                                   G::MMatrix, n::SVector,
                                   transform⁻::Vars{T}, state⁻::Vars{S},
                                   aux⁻::Vars{A}, transform⁺::Vars{T},
@@ -43,16 +117,18 @@ function numerical_flux_gradient!(::CentralNumericalFluxGradient, bl::BalanceLaw
   G .= n .* (parent(transform⁺) .+ parent(transform⁻))' ./ 2
 end
 
-function numerical_boundary_flux_gradient!(nf::CentralNumericalFluxGradient,
-                                           bl::BalanceLaw,
-                                           G::MMatrix, n::SVector,
-                                           transform⁻::Vars{T}, state⁻::Vars{S},
-                                           aux⁻::Vars{A}, transform⁺::Vars{T},
-                                           state⁺::Vars{S}, aux⁺::Vars{A},
-                                           bctype, t, state1⁻::Vars{S},
-                                           aux1⁻::Vars{A}) where {D,T,S,A}
-  boundary_state!(nf, bl, state⁺, aux⁺, n, state⁻, aux⁻,
-                  bctype, t, state1⁻, aux1⁻)
+function numerical_boundary_flux!(
+  nf::CentralNumericalFluxGradient,
+  bfm::BoundaryFluxBoundaryState,
+  bc,
+  bl::BalanceLaw,
+  numflux,
+  fullstate⁺,
+  fullstate⁻
+  t,
+  fullstate⁻¹)
+
+  boundary_state!(fullstate⁺, nf, bc, bl, fullstate⁻, t)
 
   gradvariables!(bl, transform⁺, state⁺, aux⁺, t)
   G .= n .* parent(transform⁺)'
@@ -78,10 +154,13 @@ An optional method can also be defined for
                                           Qaux⁻, Q⁺, Qaux⁺, bctype, t)
 
 """
-abstract type NumericalFluxNonDiffusive end
+abstract type NumericalFluxNonDiffusive <: NumericalFlux end
 
 function numerical_flux_nondiffusive! end
 
+
+
+  boundaries
 function numerical_boundary_flux_nondiffusive!(nf::NumericalFluxNonDiffusive,
     bl::BalanceLaw, fluxᵀn::Vars{S}, n::SVector,
     state⁻::Vars{S}, aux⁻::Vars{A}, state⁺::Vars{S}, aux⁺::Vars{A},
@@ -183,7 +262,7 @@ An optional method can also be defined for
                                        Qaux⁻, Q⁺, Qdiff⁺, Qaux⁺, bctype, t)
 
 """
-abstract type NumericalFluxDiffusive end
+abstract type NumericalFluxDiffusive <: NumericalFlux end
 
 function numerical_flux_diffusive! end
 

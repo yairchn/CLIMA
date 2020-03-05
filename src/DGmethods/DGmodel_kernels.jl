@@ -48,7 +48,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
   nstate = num_state(bl,FT)
   nviscstate = num_diffusive(bl,FT)
   nauxstate = num_aux(bl,FT)
-  
+
   ngradlapstate = num_gradient_laplacian(bl,FT)
   nhyperviscstate = num_hyperdiffusive(bl,FT)
 
@@ -112,7 +112,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
           @unroll for s = 1:nviscstate
             l_Qvisc[s] = Qvisc[ijk, s, e]
           end
-          
+
           @unroll for s = 1:nhyperviscstate
             l_Qhypervisc[s] = Qhypervisc_grad[ijk, s, e]
           end
@@ -127,7 +127,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
             s_F[2,i,j,k,s] = l_F[2,s]
             s_F[3,i,j,k,s] = l_F[3,s]
           end
-          
+
           fill!(l_F, -zero(eltype(l_F)))
           flux_diffusive!(bl, Grad{vars_state(bl,FT)}(l_F),
                           Vars{vars_state(bl,FT)}(l_Q),
@@ -140,7 +140,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
             s_F[2,i,j,k,s] += l_F[2,s]
             s_F[3,i,j,k,s] += l_F[3,s]
           end
-          
+
           # Build "inside metrics" flux
           @unroll for s = 1:nstate
             F1, F2, F3 = s_F[1,i,j,k,s], s_F[2,i,j,k,s], s_F[3,i,j,k,s]
@@ -218,7 +218,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::VerticalDire
   nstate = num_state(bl,FT)
   nviscstate = num_diffusive(bl,FT)
   nauxstate = num_aux(bl,FT)
-  
+
   ngradlapstate = num_gradient_laplacian(bl,FT)
   nhyperviscstate = num_hyperdiffusive(bl,FT)
 
@@ -276,7 +276,7 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::VerticalDire
           @unroll for s = 1:nviscstate
             l_Qvisc[s] = Qvisc[ijk, s, e]
           end
-          
+
           @unroll for s = 1:nhyperviscstate
             l_Qhypervisc[s] = Qhypervisc_grad[ijk, s, e]
           end
@@ -291,20 +291,20 @@ function volumerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::VerticalDire
             s_F[2,i,j,k,s] = l_F[2,s]
             s_F[3,i,j,k,s] = l_F[3,s]
           end
-          
+
           fill!(l_F, -zero(eltype(l_F)))
           flux_diffusive!(bl, Grad{vars_state(bl,FT)}(l_F),
                           Vars{vars_state(bl,FT)}(l_Q),
                           Vars{vars_diffusive(bl,FT)}(l_Qvisc),
                           Vars{vars_hyperdiffusive(bl,FT)}(l_Qhypervisc),
                           Vars{vars_aux(bl,FT)}(l_aux), t)
-          
+
           @unroll for s = 1:nstate
             s_F[1,i,j,k,s] += l_F[1,s]
             s_F[2,i,j,k,s] += l_F[2,s]
             s_F[3,i,j,k,s] += l_F[3,s]
           end
-          
+
           # Build "inside metrics" flux
           @unroll for s = 1:nstate
             F1, F2, F3 = s_F[1,i,j,k,s], s_F[2,i,j,k,s], s_F[3,i,j,k,s]
@@ -454,7 +454,7 @@ function facerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
         @unroll for s = 1:nviscstate
           l_Qvisc⁻[s] = Qvisc[vid⁻, s, e⁻]
         end
-        
+
         @unroll for s = 1:nhyperviscstate
           l_Qhypervisc⁻[s] = Qhypervisc_grad[vid⁻, s, e⁻]
         end
@@ -471,7 +471,7 @@ function facerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
         @unroll for s = 1:nviscstate
           l_Qvisc⁺[s] = Qvisc[vid⁺, s, e⁺]
         end
-        
+
         @unroll for s = 1:nhyperviscstate
           l_Qhypervisc⁺[s] = Qhypervisc_grad[vid⁺, s, e⁺]
         end
@@ -512,24 +512,35 @@ function facerhs!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder}, ::direction,
               l_aux_bot1[s] = auxstate[n + Nqk^2,s, e]
             end
           end
-          numerical_boundary_flux_nondiffusive!(numfluxnondiff, bl,
-            Vars{vars_state(bl,FT)}(l_F), SVector(n⁻),
-            Vars{vars_state(bl,FT)}(l_Q⁻), Vars{vars_aux(bl,FT)}(l_aux⁻),
-            Vars{vars_state(bl,FT)}(l_Q⁺nondiff), Vars{vars_aux(bl,FT)}(l_aux⁺nondiff),
-            bctype, t,
-            Vars{vars_state(bl,FT)}(l_Q_bot1), Vars{vars_aux(bl,FT)}(l_aux_bot1))
-          numerical_boundary_flux_diffusive!(numfluxdiff, bl,
-            Vars{vars_state(bl,FT)}(l_F), n⁻,
-            Vars{vars_state(bl,FT)}(l_Q⁻),
-            Vars{vars_diffusive(bl,FT)}(l_Qvisc⁻),
-            Vars{vars_hyperdiffusive(bl,FT)}(l_Qhypervisc⁻),
-            Vars{vars_aux(bl,FT)}(l_aux⁻),
-            Vars{vars_state(bl,FT)}(l_Q⁺diff),
-            Vars{vars_diffusive(bl,FT)}(l_Qvisc⁺),
-            Vars{vars_hyperdiffusive(bl,FT)}(l_Qhypervisc⁺),
-            Vars{vars_aux(bl,FT)}(l_aux⁺diff),
-            bctype, t,
-            Vars{vars_state(bl,FT)}(l_Q_bot1), Vars{vars_diffusive(bl,FT)}(l_Qvisc_bot1), Vars{vars_aux(bl,FT)}(l_aux_bot1))
+          numerical_boundary_flux_nondiffusive!(
+            numfluxnondiff,
+            bctype,
+            bl,
+            NormalFlux(Vars{vars_state(bl,FT)}(l_F), SVector(n⁻)),
+            (state=Vars{vars_state(bl,FT)}(l_Q⁻),
+             aux=Vars{vars_aux(bl,FT)}(l_aux⁻)),
+            (state=Vars{vars_state(bl,FT)}(l_Q⁺nondiff),
+             aux=Vars{vars_aux(bl,FT)}(l_aux⁺nondiff)),
+            t,
+            (state=Vars{vars_state(bl,FT)}(l_Q_bot1),
+             aux=Vars{vars_aux(bl,FT)}(l_aux_bot1)))
+          numerical_boundary_flux_diffusive!(
+            numfluxdiff,
+            bctype,
+            bl,
+            NormalFlux(Vars{vars_state(bl,FT)}(l_F), n⁻),
+            (state=Vars{vars_state(bl,FT)}(l_Q⁻),
+             diff=Vars{vars_diffusive(bl,FT)}(l_Qvisc⁻),
+             hyperdiff=Vars{vars_hyperdiffusive(bl,FT)}(l_Qhypervisc⁻),
+             aux=Vars{vars_aux(bl,FT)}(l_aux⁻)),
+            (state=Vars{vars_state(bl,FT)}(l_Q⁺diff),
+             diff=Vars{vars_diffusive(bl,FT)}(l_Qvisc⁺),
+             hyperdiff=Vars{vars_hyperdiffusive(bl,FT)}(l_Qhypervisc⁺),
+             aux=Vars{vars_aux(bl,FT)}(l_aux⁺diff)),
+            t,
+            (state=Vars{vars_state(bl,FT)}(l_Q_bot1),
+             diff=Vars{vars_diffusive(bl,FT)}(l_Qvisc_bot1),
+             aux=Vars{vars_aux(bl,FT)}(l_aux_bot1)))
         end
 
         #Update RHS
@@ -923,7 +934,7 @@ function faceviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
             l_nG⁻[i, j] = n⁻[i] * l_G⁻[j]
           end
         end
-        
+
         @unroll for s = 1:ngradlapstate
           j = hypervisc_indexmap[s]
           Qhypervisc_grad[vid⁻, 3(s - 1) + 1, e⁻] += vMI * sM * (l_gradG[1, j] - l_nG⁻[1, j])
@@ -1349,18 +1360,18 @@ function volumedivgrad!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
             g2ξ1 = g2ξ2 = g2ξ3 = zero(FT)
             g3ξ1 = g3ξ2 = g3ξ3 = zero(FT)
             @unroll for n = 1:Nq
-              Din = s_D[i, n] 
+              Din = s_D[i, n]
               g1ξ1 += Din * s_grad[n, j, k, s, 1]
               g2ξ1 += Din * s_grad[n, j, k, s, 2]
               g3ξ1 += Din * s_grad[n, j, k, s, 3]
               if dim == 3 || (dim == 2 && direction == EveryDirection)
-                Djn = s_D[j, n] 
+                Djn = s_D[j, n]
                 g1ξ2 += Djn * s_grad[i, n, k, s, 1]
                 g2ξ2 += Djn * s_grad[i, n, k, s, 2]
                 g3ξ2 += Djn * s_grad[i, n, k, s, 3]
               end
               if dim == 3 && direction == EveryDirection
-                Dkn = s_D[k, n] 
+                Dkn = s_D[k, n]
                 g1ξ3 += Dkn * s_grad[i, j, n, s, 1]
                 g2ξ3 += Dkn * s_grad[i, j, n, s, 2]
                 g3ξ3 += Dkn * s_grad[i, j, n, s, 3]
@@ -1440,12 +1451,12 @@ function volumedivgrad!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
             g1ξv = g2ξv = g3ξv = zero(FT)
             @unroll for n = 1:Nq
               if dim == 2
-                Djn = s_D[j, n] 
+                Djn = s_D[j, n]
                 g1ξv += Djn * s_grad[i, n, k, s, 1]
                 g2ξv += Djn * s_grad[i, n, k, s, 2]
                 g3ξv += Djn * s_grad[i, n, k, s, 3]
               else
-                Dkn = s_D[k, n] 
+                Dkn = s_D[k, n]
                 g1ξv += Dkn * s_grad[i, j, n, s, 1]
                 g2ξv += Dkn * s_grad[i, j, n, s, 2]
                 g3ξv += Dkn * s_grad[i, j, n, s, 3]
@@ -1596,7 +1607,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
       @loop for j in (1:Nq; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
           ijk = i + Nq * ((j-1) + Nq * (k-1))
-          
+
           @unroll for s = 1:ngradtransformstate
             l_Q[s, i, j, k] = Q[ijk, s, e]
           end
@@ -1629,22 +1640,22 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
             @unroll for n = 1:Nq
               njk = n + Nq * ((j-1) + Nq * (k-1))
               Dni = s_D[n, i] * s_ω[n] / s_ω[i]
-              lap_njk = s_lap[n, j, k, s] 
+              lap_njk = s_lap[n, j, k, s]
               lap_ξ1 += Dni * lap_njk
               if dim == 3 || (dim == 2 && direction == EveryDirection)
                 ink = i + Nq * ((n-1) + Nq * (k-1))
                 Dnj = s_D[n, j] * s_ω[n] / s_ω[j]
-                lap_ink = s_lap[i, n, k, s] 
+                lap_ink = s_lap[i, n, k, s]
                 lap_ξ2 += Dnj * lap_ink
               end
               if dim == 3 && direction == EveryDirection
                 ijn = i + Nq * ((j-1) + Nq * (n-1))
                 Dnk = s_D[n, k] * s_ω[n] / s_ω[k]
-                lap_ijn = s_lap[i, j, n, s] 
+                lap_ijn = s_lap[i, j, n, s]
                 lap_ξ3 += Dnk * lap_ijn
               end
             end
-            
+
             l_grad_lap[1, s] = -ξ1x1 * lap_ξ1
             l_grad_lap[2, s] = -ξ1x2 * lap_ξ1
             l_grad_lap[3, s] = -ξ1x3 * lap_ξ1
@@ -1719,7 +1730,7 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
       @loop for j in (1:Nq; threadIdx().y)
         @loop for i in (1:Nq; threadIdx().x)
           ijk = i + Nq * ((j-1) + Nq * (k-1))
-          
+
           @unroll for s = 1:ngradtransformstate
             l_Q[s, i, j, k] = Q[ijk, s, e]
           end
@@ -1751,16 +1762,16 @@ function volumehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
               if dim == 2
                 ink = i + Nq * ((n-1) + Nq * (k-1))
                 Dnj = s_D[n, j] * s_ω[n] / s_ω[j]
-                lap_ink = s_lap[i, n, k, s] 
+                lap_ink = s_lap[i, n, k, s]
                 lap_ξv += Dnj * lap_ink
               else
                 ijn = i + Nq * ((j-1) + Nq * (n-1))
                 Dnk = s_D[n, k] * s_ω[n] / s_ω[k]
-                lap_ijn = s_lap[i, j, n, s] 
+                lap_ijn = s_lap[i, j, n, s]
                 lap_ξv += Dnk * lap_ijn
               end
             end
-            
+
             l_grad_lap[1, s] = -ξvx1 * lap_ξv
             l_grad_lap[2, s] = -ξvx2 * lap_ξv
             l_grad_lap[3, s] = -ξvx3 * lap_ξv
@@ -1824,7 +1835,7 @@ function facehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
   l_lapM = MArray{Tuple{ngradlapstate}, FT}(undef)
   l_lapP = MArray{Tuple{ngradlapstate}, FT}(undef)
   l_Qhypervisc = MArray{Tuple{nhyperviscstate}, FT}(undef)
-  
+
   l_QM = MArray{Tuple{ngradtransformstate}, FT}(undef)
   l_auxM = MArray{Tuple{nauxstate}, FT}(undef)
 
@@ -1845,7 +1856,7 @@ function facehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
         @unroll for s = 1:ngradtransformstate
           l_QM[s] = Q[vidM, s, eM]
         end
-        
+
         @unroll for s = 1:nauxstate
           l_auxM[s] = auxstate[vidM, s, eM]
         end
@@ -1858,7 +1869,7 @@ function facehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
         @unroll for s = 1:ngradtransformstate
           l_QP[s] = Q[vidP, s, eP]
         end
-        
+
         @unroll for s = 1:nauxstate
           l_auxP[s] = auxstate[vidP, s, eP]
         end
@@ -1891,7 +1902,7 @@ function facehyperviscterms!(bl::BalanceLaw, ::Val{dim}, ::Val{polyorder},
                                                   Vars{vars_aux(bl, FT)}(l_auxP),
                                                   bctype, t)
         end
-        
+
         @unroll for s = 1:nhyperviscstate
           Qhypervisc_grad[vidM, s, eM] += vMI * sM * l_Qhypervisc[s]
         end
