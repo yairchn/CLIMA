@@ -1,6 +1,7 @@
 using Random
 using StaticArrays
 using Test
+using Printf
 
 using CLIMA
 using CLIMA.Atmos
@@ -10,6 +11,10 @@ using CLIMA.Mesh.Filters
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
+using CLIMA.Courant
+
+import CLIMA.DGmethods: courant
+import CLIMA.Grids: VerticalDirection, HorizontalDirection
 
 # ------------------------ Description ------------------------- #
 # 1) Dry Rising Bubble (circular potential temperature perturbation)
@@ -73,17 +78,16 @@ function config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
 
   # Choose explicit solver
   ode_solver = CLIMA.MRRKSolverType(solver_method=MultirateRungeKutta,
-                                    fast_method=LSRK54CarpenterKennedy,
                                     slow_method=LSRK144NiegemannDiehlBusch,
+                                    fast_method=LSRK144NiegemannDiehlBusch,
                                     numsubsteps=10,
                                     linear_model=AtmosAcousticGravityLinearModel)
 
   # Set up the model
   C_smag = FT(0.23)
-  vis = FT(75.0)
   ref_state = HydrostaticState(DryAdiabaticProfile(typemin(FT), FT(300)), FT(0))
   model = AtmosModel{FT}(AtmosLESConfiguration;
-                         turbulence=ConstantViscosityWithDivergence{FT}(vis),
+                         turbulence=SmagorinskyLilly{FT}(C_smag),
                          source=(Gravity(),),
                          ref_state=ref_state,
                          init_state=init_risingbubble!)
@@ -116,7 +120,7 @@ function main()
     t0 = FT(0)
     timeend = FT(1000)
     # Courant number
-    CFL = FT(8)
+    CFL = FT(20)
 
     driver_config = config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
     solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
@@ -128,7 +132,9 @@ function main()
         nothing
     end
 
-    cbcourantnumbers = GenericCallbacks.EveryXSimulationSteps(5) do
+    steps = 0
+    cbcourantnumbers = GenericCallbacks.EveryXSimulationSteps(10) do
+        steps += 5
         dg =  solver_config.dg
         m = dg.balancelaw
         Q = solver_config.Q
@@ -137,30 +143,36 @@ function main()
         cfl_h = courant(nondiffusive_courant, dg, m, Q, Δt, HorizontalDirection())
         cfla_v = courant(advective_courant, dg, m, Q, Δt, VerticalDirection())
         cfla_h = courant(advective_courant, dg, m, Q, Δt, HorizontalDirection())
+        cfld_v = courant(diffusive_courant, dg, m, Q, Δt, VerticalDirection())
+        cfld_h = courant(diffusive_courant, dg, m, Q, Δt, HorizontalDirection())
 
         fΔt = solver_config.solver.fast_solver.dt
         cflin_v = courant(nondiffusive_courant, dg, m, Q, fΔt, VerticalDirection())
         cflin_h = courant(nondiffusive_courant, dg, m, Q, fΔt, HorizontalDirection())
-        cflain_v = courant(advective_courant, dg, m, Q, fΔt, VerticalDirection())
-        cflain_h = courant(advective_courant, dg, m, Q, fΔt, HorizontalDirection())
 
         @info @sprintf """
         ================================
-        Courant numbers:
+        Courant numbers at step: %s
 
         Outer (slow) method:
+        --------------------------------
         Vertical Acoustic CFL    = %.2g
         Horizontal Acoustic CFL  = %.2g
+        --------------------------------
         Vertical Advection CFL   = %.2g
         Horizontal Advection CFL = %.2g
+        --------------------------------
+        Vertical Diffusion CFL   = %.2g
+        Horizontal Diffusion CFL = %.2g
+        --------------------------------
 
         Inner (fast) method:
+        --------------------------------
         Vertical Acoustic CFL    = %.2g
         Horizontal Acoustic CFL  = %.2g
-        Vertical Advection CFL   = %.2g
-        Horizontal Advection CFL = %.2g
+        --------------------------------
         ================================
-        """  cfl_v cfl_h cfla_v cfla_h cflin_v cflin_h cflain_v cflain_h
+        """  steps cfl_v cfl_h cfla_v cfla_h cfld_v cfld_h cflin_v cflin_h
 
         return nothing
     end
