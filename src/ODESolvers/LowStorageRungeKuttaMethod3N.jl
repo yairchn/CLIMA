@@ -1,5 +1,6 @@
 export LowStorageRungeKutta3N
 export LSRK3N184ParsaniKetchesonDeconinck
+export LSRK3N204ParsaniKetchesonDeconinck
 
 include("LowStorageRungeKuttaMethod3N_kernels.jl")
 
@@ -20,6 +21,9 @@ The constructor builds a low-storage Runge-Kutta scheme using 3N
 storage based on the provided `γ1`, `γ2`, `γ3`, `β`, and `c` coefficient arrays.
 
 The available concrete implementations are:
+
+  - [`LSRK3N184ParsaniKetchesonDeconinck`](@ref)
+  - [`LSRK3N204ParsaniKetchesonDeconinck`](@ref)
 
 """
 mutable struct LowStorageRungeKutta3N{T, RT, AT, Nstages} <: AbstractODESolver
@@ -285,6 +289,172 @@ function LSRK3N184ParsaniKetchesonDeconinck(f, Q::AT; dt=0,
        RT(-3.3874970570335106e-01),
        RT(-7.3071238125137772e-01),
        RT( 8.3936016960374532e-02),
+       RT( 0.0000000000000000e+00))
+
+  LowStorageRungeKutta3N(f, γ1, γ2, γ3, β, δ, c, Q; dt=dt, t0=t0)
+end
+
+"""
+    LSRK3N204ParsaniKetchesonDeconinck(f, Q; dt, t0)
+
+This function returns a [`LowStorageRungeKutta3N`](@ref) time stepping object
+for explicitly time stepping the differential equation given by the
+right-hand-side function `f` with the state `Q`, i.e.,
+
+```math
+  \\dot{Q} = f(Q, t)
+```
+
+with the required time step size `dt` and optional initial time `t0`.  This
+time stepping object is intended to be passed to the `solve!` command.
+
+This uses the fourth-order, 20-stage, 3-register, Runge--Kutta scheme of
+Parsani, Ketcheson, and Deconinck(2012) with optimized stability region; this
+method was [unpublished](https://github.com/ketch/optimized-erk-sd-rr/blob/2e70aa5a0cdabc7287f145111b0ff2b9d91b5e16/optimal_rk_methods/erk-x-4/3sstar/erk-20-4.txt)
+
+### References
+
+    @article{parsani2013optimized,
+      title={Optimized explicit Runge--Kutta schemes for the spectral difference
+              method applied to wave propagation problems},
+      author={Parsani, Matteo and Ketcheson, David I and Deconinck, W},
+      journal={SIAM Journal on Scientific Computing},
+      volume={35},
+      number={2},
+      pages={A957--A986},
+      year={2013},
+      publisher={SIAM},
+      doi={10.1137/120885899}
+    }
+"""
+function LSRK3N204ParsaniKetchesonDeconinck(f, Q::AT; dt=0,
+                                            t0=0) where {AT <: AbstractArray}
+  T = eltype(Q)
+  RT = real(T)
+  c = (RT( 0.0000000000000000e+00),
+       RT( 9.9448228454551271e-02),
+       RT( 6.7812914196641039e-01),
+       RT( 1.1333774426771299e+00),
+       RT( 1.4858995051697429e-02),
+       RT( 1.4623217775206645e+00),
+       RT( 2.2025353496126460e-01),
+       RT( 4.0001902593439254e-01),
+       RT( 1.0801620425224956e+00),
+       RT(-3.0343016644136905e-01),
+       RT( 2.4844154280055122e+00),
+       RT( 1.8526988561640698e-01),
+       RT( 1.3018774374530957e+00),
+       RT( 9.0726380257381112e-01),
+       RT( 1.4312340804309371e+00),
+       RT( 8.4065396431529371e-01),
+       RT( 4.2639321796954310e-01),
+       RT( 2.7515928603976437e-02),
+       RT( 8.4176094969776671e-01),
+       RT( 1.2256699211559141e+00))
+
+  β = (RT( 9.9448228454551271e-02),
+       RT( 5.8532205779832369e-01),
+       RT( 8.2012772501330178e-01),
+       RT( 2.4787213927937753e-04),
+       RT( 1.0309492694673976e+00),
+       RT( 4.0840915567756750e-02),
+       RT( 1.7771093091031542e-01),
+       RT( 7.2775254044871984e-01),
+       RT( 2.8413717900190877e-01),
+       RT( 5.5908913293058367e-02),
+       RT( 9.7701072426661313e-05),
+       RT( 9.8159306723645290e-01),
+       RT( 1.1077521519812201e+00),
+       RT( 1.4228837040088977e+00),
+       RT( 7.6768155096869470e-04),
+       RT( 6.5235439186626998e-01),
+       RT(-1.5952936662921432e-05),
+       RT( 1.8923647396130969e+00),
+       RT( 9.9406355088737730e-01),
+       RT(-7.0788981393754427e-03))
+
+  γ1 = (RT( 0.0000000000000000e+00),
+        RT( 9.0115976177381896e-01),
+        RT( 2.9806744435867438e-01),
+        RT(-8.3582925330004249e-03),
+        RT(-8.6350466832451678e-01),
+        RT( 4.9759639125793786e-02),
+        RT(-2.4848987355116297e+00),
+        RT( 1.4331293311931337e+00),
+        RT(-1.5700425654371608e+00),
+        RT(-3.4668037237321299e+00),
+        RT(-8.3508383562298505e-02),
+        RT( 1.3476580947728450e-01),
+        RT(-1.6347760600407832e+00),
+        RT( 2.6635424928327756e+00),
+        RT( 1.5030192272212473e-02),
+        RT(-1.1094563660661031e+01),
+        RT(-4.3780997444517536e-03),
+        RT( 1.1031471192914499e+00),
+        RT(-2.8535408009864898e+00),
+        RT(-2.0211482530108071e-04))
+
+  γ2 = (RT( 1.0000000000000000e+00),
+        RT( 6.6779915436096432e-02),
+        RT( 3.8169393687892894e-01),
+        RT( 3.4580939778096342e-02),
+        RT( 6.2994142739879255e-01),
+        RT( 1.6190316834296076e-01),
+        RT( 1.1131783398140720e+00),
+        RT(-2.8192414696094686e-01),
+        RT( 5.2271026465578674e-01),
+        RT( 7.1529222215809618e-01),
+        RT( 7.9370818994766487e-02),
+        RT( 5.8187246450229282e-02),
+        RT( 3.9351739018594173e-01),
+        RT(-4.1777026694171293e-01),
+        RT( 1.2197839997821765e-01),
+        RT( 1.3101445758655312e+00),
+        RT( 3.9764513021202201e-03),
+        RT(-1.4612686098149480e-01),
+        RT( 3.2548521512778195e-01),
+        RT( 1.2449469459700668e-01))
+
+  γ3 = (RT( 0.0000000000000000e+00),
+        RT( 0.0000000000000000e+00),
+        RT( 0.0000000000000000e+00),
+        RT( 9.3239692239378602e-01),
+        RT( 1.1131958528995813e-01),
+        RT( 5.0504708970860424e-01),
+        RT( 2.5890490273276245e-01),
+        RT( 4.4877496564310987e-01),
+        RT( 2.8795906273414645e-01),
+        RT( 8.8220533537048973e-01),
+        RT( 5.8919212082001293e-01),
+        RT( 4.6253785591186147e-01),
+        RT(-3.5316120170928812e-02),
+        RT( 1.5696535329485926e+00),
+        RT(-3.9563505023600974e-02),
+        RT( 7.2062744673348067e-01),
+        RT( 9.6568966246310373e-01),
+        RT( 1.3408834601270756e+00),
+        RT( 3.6876248327358230e-01),
+        RT(-3.3268918787678858e-01))
+
+  δ = (RT( 1.0000000000000000e+00),
+       RT( 4.8008929901631875e-01),
+       RT( 3.5890390423169222e-01),
+       RT( 3.5763218133244318e-01),
+       RT( 5.8487938209258328e-01),
+       RT(-3.1754556581128870e-02),
+       RT( 1.4825248848529080e-01),
+       RT( 2.3015892341542873e-01),
+       RT( 1.2377053927020307e+00),
+       RT( 6.4550914363488221e-01),
+       RT( 1.2165583521469048e+00),
+       RT( 6.9276305089212908e-01),
+       RT(-1.3550268357661377e-01),
+       RT( 9.5397729798296549e-01),
+       RT( 6.6012895405088701e-01),
+       RT( 2.8213481506866278e-01),
+       RT( 1.0479519796400409e+00),
+       RT( 1.5264587622846876e-01),
+       RT( 8.2437667734374320e-01),
        RT( 0.0000000000000000e+00))
 
   LowStorageRungeKutta3N(f, γ1, γ2, γ3, β, δ, c, Q; dt=dt, t0=t0)
