@@ -119,6 +119,7 @@ end
 # }}}
 
 include("LowStorageRungeKuttaMethod2N.jl")
+include("LowStorageRungeKuttaMethod3N.jl")
 include("StrongStabilityPreservingRungeKuttaMethod.jl")
 include("AdditiveRungeKuttaMethod.jl")
 include("MultirateInfinitesimalStepMethod.jl")

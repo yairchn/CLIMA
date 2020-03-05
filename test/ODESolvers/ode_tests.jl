@@ -21,6 +21,7 @@ const explicit_methods = [(LSRK54CarpenterKennedy, 4)
                           (SSPRK33ShuOsher, 3)
                           (SSPRK34SpiteriRuuth, 3)
                           (LSRKEulerMethod, 1)
+                          (LSRK3N184ParsaniKetchesonDeconinck, 4)
                          ]
 
 const imex_methods = [(ARK2GiraldoKellyConstantinescu, 2),
@@ -48,7 +49,7 @@ const mis_methods = [(MIS2, 2),
 
   @testset "Explicit methods convergence" begin
     finaltime = 20.0
-    dts = [2.0 ^ (-k) for k = 0:7]
+    dts = [2.0 ^ (-k) for k = 0:6]
     errors = similar(dts)
     q0 = ArrayType === Array ? [1.0] : range(-1.0, 1.0, length = 303)
     for (method, expected_order) in explicit_methods
@@ -60,7 +61,8 @@ const mis_methods = [(MIS2, 2),
         errors[n] = maximum(@. abs(Q - exactsolution(q0, finaltime)))
       end
       rates = log2.(errors[1:end-1] ./ errors[2:end])
-      @test isapprox(rates[end], expected_order; atol = 0.17)
+      @test (isapprox(rates[end], expected_order; atol = 0.17) ||
+             rates[end] > expected_order)
     end
   end
 
@@ -80,6 +82,33 @@ const mis_methods = [(MIS2, 2),
       solve!(Q2, solver2; timeend = finaltime)
 
       @test Array(Q2) == Array(Q1)
+    end
+  end
+end
+
+@testset "1-rate ODE (Parsani, Ketcheson, Deconinck)" begin
+  function rhs!(dQ, Q, ::Nothing, t; increment)
+    increment || (dQ .= 0)
+    dQ[1] += 1 / Q[1] - Q[2] * exp(t^2) / t^2 - t
+    dQ[2] += 1 / Q[2] - exp(t^2) - 2t * exp(-t^2)
+  end
+  exactsolution(t) = [1/t exp(-t^2)]
+
+  @testset "Explicit methods convergence" begin
+    finaltime = 1.4
+    dts = [2.0 ^ (-k) for k = 0:9]
+    errors = similar(dts)
+    q0 = exactsolution(1)
+    for (method, expected_order) in explicit_methods
+      for (n, dt) in enumerate(dts)
+        Q = ArrayType(q0)
+        solver = method(rhs!, Q; dt = dt, t0 = 1.0)
+        solve!(Q, solver; timeend = finaltime)
+        Q = Array(Q)
+        errors[n] = norm(Q - exactsolution(finaltime))
+      end
+      rates = log2.(errors[1:end-1] ./ errors[2:end])
+      @test isapprox(rates[end], expected_order; atol = 0.17)
     end
   end
 end
