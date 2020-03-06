@@ -55,9 +55,9 @@ $(DocStringExtensions.FIELDS)
 struct BOMEX_BC{FT} <: BoundaryCondition
   "Friction velocity"
   u_star::FT  
-  "Sensible Heat Flux"
+  "Surface potential temperature flux"
   w′θ′::FT
-  "Latent Heat Flux"
+  "Surface moisture flux"
   w′qt′::FT
 end
 
