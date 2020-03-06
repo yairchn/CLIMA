@@ -1,6 +1,7 @@
 using Random
 using StaticArrays
 using Test
+using Printf
 
 using CLIMA
 using CLIMA.Atmos
@@ -10,6 +11,10 @@ using CLIMA.Mesh.Filters
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
+using CLIMA.Courant
+
+import CLIMA.DGmethods: courant
+import CLIMA.Grids: VerticalDirection, HorizontalDirection
 
 # ------------------------ Description ------------------------- #
 # 1) Dry Rising Bubble (circular potential temperature perturbation)
@@ -72,7 +77,11 @@ function config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
   bc = NoFluxBC()
 
   # Choose explicit solver
-  ode_solver = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
+  ode_solver = CLIMA.MRRKSolverType(solver_method=MultirateRungeKutta,
+                                    slow_method=LSRK144NiegemannDiehlBusch,
+                                    fast_method=LSRK144NiegemannDiehlBusch,
+                                    numsubsteps=10,
+                                    linear_model=AtmosAcousticGravityLinearModel)
 
   # Set up the model
   C_smag = FT(0.23)
@@ -111,10 +120,11 @@ function main()
     t0 = FT(0)
     timeend = FT(1000)
     # Courant number
-    CFL = FT(0.8)
+    CFL = FT(20)
 
     driver_config = config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
-    solver_config = CLIMA.setup_solver(t0, timeend, driver_config, forcecpu=true, Courant_number=CFL)
+    solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
+                                       forcecpu=true, Courant_number=CFL)
 
     # User defined filter (TMAR positivity preserving filter)
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
@@ -122,10 +132,55 @@ function main()
         nothing
     end
 
+    steps = 0
+    cbcourantnumbers = GenericCallbacks.EveryXSimulationSteps(10) do
+        steps += 5
+        dg =  solver_config.dg
+        m = dg.balancelaw
+        Q = solver_config.Q
+        Δt = solver_config.dt
+        cfl_v = courant(nondiffusive_courant, dg, m, Q, Δt, VerticalDirection())
+        cfl_h = courant(nondiffusive_courant, dg, m, Q, Δt, HorizontalDirection())
+        cfla_v = courant(advective_courant, dg, m, Q, Δt, VerticalDirection())
+        cfla_h = courant(advective_courant, dg, m, Q, Δt, HorizontalDirection())
+        cfld_v = courant(diffusive_courant, dg, m, Q, Δt, VerticalDirection())
+        cfld_h = courant(diffusive_courant, dg, m, Q, Δt, HorizontalDirection())
+
+        fΔt = solver_config.solver.fast_solver.dt
+        cflin_v = courant(nondiffusive_courant, dg, m, Q, fΔt, VerticalDirection())
+        cflin_h = courant(nondiffusive_courant, dg, m, Q, fΔt, HorizontalDirection())
+
+        @info @sprintf """
+        ================================
+        Courant numbers at step: %s
+
+        Outer (slow) method:
+        --------------------------------
+        Vertical Acoustic CFL    = %.2g
+        Horizontal Acoustic CFL  = %.2g
+        --------------------------------
+        Vertical Advection CFL   = %.2g
+        Horizontal Advection CFL = %.2g
+        --------------------------------
+        Vertical Diffusion CFL   = %.2g
+        Horizontal Diffusion CFL = %.2g
+        --------------------------------
+
+        Inner (fast) method:
+        --------------------------------
+        Vertical Acoustic CFL    = %.2g
+        Horizontal Acoustic CFL  = %.2g
+        --------------------------------
+        ================================
+        """  steps cfl_v cfl_h cfla_v cfla_h cfld_v cfld_h cflin_v cflin_h
+
+        return nothing
+    end
+
     # Invoke solver (calls solve! function for time-integrator)
     result = CLIMA.invoke!(solver_config;
-                          user_callbacks=(cbtmarfilter,),
-                          check_euclidean_distance=true)
+                           user_callbacks=(cbtmarfilter, cbcourantnumbers),
+                           check_euclidean_distance=true)
 
     @test isapprox(result,FT(1); atol=1.5e-3)
 end
