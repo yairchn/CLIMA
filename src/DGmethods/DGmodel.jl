@@ -67,151 +67,99 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment=false)
   ########################
   # Gradient Computation #
   ########################
-  if communicate
-    MPIStateArrays.start_ghost_exchange!(Q)
-    if aux_comm
-      MPIStateArrays.start_ghost_exchange!(auxstate)
-    end
-  end
+
+  event = Event(device)
+
+  # TODO Make sure ghost_exchange waits on previous sends
+  comm_Q_event = communicate ?  MPIStateArrays.ghost_exchange!(Q, dependencies=(event,)) : Event(CPU())
+  comm_aux_event = (communicate && aux_comm) ?  MPIStateArrays.ghost_exchange!(auxstate, dependencies=(event,)) : Event(CPU())
 
   if nviscstate > 0 || nhyperviscstate > 0
-
-    event = Event(device)
     event = volumeviscterms!(device, workgroups_volume...)(
       bl, Val(dim), Val(N), dg.diffusion_direction, Q.data,
       Qvisc.data, Qhypervisc_grad.data, auxstate.data, grid.vgeo, t,
       grid.D, hypervisc_indexmap, topology.realelems, dependencies=(event,))
-    wait(device, event)
 
-    if communicate
-      MPIStateArrays.finish_ghost_recv!(Q)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
-      end
-    end
-
-    event = Event(device)
     event = faceviscterms!(device, workgroups_surface...)(
               bl, Val(dim), Val(N), dg.diffusion_direction,
               dg.gradnumflux,
               Q.data, Qvisc.data, Qhypervisc_grad.data, auxstate.data,
               grid.vgeo, grid.sgeo, t, grid.vmap⁻, grid.vmap⁺, grid.elemtobndy,
-              hypervisc_indexmap, topology.realelems, dependencies=(event,))
+              hypervisc_indexmap, topology.realelems,
+              dependencies=(event, comm_Q_event, comm_aux_event))
+  end
+
+  comm_Qvisc_event = (communicate && nviscstate > 0) ? MPIStateArrays.ghost_exchange!(Qvisc, dependencies=(event,)) : Event(CPU())
+  comm_Qhypervisc_grad_event = (communicate && nhyperviscstate > 0) ? MPIStateArrays.ghost_exchange!(Qhypervisc_grad, dependencies=(event,)) : Event(CPU())
+
+  if nviscstate > 0
     wait(device, event)
-
-    if communicate
-      nviscstate > 0 && MPIStateArrays.start_ghost_exchange!(Qvisc)
-      nhyperviscstate > 0 && MPIStateArrays.start_ghost_exchange!(Qhypervisc_grad)
-    end
-    
-    if nviscstate > 0
-      aux_comm = update_aux_diffusive!(dg, bl, Q, t)
-      @assert typeof(aux_comm) == Bool
-    end
-
-    if aux_comm
-      MPIStateArrays.start_ghost_exchange!(auxstate)
-    end
+    aux_comm = update_aux_diffusive!(dg, bl, Q, t)
+    event = Event(device)
+    @assert typeof(aux_comm) == Bool
+    comm_aux_event = (communicate && aux_comm) ?  MPIStateArrays.ghost_exchange!(auxstate, dependencies=(event,)) : Event(CPU())
   end
 
   if nhyperviscstate > 0
     #########################
     # Laplacian Computation #
     #########################
-  
-    event = Event(device)
     event = volumedivgrad!(device, workgroups_volume...)(
       bl, Val(dim), Val(N), dg.diffusion_direction,
       Qhypervisc_grad.data, Qhypervisc_div.data, grid.vgeo,
       grid.D, topology.realelems, dependencies=(event,))
-    wait(device, event)
-    
-    communicate && MPIStateArrays.finish_ghost_recv!(Qhypervisc_grad)
 
-    event = Event(device)
     event = facedivgrad!(device, workgroups_surface...)(
       bl, Val(dim), Val(N), dg.diffusion_direction,
       CentralDivPenalty(),
       Qhypervisc_grad.data, Qhypervisc_div.data,
       grid.vgeo, grid.sgeo, grid.vmap⁻, grid.vmap⁺, grid.elemtobndy,
-      topology.realelems, dependencies=(event,))
-    wait(device, event)
-    
-    communicate && MPIStateArrays.start_ghost_exchange!(Qhypervisc_div)
-    
+      topology.realelems, dependencies=(event, comm_Qhypervisc_grad_event))
+  end
+
+  comm_Qhypervisc_div_event = (communicate && nhyperviscstate > 0) ? MPIStateArrays.ghost_exchange!(Qhypervisc_div, dependencies=(event,)) : Event(CPU())
+
+  if nhyperviscstate > 0
     ####################################
     # Hyperdiffusive terms computation #
     ####################################
-   
-    event = Event(device)
     event = volumehyperviscterms!(device, workgroups_volume...)(
       bl, Val(dim), Val(N), dg.diffusion_direction,
       Qhypervisc_grad.data, Qhypervisc_div.data,
       Q.data, auxstate.data,
       grid.vgeo, grid.ω, grid.D,
       topology.realelems, t, dependencies=(event,))
-    wait(device, event)
-    
-    communicate && MPIStateArrays.finish_ghost_recv!(Qhypervisc_div)
 
-    event = Event(device)
     event = facehyperviscterms!(device, workgroups_surface...)(
       bl, Val(dim), Val(N), dg.diffusion_direction,
       CentralHyperDiffusiveFlux(),
       Qhypervisc_grad.data, Qhypervisc_div.data,
       Q.data, auxstate.data,
       grid.vgeo, grid.sgeo, grid.vmap⁻, grid.vmap⁺,
-      grid.elemtobndy, topology.realelems, t, dependencies=(event,))
-    wait(device, event)
-    
-    communicate && MPIStateArrays.start_ghost_exchange!(Qhypervisc_grad)
+      grid.elemtobndy, topology.realelems, t, dependencies=(event, comm_Qhypervisc_div_event))
   end
 
+  comm_Qhypervisc_grad_event = (communicate && nhyperviscstate > 0) ? MPIStateArrays.ghost_exchange!(Qhypervisc_grad, dependencies=(event,)) : Event(CPU())
 
   ###################
   # RHS Computation #
   ###################
-  event = Event(device)
   event = volumerhs!(device, workgroups_volume...)(
     bl, Val(dim), Val(N), dg.direction, dQdt.data, Q.data, Qvisc.data,
     Qhypervisc_grad.data, auxstate.data, grid.vgeo, t, grid.ω, grid.D,
     topology.realelems, increment, dependencies=(event,))
-  wait(device, event)
 
-  if communicate
-    if nviscstate > 0 || nhyperviscstate > 0
-      if nviscstate > 0
-        MPIStateArrays.finish_ghost_recv!(Qvisc)
-        if aux_comm
-          MPIStateArrays.finish_ghost_recv!(auxstate)
-        end
-      end
-      nhyperviscstate > 0 && MPIStateArrays.finish_ghost_recv!(Qhypervisc_grad)
-    else
-      MPIStateArrays.finish_ghost_recv!(Q)
-      if aux_comm
-        MPIStateArrays.finish_ghost_recv!(auxstate)
-      end
-    end
-  end
-
-  event = Event(device)
   event = facerhs!(device, workgroups_surface...)(
     bl, Val(dim), Val(N), dg.direction,
     dg.numfluxnondiff,
     dg.numfluxdiff,
     dQdt.data, Q.data, Qvisc.data, Qhypervisc_grad.data,
     auxstate.data, grid.vgeo, grid.sgeo, t, grid.vmap⁻, grid.vmap⁺, grid.elemtobndy,
-    topology.realelems, dependencies=(event,))
-  wait(device, event)
+    topology.realelems,
+    dependencies=(event, comm_Qvisc_event, comm_aux_event,
+                  comm_Qhypervisc_grad_event, comm_Q_event))
 
-  # Just to be safe, we wait on the sends we started.
-  if communicate
-    MPIStateArrays.finish_ghost_send!(Qhypervisc_div)
-    MPIStateArrays.finish_ghost_send!(Qvisc)
-    MPIStateArrays.finish_ghost_send!(Qhypervisc_grad)
-    MPIStateArrays.finish_ghost_send!(Q)
-  end
+  wait(device, event)
 end
 
 function init_ode_state(dg::DGModel, args...;
