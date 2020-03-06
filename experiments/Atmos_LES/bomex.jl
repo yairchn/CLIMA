@@ -217,83 +217,141 @@ function atmos_source!(s::BomexSponge, atmos::AtmosModel, source::Vars, state::V
   return nothing
 end
 
-"""
-  BomexTendencies (Source)
-Moisture, Temperature and Subsidence tendencies
-"""
-struct BomexTendencies{FT} <: Source
-  "Advection tendency in total moisture `[s⁻¹]`"
+struct BomexMoistureTendency{FT} <: Source
+  "Moisture tendency peak value"
   ∂qt∂t_peak::FT
-  "Lower extent of piecewise profile (moisture term) `[m]`"
-  zl_moisture::FT   
-  "Upper extent of piecewise profile (moisture term) `[m]`"
-  zh_moisture::FT
-  "Cooling rate `[K/s]`"
-  ∂θ∂t_peak::FT
-  "Lower extent of piecewise profile (subsidence term) `[m]`"
-  zl_sub::FT
-  "Upper extent of piecewise profile (subsidence term) `[m]`"
-  zh_sub::FT
-  "Subsidence peak velocity"
-  w_sub::FT
-  "Max height in domain"
+  "Moisture piecewise profile lower limit"
+  zl_qt::FT
+  "Moisture piecewise profile upper limit"
+  zh_qt::FT
+  "Maximum domain height"
   z_max::FT
 end
-function atmos_source!(s::BomexTendencies, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-  FT    = eltype(state)
-  ρ     = state.ρ
-  z     = altitude(atmos.orientation,aux)
-  q_tot = state.moisture.ρq_tot / state.ρ
-  TS    = thermo_state(atmos.moisture, atmos.orientation, state, aux)
-  
-  # Moisture tendencey (sink term) 
-  # Temperature tendency (Radiative cooling)
-  # Large scale subsidence
-  # Unpack struct
-  zl_moisture = s.zl_moisture
-  zh_moisture = s.zh_moisture
-  z_max       = s.z_max
-  zl_sub      = s.zl_sub
-  zh_sub      = s.zh_sub
-  w_sub       = s.w_sub
-  ∂qt∂t_peak  = s.∂qt∂t_peak
-  ∂θ∂t_peak   = s.∂θ∂t_peak
-  k̂           = vertical_unit_vector(atmos.orientation, aux)
-
+function atmos_source!(s::BomexMoistureTendency, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  zl_qt = s.zl_qt
+  zh_qt = s.zh_qt
+  z_max      = s.z_max
+  ∂qt∂t_peak = s.∂qt∂t_peak
+  z          = altitude(atmos.orientation,aux)
+  k̂          = vertical_unit_vector(atmos.orientation, aux)
+  TS    = thermo_state(atmos.moisture, atmos.orientation,state,aux)
   # Piecewise profile for advective moisture forcing
   P     = air_pressure(TS)
-
   # Thermodynamic state identification
   q_pt  = PhasePartition(TS)
   cvm   = cv_m(TS)
+  ρ     = state.ρ
+  linscale_moisture = (z-zl_qt)/(zh_qt-zl_qt)
   
-  linscale_moisture = (z-zl_moisture)/(zh_moisture-zl_moisture)
-  linscale_temp     = (z-zl_sub) / (z_max-zl_sub)
-  linscale_sub      = (z-zl_sub) / (zh_sub-zl_sub)
-
   # Piecewise term for moisture tendency
-  if z <= zl_moisture
+  if z <= zl_qt
     ρ∂qt∂t = ρ*∂qt∂t_peak
-  elseif zl_moisture < z <= zh_moisture
+  elseif zl_qt < z <= zh_qt
     ρ∂qt∂t = ρ*(∂qt∂t_peak - ∂qt∂t_peak * linscale_moisture)
   else
     ρ∂qt∂t = -zero(FT)
   end
+
+  # Moisture tendency source
+  source.moisture.ρq_tot += ρ∂qt∂t
+  return nothing
+end
+
+struct BomexTemperatureTendency{FT} <: Source
+  "Potential temperature tendency peak value"
+  ∂θ∂t_peak::FT
+  "Moisture tendency peak value"
+  ∂qt∂t_peak::FT
+  "Temperature piecewise profile lower limit"
+  zl_temperature::FT
+  "Moisture piecewise profile lower limit"
+  zl_qt::FT
+  "Moisture piecewise profile upper limit"
+  zh_qt::FT
+  "Maximum domain height"
+  z_max::FT
+end
+function atmos_source!(s::BomexTemperatureTendency, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  zl_qt = s.zl_qt
+  zh_qt = s.zh_qt
+  zl_temperature = s.zl_temperature
+  z_max      = s.z_max
+  ∂qt∂t_peak = s.∂qt∂t_peak
+  ∂θ∂t_peak = s.∂qt∂t_peak
+  z          = altitude(atmos.orientation,aux)
+  k̂          = vertical_unit_vector(atmos.orientation, aux)
+  TS    = thermo_state(atmos.moisture, atmos.orientation,state,aux)
+  ρ     = state.ρ
+  # Piecewise profile for advective moisture forcing
+  P     = air_pressure(TS)
+  # Thermodynamic state identification
+  q_pt  = PhasePartition(TS)
+  cvm   = cv_m(TS)
   
+  linscale_moisture = (z-zl_qt)/(zh_qt-zl_qt)
+  linscale_temp     = (z-zl_temperature) / (z_max-zl_temperature)
+  
+  # Piecewise term for moisture tendency
+  if z <= zl_qt
+    ρ∂qt∂t = ρ*∂qt∂t_peak
+  elseif zl_qt < z <= zh_qt
+    ρ∂qt∂t = ρ*(∂qt∂t_peak - ∂qt∂t_peak * linscale_moisture)
+  else
+    ρ∂qt∂t = -zero(FT)
+  end
+
   # Piecewise term for internal energy tendency
-  if z <= zl_sub
+  if z <= zl_temperature
     ρ∂θ∂t = ρ*∂θ∂t_peak
   elseif  zh_sub < z <= z_max
     ρ∂θ∂t = ρ*(∂θ∂t_peak - ∂θ∂t_peak*linscale_temp)
   else
     ρ∂θ∂t = -zero(FT)
   end
-  
-  # Moisture tendency source
-  source.moisture.ρq_tot += ρ∂qt∂t
+
   # Internal energy tendency source
   source.ρe += cvm*ρ∂θ∂t*exner(TS) + e_int_v0*ρ∂qt∂t
+  return nothing
+end
+
+struct BomexLargeScaleSubsidence{FT} <: Source
+  "Peak subsidence velocity value"
+  w_sub
+  "Subsidence piecewise profile lower limit"
+  zl_temperature::FT
+  "Subsidence piecewise profile upper limit"
+  zh_sub::FT
+  "Maximum domain height"
+  z_max::FT
+  "Eastward geostrophic velocity `[m/s]` (Base)"
+  u_geostrophic::FT
+  "Eastward geostrophic velocity `[m/s]` (Slope)"
+  u_slope::FT
+  "Northward geostrophic velocity `[m/s]`"
+  v_geostrophic::FT
+end
+function atmos_source!(s::BomexLargeScaleSubsidence, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  zl_qt = s.zl_qt
+  zh_qt = s.zh_qt
+  z_max       = s.z_max
   
+  ∂qt∂t_peak  = s.∂qt∂t_peak
+  
+  ρ = state.ρ
+  u_geostrophic = s.u_geostrophic
+  u_slope       = s.u_slope
+  v_geostrophic = s.v_geostrophic
+  
+  k̂           = vertical_unit_vector(atmos.orientation, aux)
+  
+  TS    = thermo_state(atmos.moisture, atmos.orientation,state,aux)
+  
+  # Piecewise profile for advective moisture forcing
+  P     = air_pressure(TS)
+  # Thermodynamic state identification
+  q_pt  = PhasePartition(TS)
+  cvm   = cv_m(TS)
+  linscale_sub      = (z-zl_sub) / (zh_sub-zl_sub)
   wₛ = -zero(FT)
   if z <= zl_sub
     wₛ = -zero(FT) + z*(w_sub)/(zl_sub)
@@ -308,7 +366,6 @@ function atmos_source!(s::BomexTendencies, atmos::AtmosModel, source::Vars, stat
   source.moisture.ρq_tot -= ρ * wₛ * dot(k̂, diffusive.moisture.∇q_tot)
   return nothing
 end
-
 """
   Initial Condition for BOMEX LES
 """
@@ -430,7 +487,8 @@ function config_bomex(FT, N, resolution, xmax, ymax, zmax)
   v_geostrophic = FT(0)          # Northward relaxation speed
 
   zl_sub = FT(1500)         # Low altitude for piecewise function (subsidence source)
-  zh_sub = FT(2100)         # High altitude for piecewise function (subsidence source)
+  zl_temp= FT(1500)         # Low altitude for piecewise function (subsidence source)
+  zh_sub = zl_sub           # High altitude for piecewise function (subsidence source)
   w_sub  = FT(-0.65e-2)     # Subsidence velocity peak value
 
   f_coriolis = FT(0.376e-4) # Coriolis parameter
@@ -438,7 +496,9 @@ function config_bomex(FT, N, resolution, xmax, ymax, zmax)
   # Assemble source components
   source = (
             Gravity(),
-            BomexTendencies{FT}(∂qt∂t_peak, zl_qt, zh_qt, ∂θ∂t_peak, zl_sub, zh_sub, w_sub, zmax),
+            BomexMoistureTendency{FT}(∂qt∂t_peak, zl_qt, zh_qt, zmax),
+            BomexTemperatureTendency{FT}(∂θ∂t_peak, ∂qt∂t_peak, zl_sub, zl_qt, zh_qt, zmax),
+            BomexLargeScaleSubsidence{FT}(w_sub, zl_sub, zh_sub, zmax, u_geostrophic, u_slope, v_geostrophic),
             BomexSponge{FT}(zmax, z_sponge, α_max, γ, u_geostrophic, u_slope, v_geostrophic),
             BomexGeostrophic{FT}(f_coriolis, u_geostrophic, u_slope, v_geostrophic)
            )
