@@ -318,7 +318,7 @@ struct BomexLargeScaleSubsidence{FT} <: Source
   "Peak subsidence velocity value"
   w_sub
   "Subsidence piecewise profile lower limit"
-  zl_temperature::FT
+  zl_sub::FT
   "Subsidence piecewise profile upper limit"
   zh_sub::FT
   "Maximum domain height"
@@ -331,13 +331,13 @@ struct BomexLargeScaleSubsidence{FT} <: Source
   v_geostrophic::FT
 end
 function atmos_source!(s::BomexLargeScaleSubsidence, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-  zl_qt = s.zl_qt
-  zh_qt = s.zh_qt
   z_max       = s.z_max
-  
-  ∂qt∂t_peak  = s.∂qt∂t_peak
-  
+  zh_sub      = s.zh_sub
+  zl_sub      = s.zl_sub
+
   ρ = state.ρ
+  
+  z          = altitude(atmos.orientation,aux)
   u_geostrophic = s.u_geostrophic
   u_slope       = s.u_slope
   v_geostrophic = s.v_geostrophic
