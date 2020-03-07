@@ -90,7 +90,7 @@ function config_heldsuarez(FT, poly_order, resolution)
   # Viscous sponge to dampen flow at the top of the domain
   dyn_visc_bg       = FT(0.0) 
   z_sponge          = FT(15e3)
-  dyn_visc_sp       = FT(1e6)
+  dyn_visc_sp       = FT(1e7)
   exp_sponge        = FT(2)
   visc_sponge       = ConstantViscousSponge(
                         dyn_visc_bg, 
@@ -108,7 +108,7 @@ function config_heldsuarez(FT, poly_order, resolution)
                  
     turbulence  = visc_sponge, 
     moisture    = DryModel(),
-    source      = (Gravity(), Coriolis(), held_suarez_forcing!, sponge),
+    source      = (Gravity(), Coriolis(), held_suarez_forcing!),
     init_state  = init_heldsuarez!,
     data_config = HeldSuarezDataConfig(
                     T_ref,
