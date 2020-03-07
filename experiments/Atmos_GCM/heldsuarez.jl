@@ -16,35 +16,41 @@ using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
 
 
-# Import directional keywords (CLIMA.Mesh.Grids)
-import CLIMA.Mesh.Grids: VerticalDirection, HorizontalDirection, EveryDirection
-
-
 struct HeldSuarezDataConfig{FT}
-  p_sfc::FT
-  T_init::FT
-  domain_height::FT
+  T_ref::FT
+  T_sfc::FT
+  T_min::FT
+  Γ::FT
 end
 
 function init_heldsuarez!(bl, state, aux, coords, t)
   FT = eltype(state)
   
-  # Parameters need to set initial state
-  T_init       = bl.data_config.T_init
-  p_sfc        = bl.data_config.p_sfc
-  scale_height = FT(R_d) * T_init / FT(grav)
+  # Parameters
+  T_sfc        = bl.data_config.T_sfc
+  T_min        = bl.data_config.T_min
+  Γ            = bl.data_config.Γ
+  p_sfc        = MSLP 
   
-  # Calculate the initial state variables 
+  # Configure temperature and pressure profile
   z            = altitude(bl.orientation, aux)
-  p            = p_sfc * exp(-z / scale_height)
-  thermo_state = PhaseDry_given_pT(p, T_init)
+  T            = max(T_sfc - Γ * z, T_min)
+  p            = FT(p_sfc * (T / T_sfc)^(grav / R_d / Γ))
+  if T == T_min
+    z_top = (T_sfc - T_min) / Γ
+    H_min = R_d * T_min / grav
+    p *= exp(-(z-z_top) / H_min)
+  end
+
+  # Configure thermodynamic state
+  thermo_state = PhaseDry_given_pT(p, T)
   ρ            = air_density(thermo_state)
   e_int        = internal_energy(thermo_state)
   e_pot        = gravitational_potential(bl.orientation, aux)
 
   # Set initial state with random perturbation 
   rnd          = FT(1.0 + rand(Uniform(-1e-6, 1e-6)))
-  state.ρ      = rnd * air_density(T_init, p)
+  state.ρ      = rnd * ρ
   state.ρu     = SVector{3, FT}(0, 0, 0)
   state.ρe     = state.ρ * (e_int + e_pot)
 
@@ -55,23 +61,22 @@ function config_heldsuarez(FT, poly_order, resolution)
   exp_name          = "HeldSuarez"
   
   # Parameters
-  p_sfc::FT         = MSLP
-  T_init::FT        = 255
-  T_ref::FT         = 300
+  T_ref::FT         = 255
+  T_sfc::FT         = 300
+  T_min::FT         = 200
+  Γ::FT             = 0.7 * grav / cp_d # lapse rate
   Rh_ref::FT        = 0
   domain_height::FT = 30e3
   turb_visc::FT     = 0 # no visc. here
 
   # Set up a reference state for linearization
-  Γ                 = FT(0.7 * grav / cp_d) # lapse rate
-  T_sfc             = FT(300.0)
-  T_min             = FT(200.0)
   temp_profile_ref  = LinearTemperatureProfile(T_min, T_sfc, Γ)
+  #temp_profile_ref  = IsothermalProfile(FT(255))
   ref_state         = HydrostaticState(temp_profile_ref, Rh_ref)
 
   # Rayleigh sponge to dampen flow at the top of the domain 
   z_sponge          = FT(15e3) # height at which sponge begins
-  α_relax           = FT(1/60/60) # sponge relaxation rate in (1/seconds) 
+  α_relax           = FT(0.0) # sponge relaxation rate in (1/seconds) 
   u_relax           = SVector(FT(0), FT(0), FT(0)) # relaxation velocity
   exp_sponge        = 2 # sponge exponent for squared-sinusoid profile
   sponge            = RayleighSponge{FT}(
@@ -82,20 +87,34 @@ function config_heldsuarez(FT, poly_order, resolution)
                         exp_sponge
                       )
 
+  # Viscous sponge to dampen flow at the top of the domain
+  dyn_visc_bg       = FT(0.0) 
+  z_sponge          = FT(15e3)
+  dyn_visc_sp       = FT(1e6)
+  exp_sponge        = FT(2)
+  visc_sponge       = ConstantViscousSponge(
+                        dyn_visc_bg, 
+                        domain_height, 
+                        z_sponge, 
+                        dyn_visc_sp,
+                        exp_sponge
+                      )
+
   # Set up the atmosphere model
   model = AtmosModel{FT}(
     AtmosGCMConfiguration;
                  
     ref_state   = ref_state,
                  
-    turbulence  = ConstantViscosityWithDivergence(turb_visc),
+    turbulence  = visc_sponge, 
     moisture    = DryModel(),
     source      = (Gravity(), Coriolis(), held_suarez_forcing!, sponge),
     init_state  = init_heldsuarez!,
     data_config = HeldSuarezDataConfig(
-                    p_sfc, 
-                    T_init, 
-                    domain_height
+                    T_ref,
+                    T_sfc,
+                    T_min,
+                    Γ
                   )
   )
   
@@ -116,7 +135,7 @@ function held_suarez_forcing!(bl, source, state, diffusive, aux, t::Real)
   FT = eltype(state)
   
   # Parameters
-  T_init = bl.data_config.T_init
+  T_ref = bl.data_config.T_ref
 
   # Extract the state
   ρ      = state.ρ
@@ -139,7 +158,7 @@ function held_suarez_forcing!(bl, source, state, diffusive, aux, t::Real)
   λ            = longitude(bl.orientation, aux)
   φ            = latitude(bl.orientation, aux)
   z            = altitude(bl.orientation, aux)
-  scale_height = FT(R_d) * T_init / FT(grav)
+  scale_height = FT(R_d) * T_ref / FT(grav)
   σ            = exp(-z / scale_height)
 
   # TODO: use
@@ -164,9 +183,9 @@ function main()
   # Driver configuration parameters
   FT            = Float32           # floating type precision
   poly_order    = 5                 # discontinuous Galerkin polynomial order
-  n_horz        = 15                # horizontal element number  
-  n_vert        = 8                 # vertical element number
-  days          = 1                 # experiment day number
+  n_horz        = 5                 # horizontal element number  
+  n_vert        = 5                 # vertical element number
+  days          = 100               # experiment day number
   timestart     = FT(0)             # start time (seconds)
   timeend       = FT(days*24*60*60) # end time (seconds)
   
@@ -185,8 +204,9 @@ function main()
     timeend, 
     driver_config,
     ode_solver_type=ode_solver_type,
-    Courant_number=0.05,
-    forcecpu=true
+    Courant_number=0.1,
+    forcecpu=true, 
+    diffdir=HorizontalDirection()
   )
 
   # Set up user-defined callbacks

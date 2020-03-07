@@ -149,19 +149,18 @@ function diffusive!(::ConstantViscousSponge, ::Orientation,
   diffusive.turbulence.S = symmetrize(∇transform.u)
 end
 
-function turbulence_tensors(m::ConstantViscousSponge,
+function turbulence_tensors(atmos::AtmosModel, m::ConstantViscousSponge,
     state::Vars, diffusive::Vars, aux::Vars, t::Real)
 
-  FT = eltype(state)
   S = diffusive.turbulence.S
-  z = altitude(atmos.orientation,aux)
+  z = altitude(atmos.orientation, aux)
   ν = m.ρν / state.ρ
-  if altitude >= FT(m.z_sponge)
-    r = (altitude - FT(m.z_sponge))/(s.m.z_max-m.z_sponge)
-    β_sponge = s.α_max * sinpi(r/2)^s.γ
-    ν += β_sponge*ν
+  if z >= m.z_sponge
+    r = (z - m.z_sponge) / (m.z_max - m.z_sponge)
+    β_sponge = m.α_max * sinpi(r / 2)^m.γ
+    ν += β_sponge * ν
   end
-  τ = (-2*ν) * S + (2*ν/3)*tr(S) * I
+  τ = (-2 * ν) * S + (2 * ν / 3) * tr(S) * I
   return ν, τ
 end
 
