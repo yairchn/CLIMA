@@ -176,6 +176,7 @@ function atmos_source!(s::BomexGeostrophic, atmos::AtmosModel, source::Vars, sta
   return nothing
 end
 
+
 """
   Bomex Sponge (Source)
 """
@@ -196,7 +197,6 @@ struct BomexSponge{FT} <: Source
   v_geostrophic::FT
 end
 function atmos_source!(s::BomexSponge, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-
   z_max = s.z_max
   z_sponge = s.z_sponge
   α_max = s.α_max
@@ -227,7 +227,11 @@ struct BomexMoistureTendency{FT} <: Source
   "Maximum domain height"
   z_max::FT
 end
+function linear_scaling(zl_sub,zh_sub,zl_temp,zh_temp,zl_qt,zh_qt)
+  
+end
 function atmos_source!(s::BomexMoistureTendency, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  FT = eltype(state)
   zl_qt = s.zl_qt
   zh_qt = s.zh_qt
   z_max      = s.z_max
@@ -272,6 +276,7 @@ struct BomexTemperatureTendency{FT} <: Source
   z_max::FT
 end
 function atmos_source!(s::BomexTemperatureTendency, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  FT = eltype(state)
   zl_qt = s.zl_qt
   zh_qt = s.zh_qt
   zl_temperature = s.zl_temperature
@@ -303,7 +308,7 @@ function atmos_source!(s::BomexTemperatureTendency, atmos::AtmosModel, source::V
   # Piecewise term for internal energy tendency
   if z <= zl_temperature
     ρ∂θ∂t = ρ*∂θ∂t_peak
-  elseif  zh_sub < z <= z_max
+  elseif  zl_temperature < z <= z_max
     ρ∂θ∂t = ρ*(∂θ∂t_peak - ∂θ∂t_peak*linscale_temp)
   else
     ρ∂θ∂t = -zero(FT)
@@ -316,7 +321,7 @@ end
 
 struct BomexLargeScaleSubsidence{FT} <: Source
   "Peak subsidence velocity value"
-  w_sub
+  w_sub::FT
   "Subsidence piecewise profile lower limit"
   zl_sub::FT
   "Subsidence piecewise profile upper limit"
@@ -331,7 +336,10 @@ struct BomexLargeScaleSubsidence{FT} <: Source
   v_geostrophic::FT
 end
 function atmos_source!(s::BomexLargeScaleSubsidence, atmos::AtmosModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+  FT = eltype(state)
+
   z_max       = s.z_max
+  w_sub       = s.w_sub
   zh_sub      = s.zh_sub
   zl_sub      = s.zl_sub
 
@@ -496,11 +504,11 @@ function config_bomex(FT, N, resolution, xmax, ymax, zmax)
   # Assemble source components
   source = (
             Gravity(),
-            BomexMoistureTendency{FT}(∂qt∂t_peak, zl_qt, zh_qt, zmax),
+            #BomexMoistureTendency{FT}(∂qt∂t_peak, zl_qt, zh_qt, zmax),
             BomexTemperatureTendency{FT}(∂θ∂t_peak, ∂qt∂t_peak, zl_sub, zl_qt, zh_qt, zmax),
-            BomexLargeScaleSubsidence{FT}(w_sub, zl_sub, zh_sub, zmax, u_geostrophic, u_slope, v_geostrophic),
-            BomexSponge{FT}(zmax, z_sponge, α_max, γ, u_geostrophic, u_slope, v_geostrophic),
-            BomexGeostrophic{FT}(f_coriolis, u_geostrophic, u_slope, v_geostrophic)
+            #BomexLargeScaleSubsidence{FT}(w_sub, zl_sub, zh_sub, zmax, u_geostrophic, u_slope, v_geostrophic),
+            #BomexSponge{FT}(zmax, z_sponge, α_max, γ, u_geostrophic, u_slope, v_geostrophic),
+            #BomexGeostrophic{FT}(f_coriolis, u_geostrophic, u_slope, v_geostrophic)
            )
 
   # Assemble timestepper components
