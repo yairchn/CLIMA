@@ -13,7 +13,6 @@ using ..ColumnwiseLUSolver
 using ..Diagnostics
 using ..GenericCallbacks
 using ..ODESolvers
-using ..Mesh.Grids: EveryDirection, VerticalDirection, HorizontalDirection
 using ..MoistThermodynamics
 using ..MPIStateArrays
 using ..DGmethods: vars_state, vars_aux, update_aux!, update_aux_diffusive!
@@ -123,6 +122,7 @@ function parse_commandline()
             action = :store_true
     end
 
+
     return parse_args(s)
 end
 
@@ -198,11 +198,23 @@ struct SolverConfiguration{FT}
     t0::FT
     timeend::FT
     dt::FT
-    forcecpu::Bool
+    init_on_cpu::Bool
     numberofsteps::Int
     init_args
     solver
 end
+
+"""
+    DGmethods.courant(local_cfl, solver_config::SolverConfiguration;
+                      Q=solver_config.Q, dt=solver_config.dt)
+
+Returns the maximum of the evaluation of the function `local_courant`
+pointwise throughout the domain with the model defined by `solver_config`. The
+keyword arguments `Q` and `dt` can be used to call the courant method with a
+different state `Q` or time step `dt` than are defined in `solver_config`.
+"""
+DGmethods.courant(f, sc::SolverConfiguration; Q=sc.Q, dt = sc.dt) =
+  DGmethods.courant(f, sc.dg, sc.dg.balancelaw, Q, dt)
 
 """
     CLIMA.setup_solver(t0, timeend, driver_config)
@@ -212,11 +224,12 @@ Set up the DG model per the specified driver configuration and set up the ODE so
 function setup_solver(t0::FT, timeend::FT,
                       driver_config::DriverConfiguration,
                       init_args...;
-                      forcecpu=false,
+                      init_on_cpu=false,
                       ode_solver_type=nothing,
                       ode_dt=nothing,
                       modeldata=nothing,
-                      Courant_number=0.4
+                      Courant_number=0.4,
+                      diffdir=EveryDirection(),
                      ) where {FT<:AbstractFloat}
     @tic setup_solver
 
@@ -230,7 +243,7 @@ function setup_solver(t0::FT, timeend::FT,
     dg = DGModel(bl, grid, numfluxnondiff, numfluxdiff, gradnumflux,
                  modeldata=modeldata, diffusion_direction=EveryDirection())
     @info @sprintf("Initializing %s", driver_config.name)
-    Q = init_ode_state(dg, FT(0), init_args...; forcecpu=forcecpu)
+    Q = init_ode_state(dg, FT(0), init_args...; init_on_cpu=init_on_cpu)
 
     # TODO: using `update_aux!()` to apply filters to the state variables and
     # `update_aux_diffusive!()` to calculate the vertical component of velocity
@@ -277,19 +290,43 @@ function setup_solver(t0::FT, timeend::FT,
     @toc setup_solver
 
     return SolverConfiguration(driver_config.name, driver_config.mpicomm, dg, Q,
-                               t0, timeend, dt, forcecpu, numberofsteps,
+                               t0, timeend, dt, init_on_cpu, numberofsteps,
                                init_args, solver)
 end
 
 """
-    CLIMA.invoke!(solver_config)
+    CLIMA.invoke!(solver_config::SolverConfiguration;
+                  user_callbacks=(),
+                  check_euclidean_distance=false,
+                  adjustfinalstep=false
+                  user_info_callback=(init)->nothing)
 
-Run the simulation.
+Run the simulation defined by the `solver_config`.
+
+Keyword Arguments:
+
+The `user_callbacks` are passed to the ODE solver as callback functions; see
+[`ODESolvers.solve!]@ref().
+
+If `check_euclidean_distance` is `true, then the Euclidean distance between the
+final solution and initial condition function evaluated with
+`solver_config.timeend` is reported.
+
+The value of 'adjustfinalstep` is passed to the ODE solver; see
+[`ODESolvers.solve!]@ref().
+
+The function `user_info_callback` is called after the default info callback
+(which is called every `Settings.update_interval` seconds of wallclock time).
+The single input argument `init` is `true` when the callback is called
+called for initialization before time stepping begins and `false` when called
+during the actual ODE solve; see [`GenericCallbacks`](@ref) and
+[`ODESolvers.solve!]@ref().
 """
 function invoke!(solver_config::SolverConfiguration;
                  user_callbacks=(),
                  check_euclidean_distance=false,
-                 adjustfinalstep=false
+                 adjustfinalstep=false,
+                 user_info_callback=(init)->nothing
                 )
     mpicomm = solver_config.mpicomm
     dg = solver_config.dg
@@ -297,7 +334,7 @@ function invoke!(solver_config::SolverConfiguration;
     Q = solver_config.Q
     FT = eltype(Q)
     timeend = solver_config.timeend
-    forcecpu = solver_config.forcecpu
+    init_on_cpu = solver_config.init_on_cpu
     init_args = solver_config.init_args
     solver = solver_config.solver
 
@@ -315,14 +352,15 @@ function invoke!(solver_config::SolverConfiguration;
                                        Dates.dateformat"HH:MM:SS")
                 energy = norm(solver_config.Q)
                 @info @sprintf("""Update
-                               simtime = %.16e
+                               simtime = %8.2f / %8.2f
                                runtime = %s
                                norm(Q) = %.16e""",
                                ODESolvers.gettime(solver),
+                               solver_config.timeend,
                                runtime,
                                energy)
             end
-            nothing
+            user_info_callback(init)
         end
         callbacks = (callbacks..., cbinfo)
     end
@@ -368,13 +406,14 @@ function invoke!(solver_config::SolverConfiguration;
         end
         callbacks = (callbacks..., cbvtk)
     end
+
     callbacks = (callbacks..., user_callbacks...)
 
     # initial condition norm
     eng0 = norm(Q)
     @info @sprintf("""Starting %s
                    dt              = %.5e
-                   timeend         = %.5e
+                   timeend         = %8.2f
                    number of steps = %d
                    norm(Q)         = %.16e""",
                    solver_config.name,
@@ -399,7 +438,7 @@ function invoke!(solver_config::SolverConfiguration;
                    engf-eng0)
 
     if check_euclidean_distance
-        Qe = init_ode_state(dg, timeend, init_args...; forcecpu=forcecpu)
+        Qe = init_ode_state(dg, timeend, init_args...; init_on_cpu=init_on_cpu)
         engfe = norm(Qe)
         errf = euclidean_distance(solver_config.Q, Qe)
         @info @sprintf("""Euclidean distance
