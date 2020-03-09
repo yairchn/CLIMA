@@ -504,11 +504,11 @@ function config_bomex(FT, N, resolution, xmax, ymax, zmax)
   # Assemble source components
   source = (
             Gravity(),
-            #BomexMoistureTendency{FT}(∂qt∂t_peak, zl_qt, zh_qt, zmax),
+            BomexMoistureTendency{FT}(∂qt∂t_peak, zl_qt, zh_qt, zmax),
             BomexTemperatureTendency{FT}(∂θ∂t_peak, ∂qt∂t_peak, zl_sub, zl_qt, zh_qt, zmax),
-            #BomexLargeScaleSubsidence{FT}(w_sub, zl_sub, zh_sub, zmax, u_geostrophic, u_slope, v_geostrophic),
-            #BomexSponge{FT}(zmax, z_sponge, α_max, γ, u_geostrophic, u_slope, v_geostrophic),
-            #BomexGeostrophic{FT}(f_coriolis, u_geostrophic, u_slope, v_geostrophic)
+            BomexLargeScaleSubsidence{FT}(w_sub, zl_sub, zh_sub, zmax, u_geostrophic, u_slope, v_geostrophic),
+            BomexSponge{FT}(zmax, z_sponge, α_max, γ, u_geostrophic, u_slope, v_geostrophic),
+            BomexGeostrophic{FT}(f_coriolis, u_geostrophic, u_slope, v_geostrophic)
            )
 
   # Assemble timestepper components
