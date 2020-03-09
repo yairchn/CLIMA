@@ -26,7 +26,7 @@ Base.@kwdef mutable struct CLIMA_Settings
     mpi_knows_cuda::Bool = false
     show_updates::Bool = true
     update_interval::Int = 60
-    enable_diagnostics::Bool = true
+    enable_diagnostics::Bool = false
     diagnostics_interval::Int = 10000
     enable_vtk::Bool = false
     vtk_interval::Int = 10000
@@ -349,7 +349,7 @@ function invoke!(solver_config::SolverConfiguration;
         # set up the information callback
         upd_starttime = Ref(now())
         cbinfo = GenericCallbacks.EveryXWallTimeSeconds(Settings.update_interval, mpicomm) do (init=false)
-            if init
+        if init
                 upd_starttime[] = now()
             else
                 runtime = Dates.format(convert(Dates.DateTime,
@@ -415,19 +415,24 @@ function invoke!(solver_config::SolverConfiguration;
     step = [0]
     mkpath(Settings.output_dir)
     cbnc = GenericCallbacks.EveryXSimulationSteps(1) do (init=false) # - roughset
-        @info @sprintf("""test_nc: %d""",step)
+        @info @sprintf("""test_nc: %d""",step[1])
         domain_height = FT(30e3) # already defined in heldsuarez! - import
         # these params need to be taken out into the hledsuarez.jl file or Settingas
-        lat_res  = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
-        long_res = FT( 10.0 * π / 180.0) # 10 degree resolution - roughset
+        lat_res  = FT( 10.0 ) # 10 degree resolution - roughset
+        long_res = FT( 10.0 ) # 10 degree resolution - roughset
+        lat_min, lat_max, long_min, long_max = FT(-90.0), FT(90.0), FT(-180.0), FT(180.0)
+        
+        lat_grd = collect(range(lat_min, lat_max, step=lat_res)) 
+        long_grd = collect(range(long_min, long_max, step=long_res)) 
+        
         nel_vert_grd  = 20 # - roughset
         DA = array_type()
         # filename (may also want to take out)
-        #nprefix = @sprintf("hs_step%04d", step[1])
-        #filename = joinpath(Settings.output_dir,string(nprefix,".nc"))
-        #filename_aux = joinpath(Settings.output_dir,string(nprefix,"_aux.nc")) 
-        filename = "hstestQ.nc"
-        filename_aux = "hstest_aux.nc" 
+        nprefix = @sprintf("hs_step%04d", step[1])
+        filename = joinpath(Settings.output_dir,string(nprefix,".nc"))
+        filename_aux = joinpath(Settings.output_dir,string(nprefix,"_aux.nc")) 
+        #filename = "hstestQ.nc"
+        #filename_aux = "hstest_aux.nc" 
 
         varnames = ("ro", "rou", "rov", "row", "roe") # didn't use greek - some non-julia analysis software may struggle?
         
@@ -447,15 +452,17 @@ function invoke!(solver_config::SolverConfiguration;
         nvars = size(Q.data,2)
         nvars_aux = size(aux_list,2)
         vert_range = grid1d(FT(planet_radius), FT(planet_radius + domain_height), nelem = numelem_vert)
-        rad_res    = FT((vert_range[end] - vert_range[1])/FT(nel_vert_grd)) 
-        
+        rad_res    = FT((vert_range[end] - vert_range[1])/FT(nel_vert_grd))
+        rad_min, rad_max = vert_range[1] , vert_range[end]
+        rad_grd = collect(range(rad_min, rad_max, step=rad_res))
+    
         # get the z, lat, lon grid
-        intrp_cs = InterpolationCubedSphere(dg.grid, vert_range, nhor, lat_res, long_res, rad_res)
+        intrp_cs = InterpolationCubedSphere(dg.grid, vert_range, nhor, lat_grd, long_grd, rad_grd)
         iv = DA(Array{FT}(undef, intrp_cs.Npl, nvars))
         iv_aux = DA(Array{FT}(undef, intrp_cs.Npl, nvars_aux))
         # interpolate and save 
-        do_project = false
-        interpolate_local!(intrp_cs, Q.data, iv, do_project)
+        project_vector = true
+        interpolate_local!(intrp_cs, Q.data, iv, project=project_vector)
         interpolate_local!(intrp_cs, aux_list, iv_aux)
         svi = write_interpolated_data(intrp_cs, iv, varnames, filename)
         svi = write_interpolated_data(intrp_cs, iv_aux, varnames_aux, filename_aux)

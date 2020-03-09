@@ -158,7 +158,7 @@ function main()
   CLIMA.init()
 
   # Driver configuration parameters
-  FT            = Float32           # floating type precision
+  FT            = Float64           # floating type precision
   poly_order    = 5                 # discontinuous Galerkin polynomial order
   n_horz        = 5                # horizontal element number  
   n_vert        = 5                 # vertical element number
