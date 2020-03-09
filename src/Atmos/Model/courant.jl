@@ -1,21 +1,8 @@
-module Courant
+"""
+Utility functions for computing Courant numbers.
+"""
 
 export advective_courant, diffusive_courant, nondiffusive_courant
-
-using LinearAlgebra, StaticArrays
-using ..VariableTemplates
-using ..MoistThermodynamics
-using ..PlanetParameters
-import ..MoistThermodynamics: internal_energy
-using ..SubgridScaleParameters
-using GPUifyLoops
-using CLIMA.Atmos: AtmosModel, soundspeed, vertical_unit_vector, turbulence_tensors
-import CLIMA.DGmethods: BalanceLaw, vars_aux, vars_state,
-                        vars_diffusive
-using CLIMA.Mesh.Topologies
-using CLIMA.Mesh.Grids
-using CLIMA.Mesh.Grids: VerticalDirection, HorizontalDirection, EveryDirection
-
 
 function advective_courant(m::BalanceLaw, state::Vars, aux::Vars,
                               diffusive::Vars, Δx, Δt, direction=VerticalDirection())
@@ -23,7 +10,7 @@ function advective_courant(m::BalanceLaw, state::Vars, aux::Vars,
     if direction isa VerticalDirection
         norm_u =  abs(dot(state.ρu, k̂))/state.ρ
     elseif direction isa HorizontalDirection
-        norm_u = norm( (state.ρu .- dot(state.ρu, k̂).*k̂) / state.ρ )
+        norm_u = norm( (state.ρu - dot(state.ρu, k̂)*k̂) / state.ρ )
     else
         norm_u = norm(state.ρu/state.ρ)
     end
@@ -36,7 +23,7 @@ function nondiffusive_courant(m::BalanceLaw, state::Vars, aux::Vars,
     if direction isa VerticalDirection
         norm_u =  abs(dot(state.ρu, k̂))/state.ρ
     elseif direction isa HorizontalDirection
-        norm_u = norm( (state.ρu .- dot(state.ρu, k̂)*k̂) / state.ρ )
+        norm_u = norm( (state.ρu - dot(state.ρu, k̂)*k̂) / state.ρ )
     else
         norm_u = norm(state.ρu/state.ρ)
     end
@@ -47,22 +34,19 @@ function diffusive_courant(m::BalanceLaw, state::Vars, aux::Vars, diffusive::Var
     ν, τ = turbulence_tensors(m.turbulence, state, diffusive, aux, 0)
     FT = eltype(state)
 
-    if ν isa Real    
+    if ν isa Real
         return Δt * ν / (Δx*Δx)
     else
         k̂ = vertical_unit_vector(m.orientation, aux)
-        ν_vert = dot(ν, k)
+        ν_vert = dot(ν, k̂)
 
         if direction isa VerticalDirection
             return Δt * ν_vert / (Δx*Δx)
         elseif direction isa HorizontalDirection
-            ν_horz = ν - ν_vert .* k
+            ν_horz = ν - ν_vert * k̂
             return Δt * norm(ν_horz) / (Δx*Δx)
         else
             return Δt * norm(ν) / (Δx*Δx)
         end
     end
 end
-
-end
-

@@ -28,6 +28,8 @@ Base.@kwdef mutable struct CLIMA_Settings
     diagnostics_interval::Int = 10000
     enable_vtk::Bool = false
     vtk_interval::Int = 10000
+    monitor_courant_numbers::Bool = false
+    monitor_courant_interval::Int = 1
     log_level::String = "INFO"
     output_dir::String = "output"
     integration_testing::Bool = false
@@ -99,14 +101,21 @@ function parse_commandline()
         "--diagnostics-interval"
             help = "interval in simulation steps for gathering diagnostics"
             arg_type = Int
-            default = 1
+            default = 10000
         "--enable-vtk"
             help = "output VTK to <output-dir> every <vtk-interval> simulation steps"
             action = :store_true
         "--vtk-interval"
             help = "interval in simulation steps for VTK output"
             arg_type = Int
-            default = 4
+            default = 10000
+        "--monitor-courant-numbers"
+            help = "output acoustic, advective, and diffusive Courant numbers"
+            action = :store_true
+        "--monitor-courant-interval"
+            help = "interval in Courant number calculations"
+            arg_type = Int
+            default = 1
         "--log-level"
             help = "set the log level to one of debug/info/warn/error"
             arg_type = String
@@ -152,6 +161,8 @@ function init(; disable_gpu=false)
         Settings.enable_vtk = parsed_args["enable-vtk"]
         Settings.vtk_interval = parsed_args["vtk-interval"]
         Settings.output_dir = parsed_args["output-dir"]
+        Settings.monitor_courant_numbers = parsed_args["monitor-courant-numbers"]
+        Settings.monitor_courant_interval = parsed_args["monitor-courant-interval"]
         Settings.integration_testing = parsed_args["integration-testing"]
         Settings.log_level = uppercase(parsed_args["log-level"])
     catch
@@ -211,8 +222,8 @@ pointwise throughout the domain with the model defined by `solver_config`. The
 keyword arguments `Q` and `dt` can be used to call the courant method with a
 different state `Q` or time step `dt` than are defined in `solver_config`.
 """
-DGmethods.courant(f, sc::SolverConfiguration; Q=sc.Q, dt = sc.dt) =
-  DGmethods.courant(f, sc.dg, sc.dg.balancelaw, Q, dt)
+DGmethods.courant(f, sc::SolverConfiguration; Q=sc.Q, dt = sc.dt, direction = EveryDirection()) =
+  DGmethods.courant(f, sc.dg, sc.dg.balancelaw, Q, dt, direction)
 
 """
     CLIMA.setup_solver(t0, timeend, driver_config)
@@ -261,7 +272,7 @@ function setup_solver(t0::FT, timeend::FT,
     linmodel = nothing
     if isa(solver_type, ExplicitSolverType)
         dtmodel = bl
-    else # solver_type === IMEXSolverType
+    else # solver_type === IMEXSolverType or MultirateSolverType
         linmodel = solver_type.linear_model(bl)
         dtmodel = linmodel
     end
@@ -278,6 +289,16 @@ function setup_solver(t0::FT, timeend::FT,
     # create the solver
     if isa(solver_type, ExplicitSolverType)
         solver = solver_type.solver_method(dg, Q; dt=dt, t0=t0)
+    #elseif isa(solver_type, MultirateSolverType)
+    #    fast_dg = DGModel(linmodel, grid, numfluxnondiff, numfluxdiff, gradnumflux,
+    #                      auxstate=dg.auxstate)
+    #    slow_model = RemainderModel(bl, (linmodel,))
+    #    slow_dg = DGModel(slow_model, grid, numfluxnondiff, numfluxdiff, gradnumflux,
+    #                      auxstate=dg.auxstate)
+    #    slow_solver = solver_type.slow_method(slow_dg, Q; dt=dt)
+    #    fast_dt = dt / solver_type.timestep_ratio
+    #    fast_solver = solver_type.fast_method(fast_dg, Q; dt=fast_dt)
+    #    solver = solver_type.solver_method((slow_solver, fast_solver))
     else # solver_type === IMEXSolverType
         vdg = DGModel(linmodel, grid, numfluxnondiff, numfluxdiff, gradnumflux,
                       auxstate=dg.auxstate, direction=VerticalDirection())
@@ -351,10 +372,11 @@ function invoke!(solver_config::SolverConfiguration;
                                        Dates.dateformat"HH:MM:SS")
                 energy = norm(solver_config.Q)
                 @info @sprintf("""Update
-                               simtime = %.16e
+                               simtime = %8.2f / %8.2f
                                runtime = %s
                                norm(Q) = %.16e""",
                                ODESolvers.gettime(solver),
+                               solver_config.timeend,
                                runtime,
                                energy)
             end
@@ -404,6 +426,43 @@ function invoke!(solver_config::SolverConfiguration;
         end
         callbacks = (callbacks..., cbvtk)
     end
+    if Settings.monitor_courant_numbers
+        # set up the callback for Courant number calculations
+        cbcfl = GenericCallbacks.EveryXSimulationSteps(Settings.monitor_courant_interval) do (init=false)
+            simtime = ODESolvers.gettime(solver)
+            Δt = solver_config.dt
+            c_v = DGmethods.courant(nondiffusive_courant, solver_config;
+                                    direction=VerticalDirection())
+            c_h = DGmethods.courant(nondiffusive_courant, solver_config;
+                                    direction=HorizontalDirection())
+            ca_v = DGmethods.courant(advective_courant, solver_config;
+                                     direction=VerticalDirection())
+            ca_h = DGmethods.courant(advective_courant, solver_config;
+                                     direction=HorizontalDirection())
+            cd_v = DGmethods.courant(diffusive_courant, solver_config;
+                                     direction=VerticalDirection())
+            cd_h = DGmethods.courant(diffusive_courant, solver_config;
+                                     direction=HorizontalDirection())
+            @info @sprintf """
+            ================================================
+            Courant numbers at simtime: %8.2f
+            Δt = %8.2f s
+
+            ------------------------------------------------
+            Acoustic (vertical) Courant number    = %.2g
+            Acoustic (horizontal) Courant number  = %.2g
+            ------------------------------------------------
+            Advection (vertical) Courant number   = %.2g
+            Advection (horizontal) Courant number = %.2g
+            ------------------------------------------------
+            Diffusion (vertical) Courant number   = %.2g
+            Diffusion (horizontal) Courant number = %.2g
+            ================================================
+            """  simtime Δt c_v c_h ca_v ca_h cd_v cd_h
+            return nothing
+        end
+        callbacks = (callbacks..., cbcfl)
+    end
 
     callbacks = (callbacks..., user_callbacks...)
 
@@ -411,7 +470,7 @@ function invoke!(solver_config::SolverConfiguration;
     eng0 = norm(Q)
     @info @sprintf("""Starting %s
                    dt              = %.5e
-                   timeend         = %.5e
+                   timeend         = %8.2f
                    number of steps = %d
                    norm(Q)         = %.16e""",
                    solver_config.name,

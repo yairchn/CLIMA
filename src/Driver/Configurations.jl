@@ -133,16 +133,6 @@ function Atmos_GCM_Configuration(
         numfluxdiff        = CentralNumericalFluxDiffusive(),
         gradnumflux        = CentralNumericalFluxGradient()
     ) where {FT<:AbstractFloat}
-    @info @sprintf("""Establishing Atmos GCM configuration for %s
-                   precision        = %s
-                   polynomial order = %d
-                   #horiz elems     = %d
-                   #vert_elems      = %d
-                   domain height    = %.2e
-                   MPI ranks        = %d""",
-                   name, FT, N,
-                   nelem_horz, nelem_vert, domain_height,
-                   MPI.Comm_size(mpicomm))
 
     vert_range = grid1d(FT(planet_radius), FT(planet_radius+domain_height), nelem=nelem_vert)
 
@@ -154,6 +144,24 @@ function Atmos_GCM_Configuration(
                                             polynomialorder=N,
                                             meshwarp=meshwarp)
 
+    # nodal distances
+    min_horz_nodal_distance = min_node_distance(grid, HorizontalDirection()) 
+    min_vert_nodal_distance = min_node_distance(grid, VerticalDirection()) 
+
+    @info @sprintf("""Establishing Atmos GCM configuration for %s
+                   precision              = %s
+                   polynomial order       = %d
+                   #horiz elems           = %d
+                   #vert_elems            = %d
+                   min_horz_node_distance = %d m
+                   min_vert_node_distance = %d m
+                   domain height          = %.2e
+                   MPI ranks              = %d""",
+                   name, FT, N,
+                   nelem_horz, nelem_vert, min_horz_nodal_distance, 
+                   min_vert_nodal_distance, domain_height,
+                   MPI.Comm_size(mpicomm))
+    
     return DriverConfiguration(name, N, FT, array_type, solver_type, model,
                                mpicomm, grid, numfluxnondiff, numfluxdiff,
                                gradnumflux)

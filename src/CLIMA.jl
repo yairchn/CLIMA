@@ -32,6 +32,5 @@ include(joinpath("Atmos", "Model", "AtmosModel.jl"))
 include(joinpath("InputOutput", "VTK", "VTK.jl"))
 include(joinpath("Diagnostics", "Diagnostics.jl"))
 include(joinpath("Driver", "Driver.jl"))
-include(joinpath("Atmos", "Model", "courant.jl"))
 
 end
