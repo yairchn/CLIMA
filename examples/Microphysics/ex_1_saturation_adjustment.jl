@@ -64,6 +64,13 @@ struct KinematicModel{FT} <: BalanceLaw
   zmax::FT
 end
 
+vars_state(m::KinematicModel, FT) = @vars()
+vars_gradient(m::KinematicModel, FT) = @vars()
+vars_diffusive(m::KinematicModel, FT) = @vars()
+vars_aux(m::KinematicModel, FT) = @vars()
+vars_integrals(m::KinematicModel, FT) = @vars()
+vars_reverse_integrals(m::KinematicModel, FT) = @vars()
+
 function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
 end
 
