@@ -65,10 +65,10 @@ function (setup::TestSphereSetup)(bl, state, aux, coords, t)
 
     scale_height = R_d * setup.T_initial / grav
     p = setup.p_ground * exp(-z / scale_height)
-    e_int = internal_energy(bl.param_set, setup.T_initial)
+    e_int = internal_energy(setup.T_initial, bl.param_set)
     e_pot = gravitational_potential(bl.orientation, aux)
 
-    state.ρ = air_density(bl.param_set, setup.T_initial, p)
+    state.ρ = air_density(setup.T_initial, p, bl.param_set)
     state.ρu = SVector{3, FT}(0, 0, 0)
     state.ρe = state.ρ * (e_int + e_pot)
     return nothing

@@ -159,7 +159,7 @@ function run(mpicomm, ArrayType, polynomialorder, numelems,
 
   # determine the time step
   elementsize = minimum(step.(brickrange))
-  dt = elementsize / soundspeed_air(setup.T∞) / polynomialorder ^ 2
+  dt = elementsize / soundspeed_air(setup.T∞, model.param_set) / polynomialorder ^ 2
   nsteps = ceil(Int, timeend / dt)
   dt = timeend / nsteps
 
@@ -231,7 +231,7 @@ end
 Base.@kwdef struct IsentropicVortexSetup{FT}
   p∞::FT = 10 ^ 5
   T∞::FT = 300
-  ρ∞::FT = air_density(ParameterSet{FT}(),FT(T∞), FT(p∞))
+  ρ∞::FT = air_density(FT(T∞), FT(p∞), ParameterSet{FT}())
   translation_speed::FT = 150
   translation_angle::FT = pi / 4
   vortex_speed::FT = 50
@@ -269,7 +269,7 @@ function isentropicvortex_initialcondition!(bl, state, aux, coords, t, args...)
   T = T∞ * (1 - kappa_d * vortex_speed ^ 2 / 2 * ρ∞ / p∞ * exp(-(r / R) ^ 2))
   # adiabatic/isentropic relation
   p = p∞ * (T / T∞) ^ (FT(1) / kappa_d)
-  ts = PhaseDry_given_pT(bl.param_set, p, T)
+  ts = PhaseDry_given_pT(p, T, bl.param_set)
   ρ = air_density(ts)
 
   e_pot = FT(0)

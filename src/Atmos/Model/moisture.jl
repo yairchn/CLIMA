@@ -53,10 +53,9 @@ end
 vars_aux(::DryModel,FT) = @vars(θ_v::FT)
 @inline function atmos_nodal_update_aux!(moist::DryModel, atmos::AtmosModel,
                                          state::Vars, aux::Vars, t::Real)
-  ps = atmos.param_set
   FT = eltype(state)
   e_int = internal_energy(atmos, state, aux)
-  ts = PhaseDry{FT}(ps, e_int, state.ρ)
+  ts = PhaseDry(e_int, state.ρ, atmos.param_set)
   aux.moisture.θ_v = virtual_pottemp(ts)
   nothing
 end
@@ -64,7 +63,7 @@ end
 thermo_state(atmos::AtmosModel, state::Vars, aux::Vars) = thermo_state(atmos, atmos.moisture, state, aux)
 
 function thermo_state(atmos::AtmosModel, moist::DryModel, state::Vars, aux::Vars)
-  return PhaseDry{eltype(state)}(atmos.param_set, internal_energy(atmos, state, aux), state.ρ)
+  return PhaseDry(internal_energy(atmos, state, aux), state.ρ, atmos.param_set)
 end
 
 """
@@ -89,7 +88,7 @@ vars_aux(::EquilMoist,FT) = @vars(temperature::FT, θ_v::FT, q_liq::FT)
                                          state::Vars, aux::Vars, t::Real)
   ps = atmos.param_set
   e_int = internal_energy(atmos, state, aux)
-  ts = PhaseEquil(ps, e_int, state.ρ, state.moisture.ρq_tot/state.ρ, moist.maxiter, moist.tolerance)
+  ts = PhaseEquil(e_int, state.ρ, state.moisture.ρq_tot/state.ρ, moist.maxiter, moist.tolerance, ps)
   aux.moisture.temperature = air_temperature(ts)
   aux.moisture.θ_v = virtual_pottemp(ts)
   aux.moisture.q_liq = PhasePartition(ts).liq
@@ -99,8 +98,9 @@ end
 function thermo_state(atmos::AtmosModel, moist::EquilMoist, state::Vars, aux::Vars)
   e_int = internal_energy(atmos, state, aux)
   ps = atmos.param_set
+  PS = typeof(ps)
   FT = eltype(state)
-  return PhaseEquil{FT}(ps, e_int, state.ρ, state.moisture.ρq_tot/state.ρ, aux.moisture.temperature)
+  return PhaseEquil{FT,PS}(ps, e_int, state.ρ, state.moisture.ρq_tot/state.ρ, aux.moisture.temperature)
 end
 
 function gradvariables!(moist::EquilMoist, transform::Vars, state::Vars, aux::Vars, t::Real)

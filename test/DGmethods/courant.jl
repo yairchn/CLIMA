@@ -49,12 +49,12 @@ function initialcondition!(bl, state, aux, coords, t)
     T = FT(T∞)
     # adiabatic/isentropic relation
     p = FT(p∞) * (T / FT(T∞)) ^ (FT(1) / FT(kappa_d))
-    ρ = air_density(bl.param_set, T, p)
+    ρ = air_density(T, p, bl.param_set)
 
     state.ρ = ρ
     state.ρu = ρ * u
     e_kin = u' * u / 2
-    state.ρe = ρ * total_energy(bl.param_set, e_kin, FT(0), T)
+    state.ρe = ρ * total_energy(e_kin, FT(0), T, bl.param_set)
 
     nothing
 end
@@ -114,10 +114,10 @@ let
                 Δx_h = min_node_distance(grid, HorizontalDirection())
 
                 translation_speed = FT( norm( [150.0, 150.0, 0.0] ) )
-                diff_speed_h = FT(μ / air_density(model.param_set, FT(T∞), FT(p∞)))
-                diff_speed_v = FT(μ / air_density(model.param_set, FT(T∞), FT(p∞)))
-                c_h = Δt*(translation_speed + soundspeed_air(model.param_set, FT(T∞)))/Δx_h
-                c_v = Δt*(soundspeed_air(model.param_set, FT(T∞)))/Δx_v
+                diff_speed_h = FT(μ / air_density(FT(T∞), FT(p∞), model.param_set))
+                diff_speed_v = FT(μ / air_density(FT(T∞), FT(p∞), model.param_set))
+                c_h = Δt*(translation_speed + soundspeed_air(FT(T∞), model.param_set))/Δx_h
+                c_v = Δt*(soundspeed_air(FT(T∞), model.param_set))/Δx_v
                 d_h = Δt*diff_speed_h/Δx_h^2
                 d_v = Δt*diff_speed_v/Δx_v^2
 
