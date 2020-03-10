@@ -73,6 +73,9 @@ function vars_state(m::KinematicModel, FT)
     ρq_tot::FT
   end
 end
+function calculate_dt(grid, model::KinematicModel, Courant_number)
+    return Courant_number * min_node_distance(grid, VerticalDirection()) / model.wmax
+end
 
 
 vars_gradient(m::KinematicModel, FT) = @vars()
