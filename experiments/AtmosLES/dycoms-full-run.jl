@@ -364,7 +364,7 @@ function main()
 
     # Domain resolution and size
     Δh = FT(40)
-    Δv = FT(10)
+    Δv = FT(20)
     resolution = (Δh, Δh, Δv)
 
     xmax = 1000
@@ -375,9 +375,9 @@ function main()
     timeend = FT(14400)
 
     driver_config = config_dycoms(FT, N, resolution, xmax, ymax, zmax)
-    solver_config = CLIMA.setup_solver(t0, timeend, driver_config, forcecpu=true)
+    solver_config = CLIMA.setup_solver(t0, timeend, driver_config, Courant_number=1.8, forcecpu=true)
 
-    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(2) do (init=false)
+    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
         Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
         nothing
     end
