@@ -24,9 +24,9 @@ include("testdata.jl")
 
     # TODO: Use reasonable values for ambient temperature/pressure
     T∞, p∞ = T .* perturbation, p .* perturbation
-    @test air_temperature.(Ref(DryAdiabaticProcess()), p, θ_liq_ice) ≈ (p ./ FT(MSLP)) .^ (FT(R_d) / FT(cp_d)) .* θ_liq_ice
-    @test air_pressure_given_θ.(Ref(DryAdiabaticProcess()), θ_liq_ice, Φ) ≈ FT(MSLP) .* (1 .- Φ ./ (θ_liq_ice .* FT(cp_d))) .^ (FT(cp_d) / FT(R_d))
-    @test air_pressure.(Ref(DryAdiabaticProcess()), T, T∞, p∞) ≈ p∞ .* (T ./ T∞) .^ (FT(1) / FT(kappa_d))
+    @test air_temperature.(p, θ_liq_ice, Ref(DryAdiabaticProcess())) ≈ (p ./ FT(MSLP)) .^ (FT(R_d) / FT(cp_d)) .* θ_liq_ice
+    @test air_pressure_given_θ.(θ_liq_ice, Φ, Ref(DryAdiabaticProcess())) ≈ FT(MSLP) .* (1 .- Φ ./ (θ_liq_ice .* FT(cp_d))) .^ (FT(cp_d) / FT(R_d))
+    @test air_pressure.(T, T∞, p∞, Ref(DryAdiabaticProcess())) ≈ p∞ .* (T ./ T∞) .^ (FT(1) / FT(kappa_d))
   end
 end
 

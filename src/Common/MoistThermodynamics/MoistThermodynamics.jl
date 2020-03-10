@@ -43,13 +43,14 @@ export air_temperature_from_liquid_ice_pottemp, air_temperature_from_liquid_ice_
 export air_temperature_from_liquid_ice_pottemp_non_linear
 export vapor_specific_humidity
 
+# The default ParameterSet for Moist Thermodynamics:
+MTPS = EarthParameterSet
+APS = AbstractParameterSet
+
 include("states.jl")
 include("isentropic.jl")
 
 @inline q_pt_0(::Type{FT}) where FT = PhasePartition{FT}(FT(0), FT(0), FT(0))
-
-# The default ParameterSet for Moist Thermodynamics:
-MoistThermoDefaultParameterSet = EarthParameterSet
 
 """
     gas_constant_air([q::PhasePartition])
@@ -57,14 +58,10 @@ MoistThermoDefaultParameterSet = EarthParameterSet
 The specific gas constant of moist air given
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-gas_constant_air(param_set::AbstractParameterSet{FT}, q::PhasePartition{FT}) where {FT} =
+gas_constant_air(q::PhasePartition{FT}, param_set::APS{FT}=MTPS{FT}()) where {FT} =
   FT(R_d) * ( 1 +  (FT(molmass_ratio) - 1)*q.tot - FT(molmass_ratio)*(q.liq + q.ice) )
-gas_constant_air(q::PhasePartition{FT}) where {FT} =
-  gas_constant_air(MoistThermoDefaultParameterSet{FT}(), q)
 
-gas_constant_air(param_set::AbstractParameterSet{FT}, ::Type{FT}) where {FT} = gas_constant_air(param_set, q_pt_0(FT))
-gas_constant_air(::Type{FT}) where {FT} =
-  gas_constant_air(MoistThermoDefaultParameterSet{FT}(), FT)
+gas_constant_air(::Type{FT}, param_set::APS{FT}=MTPS{FT}()) where {FT} = gas_constant_air(q_pt_0(FT), param_set)
 
 """
     gas_constant_air(ts::ThermodynamicState)
@@ -73,7 +70,7 @@ The specific gas constant of moist air given
 a thermodynamic state `ts`.
 """
 gas_constant_air(ts::ThermodynamicState) =
-  gas_constant_air(ts.param_set, PhasePartition(ts))
+  gas_constant_air(PhasePartition(ts), ts.param_set)
 gas_constant_air(ts::PhaseDry{FT}) where {FT<:Real} = FT(R_d)
 
 """
@@ -95,10 +92,10 @@ The air pressure from the equation of state
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-air_pressure(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  gas_constant_air(param_set, q) * ρ * T
-air_pressure(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  air_pressure(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+air_pressure(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  gas_constant_air(q, param_set) * ρ * T
+air_pressure(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  air_pressure(T, ρ, q_pt_0(FT), param_set)
 
 """
     air_pressure(ts::ThermodynamicState)
@@ -107,7 +104,7 @@ The air pressure from the equation of state
 (ideal gas law), given a thermodynamic state `ts`.
 """
 air_pressure(ts::ThermodynamicState) =
-  air_pressure(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+  air_pressure(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 
 """
@@ -121,10 +118,10 @@ The (moist-)air density from the equation of state
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-air_density(param_set::AbstractParameterSet{FT}, T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  p / (gas_constant_air(param_set, q) * T)
-air_density(T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  air_density(MoistThermoDefaultParameterSet{FT}(), T, p, q)
+air_density(T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  p / (gas_constant_air(q, param_set) * T)
+air_density(T::FT, p::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  air_density(T, p, q_pt_0(FT), param_set)
 
 """
     air_density(ts::ThermodynamicState)
@@ -156,14 +153,10 @@ The isobaric specific heat capacity of moist
 air where, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-cp_m(param_set::AbstractParameterSet{FT}, q::PhasePartition{FT}) where {FT<:Real} =
+cp_m(q::PhasePartition{FT}, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
   FT(cp_d) + (FT(cp_v) - FT(cp_d))*q.tot + (FT(cp_l) - FT(cp_v))*q.liq + (FT(cp_i) - FT(cp_v))*q.ice
-cp_m(q::PhasePartition{FT}) where {FT} =
-  cp_m(MoistThermoDefaultParameterSet{FT}(), q)
 
-cp_m(param_set::AbstractParameterSet{FT}, ::Type{FT}) where {FT<:Real} = cp_m(param_set, q_pt_0(FT))
-cp_m(::Type{FT}) where {FT} =
-  cp_m(MoistThermoDefaultParameterSet{FT}(), FT)
+cp_m(::Type{FT}, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} = cp_m(q_pt_0(FT), param_set)
 
 """
     cp_m(ts::ThermodynamicState)
@@ -171,7 +164,7 @@ cp_m(::Type{FT}) where {FT} =
 The isobaric specific heat capacity of moist
 air, given a thermodynamic state `ts`.
 """
-cp_m(ts::ThermodynamicState) = cp_m(ts.param_set, PhasePartition(ts))
+cp_m(ts::ThermodynamicState) = cp_m(PhasePartition(ts), ts.param_set)
 cp_m(ts::PhaseDry{FT}) where {FT<:Real} = FT(cp_d)
 
 """
@@ -181,14 +174,10 @@ The isochoric specific heat capacity of moist
 air where optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-cv_m(param_set::AbstractParameterSet{FT}, q::PhasePartition{FT}) where {FT<:Real} =
+cv_m(q::PhasePartition{FT}, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
   FT(cv_d) + (FT(cv_v) - FT(cv_d))*q.tot + (FT(cv_l) - FT(cv_v))*q.liq + (FT(cv_i) - FT(cv_v))*q.ice
-cv_m(q::PhasePartition{FT}) where {FT} =
-  cv_m(MoistThermoDefaultParameterSet{FT}(), q)
 
-cv_m(param_set::AbstractParameterSet{FT}, ::Type{FT}) where {FT<:Real} = cv_m(param_set, q_pt_0(FT))
-cv_m(::Type{FT}) where {FT} =
-  cv_m(MoistThermoDefaultParameterSet{FT}(), FT)
+cv_m(::Type{FT}, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} = cv_m(q_pt_0(FT), param_set)
 
 """
     cv_m(ts::ThermodynamicState)
@@ -196,7 +185,7 @@ cv_m(::Type{FT}) where {FT} =
 The isochoric specific heat capacity of moist
 air given a thermodynamic state `ts`.
 """
-cv_m(ts::ThermodynamicState) = cv_m(ts.param_set, PhasePartition(ts))
+cv_m(ts::ThermodynamicState) = cv_m(PhasePartition(ts), ts.param_set)
 cv_m(ts::PhaseDry{FT}) where {FT<:Real} = FT(cv_d)
 
 
@@ -212,15 +201,15 @@ The function returns a tuple of
  - `cv_m` [`cv_m`](@ref)
  - `γ_m = cp_m/cv_m`
 """
-function gas_constants(param_set::AbstractParameterSet, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
-    R_gas  = gas_constant_air(param_set, q)
-    cp = cp_m(param_set, q)
-    cv = cv_m(param_set, q)
+function gas_constants(q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+    R_gas  = gas_constant_air(q, param_set)
+    cp = cp_m(q, param_set)
+    cv = cv_m(q, param_set)
     γ = cp/cv
     return (R_gas, cp, cv, γ)
 end
-gas_constants(q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  gas_constants(MoistThermoDefaultParameterSet{FT}(), q)
+gas_constants(param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  gas_constants(q_pt_0(FT), param_set)
 
 """
     (R_m, cp_m, cv_m, γ_m) = gas_constants(ts::ThermodynamicState)
@@ -234,7 +223,7 @@ The function returns a tuple of
  - `γ_m = cp_m/cv_m`
 
 """
-gas_constants(ts::ThermodynamicState) = gas_constants(ts.param_set, PhasePartition(ts))
+gas_constants(ts::ThermodynamicState) = gas_constants(PhasePartition(ts), ts.param_set)
 
 """
     air_temperature(e_int, q::PhasePartition)
@@ -245,20 +234,20 @@ The air temperature, where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-function air_temperature(param_set::AbstractParameterSet{FT}, e_int::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+function air_temperature(e_int::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
   T_0 +
     (e_int - (q.tot - q.liq) * FT(e_int_v0) + q.ice * (FT(e_int_v0) + FT(e_int_i0))) /
-    cv_m(param_set, q)
+    cv_m(q, param_set)
 end
-air_temperature(e_int::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  air_temperature(MoistThermoDefaultParameterSet{FT}(), e_int, q)
+air_temperature(e_int::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  air_temperature(e_int, q_pt_0(FT), param_set)
 
 """
     air_temperature(ts::ThermodynamicState)
 
 The air temperature, given a thermodynamic state `ts`.
 """
-air_temperature(ts::ThermodynamicState) = air_temperature(ts.param_set, internal_energy(ts), PhasePartition(ts))
+air_temperature(ts::ThermodynamicState) = air_temperature(internal_energy(ts), PhasePartition(ts), ts.param_set)
 air_temperature(ts::PhaseEquil) = ts.T
 
 
@@ -271,11 +260,11 @@ The internal energy per unit mass, given a thermodynamic state `ts` or
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-internal_energy(param_set::AbstractParameterSet{FT}, T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  cv_m(param_set, q) * (T - FT(T_0)) +
+internal_energy(T::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  cv_m(q, param_set) * (T - FT(T_0)) +
   (q.tot - q.liq) * FT(e_int_v0) - q.ice * (FT(e_int_v0) + FT(e_int_i0))
-internal_energy(T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  internal_energy(MoistThermoDefaultParameterSet{FT}(), T, q)
+internal_energy(T::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  internal_energy(T, q_pt_0(FT), param_set)
 
 """
     internal_energy(ts::ThermodynamicState)
@@ -311,10 +300,8 @@ The internal energy per unit mass in thermodynamic equilibrium at saturation whe
  - `ρ` (moist-)air density
  - `q_tot` total specific humidity
 """
-internal_energy_sat(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q_tot::FT) where {FT<:Real} =
-  internal_energy(param_set, T, PhasePartition_equil(param_set, T, ρ, q_tot))
-internal_energy_sat(T::FT, ρ::FT, q_tot::FT) where {FT} =
-  internal_energy_sat(MoistThermoDefaultParameterSet{FT}(), T, ρ, q_tot)
+internal_energy_sat(T::FT, ρ::FT, q_tot::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  internal_energy(T, PhasePartition_equil(T, ρ, q_tot, param_set), param_set)
 
 """
     internal_energy_sat(ts::ThermodynamicState)
@@ -324,7 +311,7 @@ thermodynamic equilibrium at saturation,
 given a thermodynamic state `ts`.
 """
 internal_energy_sat(ts::ThermodynamicState) =
-  internal_energy_sat(ts.param_set, air_temperature(ts), air_density(ts), total_specific_humidity(ts))
+  internal_energy_sat(air_temperature(ts), air_density(ts), total_specific_humidity(ts), ts.param_set)
 
 
 """
@@ -339,10 +326,10 @@ and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 
 """
-total_energy(param_set::AbstractParameterSet{FT}, e_kin::FT, e_pot::FT, T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  e_kin + e_pot + internal_energy(param_set, T, q)
-total_energy(e_kin::FT, e_pot::FT, T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  total_energy(MoistThermoDefaultParameterSet{FT}(), e_kin, e_pot, T, q)
+total_energy(e_kin::FT, e_pot::FT, T::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  e_kin + e_pot + internal_energy(T, q, param_set)
+total_energy(e_kin::FT, e_pot::FT, T::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  total_energy(e_kin, e_pot, T, q_pt_0(FT), param_set)
 
 """
     total_energy(e_kin, e_pot, ts::ThermodynamicState)
@@ -361,13 +348,13 @@ The speed of sound in unstratified air, where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-function soundspeed_air(param_set::AbstractParameterSet{FT}, T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
-  γ   = cp_m(param_set, q) / cv_m(param_set, q)
-  R_m = gas_constant_air(param_set, q)
+function soundspeed_air(T::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+  γ   = cp_m(q, param_set) / cv_m(q, param_set)
+  R_m = gas_constant_air(q, param_set)
   return sqrt(γ*R_m*T)
 end
-soundspeed_air(T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  soundspeed_air(MoistThermoDefaultParameterSet{FT}(), T, q)
+soundspeed_air(T::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  soundspeed_air(T, q_pt_0(FT), param_set)
 
 """
     soundspeed_air(ts::ThermodynamicState)
@@ -375,7 +362,7 @@ soundspeed_air(T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
 The speed of sound in unstratified air given a thermodynamic state `ts`.
 """
 soundspeed_air(ts::ThermodynamicState) =
-  soundspeed_air(ts.param_set, air_temperature(ts), PhasePartition(ts))
+  soundspeed_air(air_temperature(ts), PhasePartition(ts), ts.param_set)
 
 
 """
@@ -384,10 +371,8 @@ soundspeed_air(ts::ThermodynamicState) =
 The specific latent heat of vaporization where
  - `T` temperature
 """
-latent_heat_vapor(param_set::AbstractParameterSet{FT}, T::FT) where {FT<:Real} =
-  latent_heat_generic(param_set, T, FT(LH_v0), FT(cp_v) - FT(cp_l))
-latent_heat_vapor(T::FT) where {FT} =
-  latent_heat_vapor(MoistThermoDefaultParameterSet{FT}(), T)
+latent_heat_vapor(T::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  latent_heat_generic(T, FT(LH_v0), FT(cp_v) - FT(cp_l), param_set)
 
 """
     latent_heat_vapor(ts::ThermodynamicState)
@@ -396,7 +381,7 @@ The specific latent heat of vaporization
 given a thermodynamic state `ts`.
 """
 latent_heat_vapor(ts::ThermodynamicState) =
-    latent_heat_vapor(ts.param_set, air_temperature(ts))
+    latent_heat_vapor(air_temperature(ts), ts.param_set)
 
 """
     latent_heat_sublim(T::FT) where {FT<:Real}
@@ -404,10 +389,8 @@ latent_heat_vapor(ts::ThermodynamicState) =
 The specific latent heat of sublimation where
  - `T` temperature
 """
-latent_heat_sublim(param_set::AbstractParameterSet{FT}, T::FT) where {FT<:Real} =
-  latent_heat_generic(param_set, T, FT(LH_s0), FT(cp_v) - FT(cp_i))
-latent_heat_sublim(T::FT) where {FT} =
-  latent_heat_sublim(MoistThermoDefaultParameterSet{FT}(), T)
+latent_heat_sublim(T::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  latent_heat_generic(T, FT(LH_s0), FT(cp_v) - FT(cp_i), param_set)
 
 """
     latent_heat_sublim(ts::ThermodynamicState)
@@ -416,7 +399,7 @@ The specific latent heat of sublimation
 given a thermodynamic state `ts`.
 """
 latent_heat_sublim(ts::ThermodynamicState) =
-  latent_heat_sublim(ts.param_set, air_temperature(ts))
+  latent_heat_sublim(air_temperature(ts), ts.param_set)
 
 """
     latent_heat_fusion(T::FT) where {FT<:Real}
@@ -424,10 +407,8 @@ latent_heat_sublim(ts::ThermodynamicState) =
 The specific latent heat of fusion where
  - `T` temperature
 """
-latent_heat_fusion(param_set::AbstractParameterSet{FT}, T::FT) where {FT<:Real} =
-  latent_heat_generic(param_set, T, FT(LH_f0), FT(cp_l) - FT(cp_i))
-latent_heat_fusion(T::FT) where {FT} =
-  latent_heat_fusion(MoistThermoDefaultParameterSet{FT}(), T)
+latent_heat_fusion(T::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  latent_heat_generic(T, FT(LH_f0), FT(cp_l) - FT(cp_i), param_set)
 
 """
     latent_heat_fusion(ts::ThermodynamicState)
@@ -436,7 +417,7 @@ The specific latent heat of fusion
 given a thermodynamic state `ts`.
 """
 latent_heat_fusion(ts::ThermodynamicState{FT}) where {FT<:Real} =
-  latent_heat_fusion(ts.param_set, air_temperature(ts))
+  latent_heat_fusion(air_temperature(ts), ts.param_set)
 
 """
     latent_heat_generic(T::FT, LH_0::FT, Δcp::FT) where {FT<:Real}
@@ -451,10 +432,8 @@ isobaric specific heat capacities of the two phases, given
          (heat capacity in the higher-temperature phase minus that
          in the lower-temperature phase).
 """
-latent_heat_generic(param_set::AbstractParameterSet{FT}, T::FT, LH_0::FT, Δcp::FT) where {FT<:Real} =
+latent_heat_generic(T::FT, LH_0::FT, Δcp::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
   LH_0 + Δcp * (T - FT(T_0))
-latent_heat_generic(T::FT, LH_0::FT, Δcp::FT) where {FT} =
-  latent_heat_generic(MoistThermoDefaultParameterSet{FT}(), T, LH_0, Δcp)
 
 
 """
@@ -516,21 +495,22 @@ relation to obtain the saturation vapor pressure `p_v_sat` as a function of
 the triple point pressure `press_triple`.
 
 """
-saturation_vapor_pressure(param_set::AbstractParameterSet{FT}, T::FT, ::Liquid) where {FT<:Real} =
-  saturation_vapor_pressure(param_set, T, FT(LH_v0), FT(cp_v) - FT(cp_l))
-saturation_vapor_pressure(T::FT, phase::Phase) where {FT} = saturation_vapor_pressure(MoistThermoDefaultParameterSet{FT}(), T, phase)
+saturation_vapor_pressure(T::FT, ::Liquid, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  saturation_vapor_pressure(T, FT(LH_v0), FT(cp_v) - FT(cp_l), param_set)
 
 function saturation_vapor_pressure(ts::ThermodynamicState{FT}, ::Liquid) where {FT<:Real}
 
-    return saturation_vapor_pressure(ts.param_set, air_temperature(ts), FT(LH_v0), FT(cp_v) - FT(cp_l))
+    return saturation_vapor_pressure(air_temperature(ts), FT(LH_v0), FT(cp_v) - FT(cp_l), ts.param_set)
 
 end
-saturation_vapor_pressure(param_set::AbstractParameterSet{FT}, T::FT, ::Ice) where {FT<:Real} =
-  saturation_vapor_pressure(param_set, T, FT(LH_s0), FT(cp_v) - FT(cp_i))
-saturation_vapor_pressure(ts::ThermodynamicState{FT}, ::Ice) where {FT<:Real} =
-  saturation_vapor_pressure(ts.param_set, air_temperature(ts), FT(LH_s0), FT(cp_v) - FT(cp_i))
 
-function saturation_vapor_pressure(param_set::AbstractParameterSet{FT}, T::FT, LH_0::FT, Δcp::FT) where {FT<:Real}
+saturation_vapor_pressure(T::FT, ::Ice, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  saturation_vapor_pressure(T, FT(LH_s0), FT(cp_v) - FT(cp_i), param_set)
+
+saturation_vapor_pressure(ts::ThermodynamicState{FT}, ::Ice) where {FT<:Real} =
+  saturation_vapor_pressure(air_temperature(ts), FT(LH_s0), FT(cp_v) - FT(cp_i), ts.param_set)
+
+function saturation_vapor_pressure(T::FT, LH_0::FT, Δcp::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
 
     return FT(press_triple) * (T/FT(T_triple))^(Δcp/FT(R_v)) *
         exp( (FT(LH_0) - Δcp*FT(T_0))/FT(R_v) * (1 / FT(T_triple) - 1 / T) )
@@ -548,11 +528,10 @@ and, optionally,
  - `Liquid()` indicating condensate is liquid
  - `Ice()` indicating condensate is ice
 """
-function q_vap_saturation_generic(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT; phase::Phase=Liquid()) where {FT<:Real}
-    p_v_sat = saturation_vapor_pressure(param_set, T, phase)
-    return q_vap_saturation_from_pressure(param_set, T, ρ, p_v_sat)
+function q_vap_saturation_generic(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}(); phase::Phase=Liquid()) where {FT<:Real}
+    p_v_sat = saturation_vapor_pressure(T, phase, param_set)
+    return q_vap_saturation_from_pressure(T, ρ, p_v_sat, param_set)
 end
-q_vap_saturation_generic(T::FT, ρ::FT; phase::Phase) where {FT} = q_vap_saturation_generic(MoistThermoDefaultParameterSet{FT}(), T, ρ; phase=phase)
 
 """
     q_vap_saturation(T, ρ[, q::PhasePartition])
@@ -577,10 +556,10 @@ the saturation specific humidity is that over a mixture of liquid and ice, with 
 fraction of liquid given by temperature dependent `liquid_fraction(T)` and the
 fraction of ice by the complement `1 - liquid_fraction(T)`.
 """
-function q_vap_saturation(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+function q_vap_saturation(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
 
     # get phase partitioning
-    _liquid_frac = liquid_fraction(param_set, T, q)
+    _liquid_frac = liquid_fraction(T, q, param_set)
     _ice_frac    = 1 - _liquid_frac
 
     # effective latent heat at T_0 and effective difference in isobaric specific
@@ -589,13 +568,13 @@ function q_vap_saturation(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q:
     Δcp     = _liquid_frac * (FT(cp_v) - FT(cp_l)) + _ice_frac * (FT(cp_v) - FT(cp_i))
 
     # saturation vapor pressure over possible mixture of liquid and ice
-    p_v_sat = saturation_vapor_pressure(param_set, T, FT(LH_0), Δcp)
+    p_v_sat = saturation_vapor_pressure(T, FT(LH_0), Δcp, param_set)
 
-    return q_vap_saturation_from_pressure(param_set, T, ρ, p_v_sat)
+    return q_vap_saturation_from_pressure(T, ρ, p_v_sat, param_set)
 
 end
-q_vap_saturation(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  q_vap_saturation(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+q_vap_saturation(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  q_vap_saturation(T, ρ, q_pt_0(FT), param_set)
 
 """
     q_vap_saturation(ts::ThermodynamicState)
@@ -603,7 +582,7 @@ q_vap_saturation(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
 Compute the saturation specific humidity, given a thermodynamic state `ts`.
 """
 q_vap_saturation(ts::ThermodynamicState) =
-  q_vap_saturation(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+  q_vap_saturation(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 """
     q_vap_saturation_from_pressure(T, ρ, p_v_sat)
@@ -614,10 +593,8 @@ Compute the saturation specific humidity, given
  - `ρ` (moist-)air density
  - `p_v_sat` saturation vapor pressure
 """
-q_vap_saturation_from_pressure(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, p_v_sat::FT) where {FT<:Real} =
+q_vap_saturation_from_pressure(T::FT, ρ::FT, p_v_sat::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
   p_v_sat / (ρ * FT(R_v) * T)
-q_vap_saturation_from_pressure(T::FT, ρ::FT, p_v_sat::FT) where {FT} =
-  q_vap_saturation_from_pressure(MoistThermoDefaultParameterSet{FT}(), T, ρ, p_v_sat)
 
 """
     saturation_excess(T, ρ, q::PhasePartition)
@@ -632,10 +609,8 @@ The saturation excess is the difference between the total specific humidity `q.t
 and the saturation specific humidity in equilibrium, and it is defined to be
 nonzero only if this difference is positive.
 """
-saturation_excess(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}) where {FT<:Real} =
-  max(0, q.tot - q_vap_saturation(param_set, T, ρ, q))
-saturation_excess(T::FT, ρ::FT, q::PhasePartition{FT}) where {FT} =
-  saturation_excess(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+saturation_excess(T::FT, ρ::FT, q::PhasePartition{FT}, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  max(0, q.tot - q_vap_saturation(T, ρ, q, param_set))
 
 """
     saturation_excess(ts::ThermodynamicState)
@@ -644,7 +619,7 @@ Compute the saturation excess in equilibrium,
 given a thermodynamic state `ts`.
 """
 saturation_excess(ts::ThermodynamicState) =
-  saturation_excess(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+  saturation_excess(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 """
     liquid_fraction(T[, q::PhasePartition])
@@ -660,7 +635,7 @@ them.
 Otherwise, phase equilibrium is assumed so that the fraction of liquid
 is a function that is 1 above `T_freeze` and goes to zero below `T_freeze`.
 """
-function liquid_fraction(param_set::AbstractParameterSet{FT}, T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+function liquid_fraction(T::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
   q_c = q.liq + q.ice     # condensate specific humidity
   if q_c > 0
     return q.liq / q_c
@@ -670,8 +645,8 @@ function liquid_fraction(param_set::AbstractParameterSet{FT}, T::FT, q::PhasePar
     return FT(T > FT(T_freeze))
   end
 end
-liquid_fraction(T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  liquid_fraction(MoistThermoDefaultParameterSet{FT}(), T, q)
+liquid_fraction(T::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  liquid_fraction(T, q_pt_0(FT), param_set)
 
 """
     liquid_fraction(ts::ThermodynamicState)
@@ -679,7 +654,7 @@ liquid_fraction(T::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
 The fraction of condensate that is liquid given a thermodynamic state `ts`.
 """
 liquid_fraction(ts::ThermodynamicState) =
-  liquid_fraction(ts.param_set, air_temperature(ts), PhasePartition(ts))
+  liquid_fraction(air_temperature(ts), PhasePartition(ts), ts.param_set)
 
 """
     PhasePartition_equil(T, ρ, q_tot)
@@ -693,29 +668,27 @@ Partition the phases in equilibrium, returning a [`PhasePartition`](@ref) object
 
 The residual `q.tot - q.liq - q.ice` is the vapor specific humidity.
 """
-function PhasePartition_equil(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q_tot::FT) where {FT<:Real}
-    _liquid_frac = liquid_fraction(param_set, T)                      # fraction of condensate that is liquid
-    q_c   = saturation_excess(param_set, T, ρ, PhasePartition(q_tot)) # condensate specific humidity
+function PhasePartition_equil(T::FT, ρ::FT, q_tot::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+    _liquid_frac = liquid_fraction(T, param_set)                      # fraction of condensate that is liquid
+    q_c   = saturation_excess(T, ρ, PhasePartition(q_tot), param_set) # condensate specific humidity
     q_liq = _liquid_frac * q_c                             # liquid specific humidity
     q_ice = (1 - _liquid_frac) * q_c                       # ice specific humidity
 
     return PhasePartition(q_tot, q_liq, q_ice)
 end
-PhasePartition_equil(T::FT, ρ::FT, q_tot::FT) where {FT} =
-  PhasePartition_equil(MoistThermoDefaultParameterSet{FT}(), T, ρ, q_tot)
 
 PhasePartition_equil(ts::PhaseNonEquil) =
-  PhasePartition_equil(ts.param_set, air_temperature(ts), air_density(ts), total_specific_humidity(ts))
+  PhasePartition_equil(air_temperature(ts), air_density(ts), total_specific_humidity(ts), ts.param_set)
 
 PhasePartition(ts::PhaseDry{FT}) where {FT<:Real} = q_pt_0(FT)
 PhasePartition(ts::PhaseEquil) =
-  PhasePartition_equil(ts.param_set, air_temperature(ts), air_density(ts), total_specific_humidity(ts))
+  PhasePartition_equil(air_temperature(ts), air_density(ts), total_specific_humidity(ts), ts.param_set)
 PhasePartition(ts::PhaseNonEquil) = ts.q
 
-function ∂e_int_∂T(param_set::AbstractParameterSet{FT}, T::FT, e_int::FT, ρ::FT, q_tot::FT) where {FT<:Real}
-  cvm = cv_m(param_set, PhasePartition_equil(param_set, T, ρ, q_tot))
-  q_vap_sat = q_vap_saturation(param_set, T, ρ)
-  λ = liquid_fraction(param_set, T)
+function ∂e_int_∂T(T::FT, e_int::FT, ρ::FT, q_tot::FT, param_set::APS{FT}) where {FT<:Real}
+  cvm = cv_m(PhasePartition_equil(T, ρ, q_tot, param_set), param_set)
+  q_vap_sat = q_vap_saturation(T, ρ, param_set)
+  λ = liquid_fraction(T, param_set)
   L = λ*FT(LH_v0) + (1-λ)*FT(LH_s0)
   ∂q_vap_sat_∂T = q_vap_sat*L/(FT(R_v)*T^2)
   T0 = FT(T_0)
@@ -742,16 +715,16 @@ using Newtons method with analytic gradients.
 
 See also [`saturation_adjustment`](@ref).
 """
-function saturation_adjustment(param_set::AbstractParameterSet{FT}, e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT<:Real}
-  T_1 = max(FT(T_min), air_temperature(param_set, e_int, PhasePartition(q_tot))) # Assume all vapor
-  q_v_sat = q_vap_saturation(param_set, T_1, ρ)
+function saturation_adjustment(e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+  T_1 = max(FT(T_min), air_temperature(e_int, PhasePartition(q_tot), param_set)) # Assume all vapor
+  q_v_sat = q_vap_saturation(T_1, ρ, param_set)
   unsaturated = q_tot <= q_v_sat
   if unsaturated && T_1 > FT(T_min)
     return T_1
   else
     sol = find_zero(
-      T -> internal_energy_sat(param_set, T, ρ, q_tot) - e_int,
-      T_ -> ∂e_int_∂T(param_set, T_, e_int, ρ, q_tot),
+      T -> internal_energy_sat(T, ρ, q_tot, param_set) - e_int,
+      T_ -> ∂e_int_∂T(T_, e_int, ρ, q_tot, param_set),
       T_1,
       NewtonsMethod(), CompactSolution(), tol, maxiter)
     if !sol.converged
@@ -760,8 +733,6 @@ function saturation_adjustment(param_set::AbstractParameterSet{FT}, e_int::FT, �
     return sol.root
   end
 end
-saturation_adjustment(e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT} =
-  saturation_adjustment(MoistThermoDefaultParameterSet{FT}(), e_int, ρ, q_tot, maxiter, tol)
 
 """
     ΔT_min(::Type{FT})
@@ -805,18 +776,18 @@ by finding the root of
 
 See also [`saturation_adjustment_q_tot_θ_liq_ice`](@ref).
 """
-function saturation_adjustment_SecantMethod(param_set::AbstractParameterSet{FT}, e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT<:Real}
-  T_1 = max(FT(T_min), air_temperature(param_set, e_int, PhasePartition(q_tot))) # Assume all vapor
-  q_v_sat = q_vap_saturation(param_set, T_1, ρ)
+function saturation_adjustment_SecantMethod(e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+  T_1 = max(FT(T_min), air_temperature(e_int, PhasePartition(q_tot), param_set)) # Assume all vapor
+  q_v_sat = q_vap_saturation(T_1, ρ, param_set)
   unsaturated = q_tot <= q_v_sat
   if unsaturated && T_1 > FT(T_min)
     return T_1
   else
     # FIXME here: need to revisit bounds for saturation adjustment to guarantee bracketing of zero.
-    T_2 = air_temperature(param_set, e_int, PhasePartition(q_tot, FT(0), q_tot)) # Assume all ice
+    T_2 = air_temperature(e_int, PhasePartition(q_tot, FT(0), q_tot), param_set) # Assume all ice
     T_2 = bound_upper_temperature(T_1, T_2)
     sol = find_zero(
-      T -> internal_energy_sat(param_set, T, ρ, q_tot) - e_int,
+      T -> internal_energy_sat(T, ρ, q_tot, param_set) - e_int,
       T_1, T_2, SecantMethod(), CompactSolution(), tol, maxiter)
     if !sol.converged
       error("saturation_adjustment_SecantMethod did not converge")
@@ -824,8 +795,6 @@ function saturation_adjustment_SecantMethod(param_set::AbstractParameterSet{FT},
     return sol.root
   end
 end
-saturation_adjustment_SecantMethod(e_int::FT, ρ::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT} =
-  saturation_adjustment_SecantMethod(MoistThermoDefaultParameterSet{FT}(), e_int, ρ, q_tot, maxiter, tol)
 
 """
     saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice, ρ, q_tot)
@@ -846,22 +815,22 @@ by finding the root of
 
 See also [`saturation_adjustment`](@ref).
 """
-function saturation_adjustment_q_tot_θ_liq_ice(param_set::AbstractParameterSet{FT},
-                                               θ_liq_ice::FT,
+function saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice::FT,
                                                ρ::FT,
                                                q_tot::FT,
                                                maxiter::Int,
-                                               tol::FT) where {FT<:Real}
-  T_1 = max(FT(T_min), air_temperature_from_liquid_ice_pottemp(param_set, θ_liq_ice, ρ, PhasePartition(q_tot))) # Assume all vapor
-  q_v_sat = q_vap_saturation(param_set, T_1, ρ)
+                                               tol::FT,
+                                               param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+  T_1 = max(FT(T_min), air_temperature_from_liquid_ice_pottemp(θ_liq_ice, ρ, PhasePartition(q_tot), param_set)) # Assume all vapor
+  q_v_sat = q_vap_saturation(T_1, ρ, param_set)
   unsaturated = q_tot <= q_v_sat
   if unsaturated && T_1 > FT(T_min)
     return T_1
   else
-    T_2 = air_temperature_from_liquid_ice_pottemp(param_set, θ_liq_ice, ρ, PhasePartition(q_tot, FT(0), q_tot)) # Assume all ice
+    T_2 = air_temperature_from_liquid_ice_pottemp(θ_liq_ice, ρ, PhasePartition(q_tot, FT(0), q_tot), param_set) # Assume all ice
     T_2 = bound_upper_temperature(T_1, T_2)
     sol = find_zero(
-      T -> liquid_ice_pottemp_sat(param_set, T, ρ, q_tot) - θ_liq_ice,
+      T -> liquid_ice_pottemp_sat(T, ρ, q_tot, param_set) - θ_liq_ice,
       T_1, T_2, SecantMethod(), CompactSolution(), tol, maxiter)
     if !sol.converged
       error("saturation_adjustment_q_tot_θ_liq_ice did not converge")
@@ -869,12 +838,6 @@ function saturation_adjustment_q_tot_θ_liq_ice(param_set::AbstractParameterSet{
     return sol.root
   end
 end
-saturation_adjustment_q_tot_θ_liq_ice(θ_liq_ice::FT,
-                                      ρ::FT,
-                                      q_tot::FT,
-                                      maxiter::Int,
-                                      tol::FT) where {FT} =
-  saturation_adjustment_q_tot_θ_liq_ice(MoistThermoDefaultParameterSet{FT}(), θ_liq_ice, ρ, q_tot, maxiter, tol)
 
 """
     saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice, p, q_tot)
@@ -895,18 +858,23 @@ by finding the root of
 
 See also [`saturation_adjustment`](@ref).
 """
-function saturation_adjustment_q_tot_θ_liq_ice_given_pressure(param_set::AbstractParameterSet{FT}, θ_liq_ice::FT, p::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT<:Real}
-  T_1 = air_temperature_from_liquid_ice_pottemp_given_pressure(param_set, θ_liq_ice, p, PhasePartition(q_tot)) # Assume all vapor
-  ρ = air_density(param_set, T_1, p, PhasePartition(q_tot))
-  q_v_sat = q_vap_saturation(param_set, T_1, ρ)
+function saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice::FT,
+                                                              p::FT,
+                                                              q_tot::FT,
+                                                              maxiter::Int,
+                                                              tol::FT,
+                                                              param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+  T_1 = air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice, p, PhasePartition(q_tot), param_set) # Assume all vapor
+  ρ = air_density(T_1, p, PhasePartition(q_tot), param_set)
+  q_v_sat = q_vap_saturation(T_1, ρ, param_set)
   unsaturated = q_tot <= q_v_sat
   if unsaturated && T_1 > FT(T_min)
     return T_1
   else
-    T_2 = air_temperature_from_liquid_ice_pottemp(param_set, θ_liq_ice, p, PhasePartition(q_tot, FT(0), q_tot)) # Assume all ice
+    T_2 = air_temperature_from_liquid_ice_pottemp(θ_liq_ice, p, PhasePartition(q_tot, FT(0), q_tot), param_set) # Assume all ice
     T_2 = bound_upper_temperature(T_1, T_2)
     sol = find_zero(
-      T -> liquid_ice_pottemp_sat(param_set, T, air_density(param_set, T, p, PhasePartition(q_tot)), q_tot) - θ_liq_ice,
+      T -> liquid_ice_pottemp_sat(T, air_density(T, p, PhasePartition(q_tot), param_set), q_tot, param_set) - θ_liq_ice,
       T_1, T_2, SecantMethod(), CompactSolution(), tol, maxiter)
     if !sol.converged
       error("saturation_adjustment_q_tot_θ_liq_ice_given_pressure did not converge")
@@ -914,8 +882,6 @@ function saturation_adjustment_q_tot_θ_liq_ice_given_pressure(param_set::Abstra
     return sol.root
   end
 end
-saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice::FT, p::FT, q_tot::FT, maxiter::Int, tol::FT) where {FT} =
-  saturation_adjustment_q_tot_θ_liq_ice_given_pressure(MoistThermoDefaultParameterSet{FT}(), θ_liq_ice, p, q_tot, maxiter, tol)
 
 """
     latent_heat_liq_ice(q::PhasePartition{FT})
@@ -923,10 +889,10 @@ saturation_adjustment_q_tot_θ_liq_ice_given_pressure(θ_liq_ice::FT, p::FT, q_t
 Effective latent heat of condensate (weighted sum of liquid and ice),
 with specific latent heat evaluated at reference temperature `T_0`.
 """
-latent_heat_liq_ice(param_set::AbstractParameterSet{FT}, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
+latent_heat_liq_ice(q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
   FT(LH_v0)*q.liq + FT(LH_s0)*q.ice
-latent_heat_liq_ice(q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  latent_heat_liq_ice(MoistThermoDefaultParameterSet{FT}(), q)
+latent_heat_liq_ice(param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  latent_heat_liq_ice(q_pt_0(FT), param_set)
 
 
 """
@@ -938,14 +904,14 @@ The liquid-ice potential temperature where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-function liquid_ice_pottemp_given_pressure(param_set::AbstractParameterSet{FT}, T::FT, p::FT,
-  q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+function liquid_ice_pottemp_given_pressure(T::FT,
+                                           p::FT,
+                                           q::PhasePartition{FT}=q_pt_0(FT),
+                                           param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
     # liquid-ice potential temperature, approximating latent heats
     # of phase transitions as constants
-    return dry_pottemp_given_pressure(param_set, T, p, q) * (1 - latent_heat_liq_ice(param_set, q)/(cp_m(param_set, q)*T))
+    return dry_pottemp_given_pressure(T, p, q, param_set) * (1 - latent_heat_liq_ice(q, param_set)/(cp_m(q, param_set)*T))
 end
-liquid_ice_pottemp_given_pressure(T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  liquid_ice_pottemp_given_pressure(MoistThermoDefaultParameterSet{FT}(), T, p, q)
 
 
 """
@@ -957,10 +923,10 @@ The liquid-ice potential temperature where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-liquid_ice_pottemp(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  liquid_ice_pottemp_given_pressure(param_set, T, air_pressure(param_set, T, ρ, q), q)
-liquid_ice_pottemp(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  liquid_ice_pottemp(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+liquid_ice_pottemp(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  liquid_ice_pottemp_given_pressure(T, air_pressure(T, ρ, q, param_set), q, param_set)
+liquid_ice_pottemp(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  liquid_ice_pottemp(T, ρ, q_pt_0(FT), param_set)
 
 """
     liquid_ice_pottemp(ts::ThermodynamicState)
@@ -969,7 +935,7 @@ The liquid-ice potential temperature,
 given a thermodynamic state `ts`.
 """
 liquid_ice_pottemp(ts::ThermodynamicState) =
-  liquid_ice_pottemp(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+  liquid_ice_pottemp(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 """
     dry_pottemp(T, ρ[, q::PhasePartition])
@@ -981,10 +947,10 @@ The dry potential temperature where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
  """
-dry_pottemp(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  T / exner(param_set, T, ρ, q)
-dry_pottemp(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  dry_pottemp(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+dry_pottemp(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  T / exner(T, ρ, q, param_set)
+dry_pottemp(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  dry_pottemp(T, ρ, q_pt_0(FT), param_set)
 
 """
     dry_pottemp_given_pressure(T, p[, q::PhasePartition])
@@ -996,10 +962,10 @@ The dry potential temperature where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
  """
-dry_pottemp_given_pressure(param_set::AbstractParameterSet{FT}, T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  T / exner_given_pressure(param_set, p, q)
-dry_pottemp_given_pressure(T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  dry_pottemp_given_pressure(MoistThermoDefaultParameterSet{FT}(), T, p, q)
+dry_pottemp_given_pressure(T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  T / exner_given_pressure(p, q, param_set)
+dry_pottemp_given_pressure(T::FT, p::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  dry_pottemp_given_pressure(T, p, q_pt_0(FT), param_set)
 
 """
     dry_pottemp(ts::ThermodynamicState)
@@ -1007,7 +973,7 @@ dry_pottemp_given_pressure(T::FT, p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where
 The dry potential temperature, given a thermodynamic state `ts`.
 """
 dry_pottemp(ts::ThermodynamicState) =
-  dry_pottemp(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+  dry_pottemp(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 """
     air_temperature_from_liquid_ice_pottemp(θ_liq_ice, ρ, q::PhasePartition)
@@ -1018,20 +984,23 @@ The temperature given
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-function air_temperature_from_liquid_ice_pottemp(param_set::AbstractParameterSet{FT}, θ_liq_ice::FT, ρ::FT,
-  q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+function air_temperature_from_liquid_ice_pottemp(θ_liq_ice::FT,
+                                                 ρ::FT,
+                                                 q::PhasePartition{FT}=q_pt_0(FT),
+                                                 param_set::APS{FT}=MTPS{FT}()
+                                                 ) where {FT<:Real}
 
-  cvm = cv_m(param_set, q)
-  cpm = cp_m(param_set, q)
-  R_m = gas_constant_air(param_set, q)
+  cvm = cv_m(q, param_set)
+  cpm = cp_m(q, param_set)
+  R_m = gas_constant_air(q, param_set)
   κ = 1 - cvm/cpm
   T_u = (ρ*R_m*θ_liq_ice/FT(MSLP))^(R_m/cvm)*θ_liq_ice
-  T_1 = latent_heat_liq_ice(param_set, q)/cvm
-  T_2 = -κ/(2*T_u)*(latent_heat_liq_ice(param_set, q)/cvm)^2
+  T_1 = latent_heat_liq_ice(q, param_set)/cvm
+  T_2 = -κ/(2*T_u)*(latent_heat_liq_ice(q, param_set)/cvm)^2
   return T_u + T_1 + T_2
 end
-air_temperature_from_liquid_ice_pottemp(θ_liq_ice::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  air_temperature_from_liquid_ice_pottemp(MoistThermoDefaultParameterSet{FT}(), θ_liq_ice, ρ, q)
+air_temperature_from_liquid_ice_pottemp(θ_liq_ice::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  air_temperature_from_liquid_ice_pottemp(θ_liq_ice, ρ, q_pt_0(FT), param_set)
 
 """
     air_temperature_from_liquid_ice_pottemp_non_linear(θ_liq_ice, ρ, q::PhasePartition)
@@ -1050,14 +1019,14 @@ by finding the root of
   T - air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice, air_pressure(T, ρ, q), q) = 0
 ``
 """
-function air_temperature_from_liquid_ice_pottemp_non_linear(param_set::AbstractParameterSet{FT},
-                                                            θ_liq_ice::FT,
+function air_temperature_from_liquid_ice_pottemp_non_linear(θ_liq_ice::FT,
                                                             ρ::FT,
                                                             maxiter::Int,
                                                             tol::FT,
-                                                            q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+                                                            q::PhasePartition{FT}=q_pt_0(FT),
+                                                            param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
   sol = find_zero(
-    T -> T - air_temperature_from_liquid_ice_pottemp_given_pressure(param_set, θ_liq_ice, air_pressure(param_set, T, ρ, q), q),
+    T -> T - air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice, air_pressure(T, ρ, q, param_set), q, param_set),
     FT(T_min), FT(T_max), SecantMethod(), CompactSolution(), tol, maxiter)
   if !sol.converged
     error("air_temperature_from_liquid_ice_pottemp_non_linear did not converge")
@@ -1065,11 +1034,11 @@ function air_temperature_from_liquid_ice_pottemp_non_linear(param_set::AbstractP
   return sol.root
 end
 air_temperature_from_liquid_ice_pottemp_non_linear(θ_liq_ice::FT,
-                                                            ρ::FT,
-                                                            maxiter::Int,
-                                                            tol::FT,
-                                                            q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  air_temperature_from_liquid_ice_pottemp_non_linear(MoistThermoDefaultParameterSet{FT}(), θ_liq_ice, ρ, maxiter, tol, q)
+                                                   ρ::FT,
+                                                   maxiter::Int,
+                                                   tol::FT,
+                                                   param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  air_temperature_from_liquid_ice_pottemp_non_linear(θ_liq_ice, ρ, maxiter, tol, q_pt_0(FT), param_set)
 
 """
     air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice, p[, q::PhasePartition])
@@ -1081,16 +1050,18 @@ The air temperature where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-function air_temperature_from_liquid_ice_pottemp_given_pressure(param_set::AbstractParameterSet{FT}, θ_liq_ice::FT,
-                                                 p::FT,
-                                                 q::PhasePartition{FT}=q_pt_0(FT)
-                                                 ) where {FT<:Real}
-  return θ_liq_ice*exner_given_pressure(param_set, p, q) + latent_heat_liq_ice(param_set, q) / cp_m(param_set, q)
+function air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice::FT,
+                                                                p::FT,
+                                                                q::PhasePartition{FT}=q_pt_0(FT),
+                                                                param_set::APS{FT}=MTPS{FT}()
+                                                                ) where {FT<:Real}
+  return θ_liq_ice*exner_given_pressure(p, q, param_set) + latent_heat_liq_ice(q, param_set) / cp_m(q, param_set)
 end
 air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice::FT,
                                                        p::FT,
-                                                       q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  air_temperature_from_liquid_ice_pottemp_given_pressure(MoistThermoDefaultParameterSet{FT}(), θ_liq_ice, p, q)
+                                                       param_set::APS{FT}=MTPS{FT}()
+                                                       ) where {FT<:Real} =
+  air_temperature_from_liquid_ice_pottemp_given_pressure(θ_liq_ice, p, q_pt_0(FT), param_set)
 
 """
     virtual_pottemp(T, ρ[, q::PhasePartition])
@@ -1102,10 +1073,10 @@ The virtual temperature where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-virtual_pottemp(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-  gas_constant_air(param_set, q) / FT(R_d) * dry_pottemp(param_set, T, ρ, q)
-virtual_pottemp(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  virtual_pottemp(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+virtual_pottemp(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+  gas_constant_air(q, param_set) / FT(R_d) * dry_pottemp(T, ρ, q, param_set)
+virtual_pottemp(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  virtual_pottemp(T, ρ, q_pt_0(FT), param_set)
 
 """
     virtual_pottemp(ts::ThermodynamicState)
@@ -1114,7 +1085,7 @@ The virtual potential temperature,
 given a thermodynamic state `ts`.
 """
 virtual_pottemp(ts::ThermodynamicState) =
-  virtual_pottemp(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+  virtual_pottemp(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 """
     liquid_ice_pottemp_sat(T, ρ[, q::PhasePartition])
@@ -1126,12 +1097,12 @@ The saturated liquid ice potential temperature where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-function liquid_ice_pottemp_sat(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
-    q_v_sat = q_vap_saturation(param_set, T, ρ, q)
-    return liquid_ice_pottemp(param_set, T, ρ, PhasePartition(q_v_sat))
+function liquid_ice_pottemp_sat(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
+    q_v_sat = q_vap_saturation(T, ρ, q, param_set)
+    return liquid_ice_pottemp(T, ρ, PhasePartition(q_v_sat), param_set)
 end
-liquid_ice_pottemp_sat(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  liquid_ice_pottemp_sat(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+liquid_ice_pottemp_sat(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  liquid_ice_pottemp_sat(T, ρ, q_pt_0(FT), param_set)
 
 """
     liquid_ice_pottemp_sat(T, ρ, q_tot)
@@ -1142,8 +1113,8 @@ The saturated liquid ice potential temperature where
  - `ρ` (moist-)air density
  - `q_tot` total specific humidity
 """
-liquid_ice_pottemp_sat(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q_tot::FT) where {FT<:Real} =
-    liquid_ice_pottemp(param_set, T, ρ, PhasePartition_equil(param_set, T, ρ, q_tot))
+liquid_ice_pottemp_sat(T::FT, ρ::FT, q_tot::FT, param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+    liquid_ice_pottemp(T, ρ, PhasePartition_equil(T, ρ, q_tot, param_set), param_set)
 
 """
     liquid_ice_pottemp_sat(ts::ThermodynamicState)
@@ -1151,7 +1122,7 @@ liquid_ice_pottemp_sat(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q_tot
 The liquid potential temperature given a thermodynamic state `ts`.
 """
 liquid_ice_pottemp_sat(ts::ThermodynamicState) =
-  liquid_ice_pottemp_sat(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+  liquid_ice_pottemp_sat(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 """
     exner_given_pressure(p[, q::PhasePartition])
@@ -1161,15 +1132,15 @@ The Exner function where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-function exner_given_pressure(param_set::AbstractParameterSet{FT}, p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+function exner_given_pressure(p::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
     # gas constant and isobaric specific heat of moist air
-    _R_m    = gas_constant_air(param_set, q)
-    _cp_m   = cp_m(param_set, q)
+    _R_m    = gas_constant_air(q, param_set)
+    _cp_m   = cp_m(q, param_set)
 
     return (p/FT(MSLP))^(_R_m/_cp_m)
 end
-exner_given_pressure(p::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  exner_given_pressure(MoistThermoDefaultParameterSet{FT}(), p, q)
+exner_given_pressure(p::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  exner_given_pressure(p, q_pt_0(FT), param_set)
 
 """
     exner(T, ρ[, q::PhasePartition)])
@@ -1180,17 +1151,17 @@ The Exner function where
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
 """
-exner(param_set::AbstractParameterSet{FT}, T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real} =
-   exner_given_pressure(param_set, air_pressure(param_set, T, ρ, q), q)
-exner(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  exner(MoistThermoDefaultParameterSet{FT}(), T, ρ, q)
+exner(T::FT, ρ::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real} =
+   exner_given_pressure(air_pressure(T, ρ, q, param_set), q, param_set)
+exner(T::FT, ρ::FT, param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  exner(T, ρ, q_pt_0(FT), param_set)
 
 """
     exner(ts::ThermodynamicState)
 
 The Exner function, given a thermodynamic state `ts`.
 """
-exner(ts::ThermodynamicState) = exner(ts.param_set, air_temperature(ts), air_density(ts), PhasePartition(ts))
+exner(ts::ThermodynamicState) = exner(air_temperature(ts), air_density(ts), PhasePartition(ts), ts.param_set)
 
 """
     relative_humidity(T, p, e_int, q::PhasePartition)
@@ -1202,16 +1173,16 @@ The relative humidity, given
 and, optionally,
  - `q` [`PhasePartition`](@ref). Without this argument, the results are for dry air.
  """
-function relative_humidity(param_set::AbstractParameterSet{FT}, T::FT, p::FT, e_int::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT<:Real}
+function relative_humidity(T::FT, p::FT, e_int::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT<:Real}
   q_vap = q.tot - q.liq - q.ice
-  p_vap = q_vap * air_density(param_set, T,p,q) * FT(R_v) * air_temperature(param_set, e_int, q)
-  liq_frac = liquid_fraction(param_set, T,q)
-  p_vap_sat =  liq_frac  * saturation_vapor_pressure(param_set, T, Liquid()) +
-            (1-liq_frac) * saturation_vapor_pressure(param_set, T, Ice())
+  p_vap = q_vap * air_density(T,p,q, param_set) * FT(R_v) * air_temperature(e_int, q, param_set)
+  liq_frac = liquid_fraction(T,q, param_set)
+  p_vap_sat =  liq_frac  * saturation_vapor_pressure(T, Liquid(), param_set) +
+            (1-liq_frac) * saturation_vapor_pressure(T, Ice(), param_set)
   return p_vap/p_vap_sat
 end
-relative_humidity(T::FT, p::FT, e_int::FT, q::PhasePartition{FT}=q_pt_0(FT)) where {FT} =
-  relative_humidity(MoistThermoDefaultParameterSet{FT}(), T, p, e_int, q)
+relative_humidity(T::FT, p::FT, e_int::FT, q::PhasePartition{FT}=q_pt_0(FT), param_set::APS{FT}=MTPS{FT}()) where {FT} =
+  relative_humidity(T, p, e_int, q_pt_0(FT), param_set)
 
 
 """
@@ -1220,6 +1191,6 @@ relative_humidity(T::FT, p::FT, e_int::FT, q::PhasePartition{FT}=q_pt_0(FT)) whe
 The relative humidity, given a thermodynamic state `ts`.
 """
 relative_humidity(ts::ThermodynamicState{FT}) where {FT<:Real} =
-  relative_humidity(ts.param_set, air_temperature(ts), air_pressure(ts), internal_energy(ts), PhasePartition(ts))
+  relative_humidity(air_temperature(ts), air_pressure(ts), internal_energy(ts), PhasePartition(ts), ts.param_set)
 
 end #module MoistThermodynamics.jl
