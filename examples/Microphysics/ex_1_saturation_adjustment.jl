@@ -58,13 +58,23 @@ import CLIMA.DGmethods: BalanceLaw,
 #}
 # ------------------------ Description ------------------------- #
 
-struct KinematicModel{FT} <: BalanceLaw
+struct KinematicModel{FT,IS} <: BalanceLaw
   wmax::FT
   xmax::FT
   zmax::FT
+  init_state::IS
 end
 
-vars_state(m::KinematicModel, FT) = @vars()
+function vars_state(m::KinematicModel, FT)
+  @vars begin
+    ρ::FT
+    ρu::SVector{3,FT}
+    ρe::FT
+    ρq_tot::FT
+  end
+end
+
+
 vars_gradient(m::KinematicModel, FT) = @vars()
 vars_diffusive(m::KinematicModel, FT) = @vars()
 vars_aux(m::KinematicModel, FT) = @vars()
@@ -95,6 +105,10 @@ end
   return abs(dot(nM, u))
 end
 
+function init_state!(m::KinematicModel, state::Vars, aux::Vars, coords, t, args...)
+  m.init_state(m, state, aux, coords, t, args...)
+end
+
 # ------------------------------------------------------------------ BOILER PLATE :)
 # function update_aux!(dg::DGModel, m::KinematicModel, Q::MPIStateArray, t::Real)
 #   nodal_update_aux!(atmos_nodal_update_aux!, dg, m, Q, t)
@@ -108,7 +122,7 @@ function reverse_integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) en
 
 
 function init_saturation_adjustment!(bl, state, aux, (x,y,z), t)
-  FT = eltype(Q)
+  FT = eltype(state)
 
   # initial condition
   θ_0::FT    = 289         # K
@@ -157,11 +171,13 @@ function config_saturation_adjustment(FT, N, resolution, xmax, ymax, zmax)
   ode_solver = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
 
   wmax = FT(.6)
+  IS = typeof(init_saturation_adjustment!)
   # Set up the model
-  model = KinematicModel{FT}(FT(wmax), # m/s
-                             FT(xmax), # m
-                             FT(zmax)  # m
-                             )
+  model = KinematicModel{FT,IS}(FT(wmax), # m/s
+                                FT(xmax), # m
+                                FT(zmax), # m
+                                init_saturation_adjustment!
+                                )
 
         # (Δx, Δy, Δz)::NTuple{3,FT},
         # xmax::Int, ymax::Int, zmax::Int,
