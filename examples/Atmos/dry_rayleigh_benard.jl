@@ -7,6 +7,7 @@ using Printf
 
 using CLIMA
 using CLIMA.Atmos
+using CLIMA.ConfigTypes
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.GenericCallbacks
 using CLIMA.ODESolvers
@@ -31,11 +32,11 @@ import CLIMA.DGmethods.NumericalFluxes: boundary_flux_diffusive!
 # 3) Domain - 250m[horizontal] x 250m[horizontal] x 500m[vertical]
 # 4) Timeend - 1000s
 # 5) Mesh Aspect Ratio (Effective resolution) 1:1
-# 6) Random seed in initial condition (Requires `forcecpu=true` argument)
+# 6) Random seed in initial condition (Requires `init_on_cpu=true` argument)
 # 7) Overrides defaults for
 #               `C_smag`
 #               `Courant_number`
-#               `forcecpu`
+#               `init_on_cpu`
 #               `ref_state`
 #               `solver_type`
 #               `bc`
@@ -173,7 +174,7 @@ function config_problem(FT, N, resolution, xmax, ymax, zmax)
                                                             FT(T_bot - T_lapse*zmax))
 
     # Set up the model
-    model = AtmosModel{FT}(AtmosLESConfiguration;
+    model = AtmosModel{FT}(AtmosLESConfigType;
                            turbulence=SmagorinskyLilly{FT}(C_smag),
                                source=(Gravity(),),
                     boundarycondition=bc,
@@ -181,11 +182,11 @@ function config_problem(FT, N, resolution, xmax, ymax, zmax)
                            data_config=data_config,
                              param_set=ParameterSet{FT}())
     ode_solver = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
-    config = CLIMA.Atmos_LES_Configuration("DryRayleighBenardConvection",
-                                           N, resolution, xmax, ymax, zmax,
-                                           init_problem!,
-                                           solver_type=ode_solver,
-                                           model=model)
+    config = CLIMA.AtmosLESConfiguration("DryRayleighBenardConvection",
+                                         N, resolution, xmax, ymax, zmax,
+                                         init_problem!,
+                                         solver_type=ode_solver,
+                                         model=model)
     return config
 end
 
@@ -208,7 +209,7 @@ function main()
         resolution = (Δh, Δh, Δv)
         driver_config = config_problem(FT, N, resolution, xmax, ymax, zmax)
         solver_config = CLIMA.setup_solver(t0, timeend, driver_config,
-                                           forcecpu=true, Courant_number=CFLmax)
+                                           init_on_cpu=true, Courant_number=CFLmax)
         # User defined callbacks (TMAR positivity preserving filter)
         cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
             Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())

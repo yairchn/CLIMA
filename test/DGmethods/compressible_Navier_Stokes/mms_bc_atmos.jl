@@ -1,5 +1,6 @@
 using MPI
 using CLIMA
+using CLIMA.ConfigTypes
 using CLIMA.Mesh.Topologies
 using CLIMA.Mesh.Grids
 using CLIMA.DGmethods
@@ -106,7 +107,7 @@ function run(mpicomm, ArrayType, dim, topl, warpfun, N, timeend, FT, dt)
                                          )
 
   if dim == 2
-    model = AtmosModel{FT}(AtmosLESConfiguration;
+    model = AtmosModel{FT}(AtmosLESConfigType;
                            orientation=NoOrientation(),
                               ref_state=NoReferenceState(),
                              turbulence=ConstantViscosityWithDivergence(FT(μ_exact)),
@@ -116,7 +117,7 @@ function run(mpicomm, ArrayType, dim, topl, warpfun, N, timeend, FT, dt)
                              init_state=mms2_init_state!,
                               param_set=ParameterSet{FT}())
   else
-    model = AtmosModel{FT}(AtmosLESConfiguration;
+    model = AtmosModel{FT}(AtmosLESConfigType;
                             orientation=NoOrientation(),
                               ref_state=NoReferenceState(),
                              turbulence=ConstantViscosityWithDivergence(FT(μ_exact)),
@@ -134,7 +135,7 @@ function run(mpicomm, ArrayType, dim, topl, warpfun, N, timeend, FT, dt)
                CentralNumericalFluxGradient())
 
   Q = init_ode_state(dg, FT(0))
-  Qcpu = init_ode_state(dg, FT(0); forcecpu=true)
+  Qcpu = init_ode_state(dg, FT(0); init_on_cpu=true)
   @test euclidean_distance(Q, Qcpu) < sqrt(eps(FT))
 
   lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)

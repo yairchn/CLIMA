@@ -6,6 +6,7 @@ using Test
 
 using CLIMA
 using CLIMA.Atmos
+using CLIMA.ConfigTypes
 using CLIMA.GenericCallbacks
 using CLIMA.ODESolvers
 using CLIMA.ColumnwiseLUSolver: ManyColumnLU
@@ -84,7 +85,8 @@ function config_heldsuarez(FT, poly_order, resolution)
 
   # Set up the atmosphere model
   model = AtmosModel{FT}(
-    AtmosGCMConfiguration;
+    AtmosGCMConfigType;
+
     ref_state   = ref_state,
     turbulence  = ConstantViscosityWithDivergence(turb_visc),
     moisture    = DryModel(),
@@ -98,7 +100,7 @@ function config_heldsuarez(FT, poly_order, resolution)
       param_set = ParameterSet{FT}()
   )
 
-  config = CLIMA.Atmos_GCM_Configuration(
+  config = CLIMA.AtmosGCMConfiguration(
     exp_name,
     poly_order,
     resolution,
@@ -185,7 +187,7 @@ function main()
     driver_config,
     ode_solver_type=ode_solver_type,
     Courant_number=0.05,
-    forcecpu=true
+    init_on_cpu=true
   )
 
   # Set up user-defined callbacks

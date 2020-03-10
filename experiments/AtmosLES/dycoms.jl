@@ -7,6 +7,7 @@ using LinearAlgebra
 
 using CLIMA
 using CLIMA.Atmos
+using CLIMA.ConfigTypes
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.GenericCallbacks
 using CLIMA.ODESolvers
@@ -342,7 +343,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
               Subsidence{FT}(D_subsidence),
               geostrophic_forcing)
 
-    model = AtmosModel{FT}(AtmosLESConfiguration;
+    model = AtmosModel{FT}(AtmosLESConfigType;
                            ref_state=ref_state,
                           turbulence=SmagorinskyLilly{FT}(C_smag),
                             moisture=EquilMoist{FT}(;maxiter=5),
@@ -352,10 +353,10 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
                           init_state=ics,
                            param_set=ParameterSet{FT}())
 
-    config = CLIMA.Atmos_LES_Configuration("DYCOMS", N, resolution, xmax, ymax, zmax,
-                                           init_dycoms!,
-                                           solver_type=CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch),
-                                           model=model)
+    config = CLIMA.AtmosLESConfiguration("DYCOMS", N, resolution, xmax, ymax, zmax,
+                                         init_dycoms!,
+                                         solver_type=CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch),
+                                         model=model)
 
     return config
 end
@@ -381,7 +382,7 @@ function main()
     timeend = FT(100)
 
     driver_config = config_dycoms(FT, N, resolution, xmax, ymax, zmax)
-    solver_config = CLIMA.setup_solver(t0, timeend, driver_config, forcecpu=true)
+    solver_config = CLIMA.setup_solver(t0, timeend, driver_config, init_on_cpu=true)
 
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(2) do (init=false)
         Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
