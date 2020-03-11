@@ -91,8 +91,6 @@ function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, 
 
 end
 
-boundary_state!(nf, m::KinematicModel, x...) = nothing
-
 @inline function flux_nondiffusive!(m::KinematicModel, flux::Grad, state::Vars, aux::Vars, t::Real)
 end
 
@@ -121,15 +119,17 @@ end
 function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 end
 
-function boundary_state!(m::KinematicModel, state⁺::Vars, state⁻::Vars,
-                         aux⁻::Vars, bctype, t, _...)
-  FT = eltype(state⁻)
+boundary_state!(nf, m::KinematicModel, x...) = nothing
 
-  state⁺.ρ = state⁻.ρ
-  state⁺.ρe = state⁻.ρe_tot
-  state⁺.ρq_tot = state⁻.ρq_tot
+# function boundary_state!(m::KinematicModel, state⁺::Vars, state⁻::Vars,
+#                          aux⁻::Vars, bctype, t, _...)
+#   FT = eltype(state⁻)
 
-end
+#   state⁺.ρ = state⁻.ρ
+#   state⁺.ρe = state⁻.ρe_tot
+#   state⁺.ρq_tot = state⁻.ρq_tot
+
+# end
 
 # ------------------------------------------------------------------ BOILER PLATE :)
 # function update_aux!(dg::DGModel, m::KinematicModel, Q::MPIStateArray, t::Real)
