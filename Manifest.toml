@@ -276,9 +276,9 @@ version = "0.21.0"
 
 [[KernelAbstractions]]
 deps = ["Adapt", "CUDAapi", "CUDAdrv", "CUDAnative", "Cassette", "MacroTools", "Requires", "StaticArrays"]
-git-tree-sha1 = "0a867344914aac435fd35902044e68f3aba3bc97"
+git-tree-sha1 = "8a95e72e286d77be15de75971c4f52eaa4b8a599"
 uuid = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
-version = "0.1.1"
+version = "0.1.4"
 
 [[LLVM]]
 deps = ["CEnum", "Libdl", "Printf", "Unicode"]
