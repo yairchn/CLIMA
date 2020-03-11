@@ -4,6 +4,7 @@ export LowStorageVariant, NaiveVariant
 export AdditiveRungeKutta
 export ARK2GiraldoKellyConstantinescu
 export ARK548L2SA2KennedyCarpenter, ARK437L2SA1KennedyCarpenter
+export DBM453VoglEtAl
 
 # Naive formulation that uses equation 3.8 from Giraldo, Kelly, and Constantinescu (2013) directly.
 # Seems to cut the number of solver iterations by half but requires Nstages - 1 additional storage.
@@ -648,6 +649,94 @@ function ARK437L2SA1KennedyCarpenter(F, L,
   RKA_implicit = SMatrix{Nstages, Nstages}(RKA_implicit)
   RKB = SVector{Nstages}(RKB)
   RKC = SVector{Nstages}(RKC)
+
+  ark = AdditiveRungeKutta(F, L, linearsolver,
+                           RKA_explicit, RKA_implicit, RKB, RKC,
+                           split_nonlinear_linear,
+                           variant,
+                           Q; dt=dt, t0=t0)
+end
+
+"""
+    DBM453VoglEtAl(f, l, linearsolver, Q; dt, t0,
+                   split_nonlinear_linear, variant)
+
+This function returns an [`AdditiveRungeKutta`](@ref) time stepping object,
+see the documentation of [`AdditiveRungeKutta`](@ref) for arguments definitions.
+This time stepping object is intended to be passed to the `solve!` command.
+
+This uses the fourth-order-accurate 7-stage additive Runge--Kutta scheme of
+Vogl et al (2019).
+
+### References
+    @article{kennedy2019higher,
+      title={Higher-order additive Runge--Kutta schemes for ordinary differential equations},
+      author={Kennedy, Christopher A and Carpenter, Mark H},
+      journal={Applied Numerical Mathematics},
+      volume={136},
+      pages={183--205},
+      year={2019},
+      publisher={Elsevier}
+    }
+"""
+function  DBM453VoglEtAl(F, L,
+                         linearsolver::AbstractLinearSolver,
+                         Q::AT; dt=nothing, t0=0,
+                         split_nonlinear_linear=false,
+                         variant=LowStorageVariant()) where {AT<:AbstractArray}
+
+  @assert dt != nothing
+
+  T = eltype(Q)
+  RT = real(T)
+
+  Nstages = 5
+  gamma = RT(0.32591194130117247)
+
+  # declared as Arrays for mutability, later these will be converted to static arrays
+  RKA_explicit = zeros(RT, Nstages, Nstages)
+  RKA_implicit = zeros(RT, Nstages, Nstages)
+  RKB = zeros(RT, Nstages)
+  RKC = zeros(RT, Nstages)
+
+  # the main diagonal
+  for is = 2:Nstages
+    RKA_implicit[is, is] = gamma
+  end
+  
+  RKA_implicit[2, 1] = -0.22284985318525410
+  RKA_implicit[3, 1] = -0.46801347074080545
+  RKA_implicit[3, 2] =  0.86349284225716961
+  RKA_implicit[4, 1] = -0.46509906651927421
+  RKA_implicit[4, 2] =  0.81063103116959553
+  RKA_implicit[4, 3] =  0.61036726756832357
+  RKA_implicit[5, 1] =  0.87795339639076675
+  RKA_implicit[5, 2] = -0.72692641526151547
+  RKA_implicit[5, 3] =  0.75204137157372720
+  RKA_implicit[5, 4] = -0.22898029400415088
+
+  RKA_explicit[2, 1] =  0.10306208811591838
+  RKA_explicit[3, 1] = -0.94124866143519894
+  RKA_explicit[3, 2] =  1.66263997425273560
+  RKA_explicit[4, 1] = -1.36709752014377650
+  RKA_explicit[4, 2] =  1.38158529110168730
+  RKA_explicit[4, 3] =  1.26732340256190650
+  RKA_explicit[5, 1] = -0.81287582068772448
+  RKA_explicit[5, 2] =  0.81223739060505738
+  RKA_explicit[5, 3] =  0.90644429603699305
+  RKA_explicit[5, 4] =  0.094194134045674111
+
+  RKB[1] =  0.87795339639076672
+  RKB[2] = -0.72692641526151549
+  RKB[3] =  0.7520413715737272
+  RKB[4] = -0.22898029400415090
+  RKB[5] =  0.32591194130117247
+  
+  RKC[1] = 0
+  RKC[2] = 0.1030620881159184
+  RKC[3] = 0.72139131281753662
+  RKC[4] = 1.28181117351981733
+  RKC[5] = 1
 
   ark = AdditiveRungeKutta(F, L, linearsolver,
                            RKA_explicit, RKA_implicit, RKB, RKC,
