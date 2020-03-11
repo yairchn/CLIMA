@@ -62,7 +62,7 @@ function config_heldsuarez(FT, poly_order, resolution)
 
   # Rayleigh sponge to dampen flow at the top of the domain 
   z_sponge          = FT(15e3) # height at which sponge begins
-  α_relax           = FT(1/60/60) # sponge relaxation rate in (1/seconds) 
+  α_relax           = FT(1/60/30) # sponge relaxation rate in (1/seconds) 
   u_relax           = SVector(FT(0), FT(0), FT(0)) # relaxation velocity
   exp_sponge        = 2 # sponge exponent for squared-sinusoid profile
   sponge            = RayleighSponge{FT}(
@@ -171,14 +171,14 @@ function main()
     timeend,
     driver_config,
     ode_solver_type=ode_solver_type,
-    Courant_number=0.05,
+    Courant_number=0.1,
     init_on_cpu=true,
     CFL_direction=HorizontalDirection()
   )
 
   # Set up user-defined callbacks
   # TODO: This callback needs to live somewhere else
-  filterorder = 14
+  filterorder = 8
   filter = ExponentialFilter(solver_config.dg.grid, 0, filterorder)
   cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do
       Filters.apply!(
