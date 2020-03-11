@@ -16,6 +16,8 @@ using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
 
+using CLIMA.Mesh.Grids: VerticalDirection, HorizontalDirection, min_node_distance
+
 import CLIMA.DGmethods: BalanceLaw,
                         vars_aux,
                         vars_state,
@@ -112,6 +114,19 @@ function init_state!(m::KinematicModel, state::Vars, aux::Vars, coords, t, args.
   m.init_state(m, state, aux, coords, t, args...)
 end
 
+function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+end
+
+function boundary_state!(m::KinematicModel, state⁺::Vars, state⁻::Vars,
+                         aux⁻::Vars, bctype, t, _...)
+  FT = eltype(state⁻)
+
+  state⁺.ρ = state⁻.ρ
+  state⁺.ρe = state⁻.ρe_tot
+  state⁺.ρq_tot = state⁻.ρq_tot
+
+end
+
 # ------------------------------------------------------------------ BOILER PLATE :)
 # function update_aux!(dg::DGModel, m::KinematicModel, Q::MPIStateArray, t::Real)
 #   nodal_update_aux!(atmos_nodal_update_aux!, dg, m, Q, t)
@@ -122,7 +137,6 @@ function integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
 function reverse_integral_load_aux!(m::KinematicModel, integ::Vars, state::Vars, aux::Vars) end
 function reverse_integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
 # ------------------------------------------------------------------
-
 
 function init_saturation_adjustment!(bl, state, aux, (x,y,z), t)
   FT = eltype(state)
