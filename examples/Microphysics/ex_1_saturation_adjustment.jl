@@ -6,6 +6,7 @@ using DocStringExtensions
 using LinearAlgebra
 
 using CLIMA
+using CLIMA.Grids
 using CLIMA.Atmos
 using CLIMA.ConfigTypes
 using CLIMA.DGmethods.NumericalFluxes
@@ -73,9 +74,6 @@ function vars_state(m::KinematicModel, FT)
     ρq_tot::FT
   end
 end
-function calculate_dt(grid, model::KinematicModel, Courant_number)
-    return Courant_number * min_node_distance(grid, VerticalDirection()) / model.wmax
-end
 
 
 vars_gradient(m::KinematicModel, FT) = @vars()
@@ -86,6 +84,12 @@ vars_reverse_integrals(m::KinematicModel, FT) = @vars()
 
 function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
 end
+
+function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+
+end
+
+boundary_state!(nf, m::KinematicModel, x...) = nothing
 
 @inline function flux_nondiffusive!(m::KinematicModel, flux::Grad, state::Vars, aux::Vars, t::Real)
 end
@@ -219,7 +223,7 @@ function main()
     CFL = FT(0.8)
 
     driver_config = config_saturation_adjustment(FT, N, resolution, xmax, ymax, zmax)
-    solver_config = CLIMA.setup_solver(t0, timeend, driver_config, init_on_cpu=true, Courant_number=CFL)
+    solver_config = CLIMA.setup_solver(t0, timeend, driver_config; ode_dt=FT(0.1), init_on_cpu=true, Courant_number=CFL)
 
     # User defined filter (TMAR positivity preserving filter)
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
