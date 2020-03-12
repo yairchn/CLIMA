@@ -4,6 +4,8 @@ using StaticArrays
 using Test
 using DocStringExtensions
 using LinearAlgebra
+using Printf
+using MPI
 
 using CLIMA
 using CLIMA.Grids
@@ -16,12 +18,13 @@ using CLIMA.Mesh.Filters
 using CLIMA.MoistThermodynamics
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
+using CLIMA.VTK
 
-using CLIMA.Mesh.Grids: VerticalDirection, HorizontalDirection, min_node_distance
+using CLIMA.Mesh.Grids: VerticalDirection,
+                        HorizontalDirection,
+                        min_node_distance
 
 import CLIMA.DGmethods: BalanceLaw,
-                        vars_aux,
-                        vars_state,
                         vars_gradient,
                         vars_diffusive,
                         flux_nondiffusive!,
@@ -77,14 +80,22 @@ function vars_state(m::KinematicModel, FT)
   end
 end
 
+function vars_aux(m::KinematicModel, FT)
+  @vars begin
+    q_tot::FT
+    q_vap::FT
+    q_liq::FT
+    q_ice::FT
+  end
+end
 
 vars_gradient(m::KinematicModel, FT) = @vars()
 vars_diffusive(m::KinematicModel, FT) = @vars()
-vars_aux(m::KinematicModel, FT) = @vars()
 vars_integrals(m::KinematicModel, FT) = @vars()
 vars_reverse_integrals(m::KinematicModel, FT) = @vars()
 
 function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
+
 end
 
 function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
@@ -239,15 +250,46 @@ function main()
     driver_config = config_saturation_adjustment(FT, N, resolution, xmax, ymax, zmax)
     solver_config = CLIMA.setup_solver(t0, timeend, driver_config; ode_dt=FT(0.1), init_on_cpu=true, Courant_number=CFL)
 
-    # User defined filter (TMAR positivity preserving filter)
+    mpicomm = MPI.COMM_WORLD
+
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
         Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
         nothing
     end
 
+    starttime = Ref(now())
+    cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+      if s
+        starttime[] = now()
+      else
+        energy = norm(solver_config.Q)
+        @info @sprintf("""Update
+                       norm(Q) = %.16e""",
+                       energy)
+      end
+    end
+
+    # output for paraview
+    step = [0]
+    cbvtk = GenericCallbacks.EveryXSimulationSteps(1)  do (init=false)
+      mkpath("vtk/")
+      outprefix = @sprintf("vtk/new_ex_1_mpirank%04d_step%04d",
+                           MPI.Comm_rank(mpicomm), step[1])
+      @debug "doing VTK output" outprefix
+      writevtk(outprefix,
+               solver_config.Q,
+               solver_config.dg,
+               flattenednames(vars_state(KinematicModel,FT)),
+               solver_config.dg.auxstate,
+               flattenednames(vars_aux(KinematicModel,FT))
+      )
+      step[1] += 1
+      nothing
+    end
+
     # Invoke solver (calls solve! function for time-integrator)
     result = CLIMA.invoke!(solver_config;
-                          user_callbacks=(cbtmarfilter,),
+                          user_callbacks=(cbtmarfilter, cbinfo, cbvtk),
                           check_euclidean_distance=true)
 
     @test isapprox(result,FT(1); atol=1.5e-3)
