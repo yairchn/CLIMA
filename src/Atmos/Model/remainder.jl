@@ -47,6 +47,7 @@ function wavespeed(rem::RemainderModel, nM, state::Vars, aux::Vars, t::Real)
 end
 
 boundary_state!(nf, rem::RemainderModel, x...) = boundary_state!(nf, rem.main, x...)
+boundary_state!(nf::NumericalFluxDiffusive, lm::RemainderModel, x...) = nothing
 
 init_aux!(rem::RemainderModel, aux::Vars, geom::LocalGeometry) = nothing
 init_state!(rem::RemainderModel, state::Vars, aux::Vars, coords, t) = nothing
