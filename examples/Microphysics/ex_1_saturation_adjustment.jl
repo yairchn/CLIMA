@@ -7,6 +7,12 @@ using LinearAlgebra
 using Printf
 using MPI
 
+using CLIMA.Mesh.Topologies
+using CLIMA.DGBalanceLawDiscretizations
+using CLIMA.MPIStateArrays
+using Logging
+using Dates
+
 using CLIMA
 using CLIMA.Grids
 using CLIMA.Atmos
@@ -31,6 +37,8 @@ import CLIMA.DGmethods: BalanceLaw,
                         flux_diffusive!,
                         source!,
                         wavespeed,
+                        vars_aux,
+                        vars_state,
                         boundary_state!,
                         update_aux!,
                         update_aux_diffusive!,
@@ -270,6 +278,7 @@ function main()
     end
 
     # output for paraview
+    model = driver_config.bl
     step = [0]
     cbvtk = GenericCallbacks.EveryXSimulationSteps(1)  do (init=false)
       mkpath("vtk/")
@@ -279,9 +288,9 @@ function main()
       writevtk(outprefix,
                solver_config.Q,
                solver_config.dg,
-               flattenednames(vars_state(KinematicModel,FT)),
+               flattenednames(vars_state(model,FT)),
                solver_config.dg.auxstate,
-               flattenednames(vars_aux(KinematicModel,FT))
+               flattenednames(vars_aux(model,FT))
       )
       step[1] += 1
       nothing
