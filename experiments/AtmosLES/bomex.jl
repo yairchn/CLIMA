@@ -554,7 +554,7 @@ function config_bomex(FT, N, resolution, xmax, ymax, zmax)
     )
 
     # Assemble timestepper components
-    ode_solver_type = CLIMA.DefaultSolverType()
+    ode_solver_type = CLIMA.MultirateSolverType()
 
     # Assemble model components
     model = AtmosModel{FT}(
