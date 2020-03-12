@@ -280,8 +280,8 @@ function main()
                solver_config.Q,
                solver_config.dg,
                flattenednames(vars_state(KinematicModel,FT)),
-               solver_config.dg.auxstate,
-               flattenednames(vars_aux(KinematicModel,FT))
+               #solver_config.dg.auxstate,
+               #flattenednames(vars_aux(KinematicModel,FT))
       )
       step[1] += 1
       nothing
