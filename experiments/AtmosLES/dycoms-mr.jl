@@ -323,7 +323,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
         linear_model = AtmosAcousticGravityLinearModel,
         slow_method = LSRK144NiegemannDiehlBusch,
         fast_method = LSRK144NiegemannDiehlBusch,
-        timestep_ratio = 1,
+        timestep_ratio = 20,
     )
     
     config = CLIMA.AtmosLESConfiguration(
@@ -365,7 +365,7 @@ function main()
 
     t0 = FT(0)
     timeend = FT(14400)
-    Courant = FT(1.8)
+    Courant = FT(15)
     
     driver_config = config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     solver_config =
