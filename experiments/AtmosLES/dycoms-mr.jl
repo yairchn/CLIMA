@@ -190,7 +190,7 @@ function init_dycoms!(bl, state, aux, (x, y, z), t)
     z = altitude(bl.orientation, aux)
 
     # These constants are those used by Stevens et al. (2005)
-    qref = FT(8.3e-3)
+    qref = FT(8.1e-3)
     q_pt_sfc = PhasePartition(qref)
     Rm_sfc = FT(gas_constant_air(q_pt_sfc))
     T_sfc = FT(290.4)
@@ -273,7 +273,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     # Rayleigh damping
     zsponge = FT(900.0)
     rayleigh_sponge =
-        RayleighSponge{FT}(zmax, zsponge, c_sponge, u_relaxation, 2)
+        RayleighSponge{FT}(zmax, zsponge, c_sponge, u_relaxation, 4)
     # Geostrophic forcing
     geostrophic_forcing =
         GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic)
@@ -322,7 +322,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
             linear_model = AtmosAcousticGravityLinearModel,
             slow_method = LSRK144NiegemannDiehlBusch,
             fast_method = LSRK144NiegemannDiehlBusch,
-            timestep_ratio = 10,
+            timestep_ratio = 20,
         )
     
     config = CLIMA.AtmosLESConfiguration(
@@ -360,7 +360,7 @@ function main()
 
     xmax = 1000
     ymax = 1000
-    zmax = 2500
+    zmax = 2000
 
     t0 = FT(0)
     timeend = FT(14400)
