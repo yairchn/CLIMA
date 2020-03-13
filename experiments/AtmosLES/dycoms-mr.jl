@@ -316,15 +316,14 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
         param_set = ParameterSet{FT}(),
     )
 
-#    ode_solver =
-#        CLIMA.ExplicitSolverType(solver_method = LSRK144NiegemannDiehlBusch)
-
-    ode_solver = CLIMA.MultirateSolverType(
-        linear_model = AtmosAcousticGravityLinearModel,
-        slow_method = LSRK144NiegemannDiehlBusch,
-        fast_method = LSRK144NiegemannDiehlBusch,
-        timestep_ratio = 20,
-    )
+    ode_solver =
+        #CLIMA.ExplicitSolverType(solver_method = LSRK144NiegemannDiehlBusch)
+        CLIMA.MultirateSolverType(
+            linear_model = AtmosAcousticGravityLinearModel,
+            slow_method = LSRK144NiegemannDiehlBusch,
+            fast_method = LSRK144NiegemannDiehlBusch,
+            timestep_ratio = 10,
+        )
     
     config = CLIMA.AtmosLESConfiguration(
         "DYCOMS",
@@ -372,7 +371,7 @@ function main()
         CLIMA.setup_solver(t0, timeend, driver_config, init_on_cpu = true, Courant_number=Courant)
     dgn_config = config_diagnostics(driver_config)
 
-    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init = false)
+    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(100) do (init = false)
         Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
         nothing
     end
