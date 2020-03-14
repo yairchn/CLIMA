@@ -480,7 +480,7 @@ function main()
     # For the test we set this to == 30 minutes
     timeend = FT(1800)
     #timeend = FT(3600 * 6)
-    CFLmax = FT(10)
+    CFLmax = FT(8)
 
     driver_config = config_bomex(FT, N, resolution, xmax, ymax, zmax)
     solver_config = CLIMA.setup_solver(
