@@ -1,21 +1,26 @@
+using Dates
 using Distributions
+using DocStringExtensions
+using LinearAlgebra
+using Logging
+using MPI
+using Printf
 using Random
 using StaticArrays
 using Test
-using DocStringExtensions
-using LinearAlgebra
-using Printf
-using MPI
 
 using CLIMA
-using CLIMA.Grids
 using CLIMA.Atmos
 using CLIMA.ConfigTypes
+using CLIMA.DGBalanceLawDiscretizations
 using CLIMA.DGmethods.NumericalFluxes
+using CLIMA.Grids
 using CLIMA.GenericCallbacks
-using CLIMA.ODESolvers
 using CLIMA.Mesh.Filters
+using CLIMA.Mesh.Topologies
 using CLIMA.MoistThermodynamics
+using CLIMA.MPIStateArrays
+using CLIMA.ODESolvers
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
 using CLIMA.VTK
@@ -31,6 +36,8 @@ import CLIMA.DGmethods: BalanceLaw,
                         flux_diffusive!,
                         source!,
                         wavespeed,
+                        vars_aux,
+                        vars_state,
                         boundary_state!,
                         update_aux!,
                         update_aux_diffusive!,
@@ -53,7 +60,8 @@ import CLIMA.DGmethods: BalanceLaw,
 # See chapter 2 in Arabas et al 2015 for setup details:
 #@Article{gmd-8-1677-2015,
 #AUTHOR = {Arabas, S. and Jaruga, A. and Pawlowska, H. and Grabowski, W. W.},
-#TITLE = {libcloudph++ 1.0: a single-moment bulk, double-moment bulk, and particle-based warm-rain microphysics library in C++},
+#TITLE = {libcloudph++ 1.0: a single-moment bulk, double-moment bulk,
+#         and particle-based warm-rain microphysics library in C++},
 #JOURNAL = {Geoscientific Model Development},
 #VOLUME = {8},
 #YEAR = {2015},
@@ -86,35 +94,11 @@ function vars_aux(m::KinematicModel, FT)
     q_vap::FT
     q_liq::FT
     q_ice::FT
+    T::FT
+    p::FT
+    x::FT
+    z::FT
   end
-end
-
-vars_gradient(m::KinematicModel, FT) = @vars()
-vars_diffusive(m::KinematicModel, FT) = @vars()
-vars_integrals(m::KinematicModel, FT) = @vars()
-vars_reverse_integrals(m::KinematicModel, FT) = @vars()
-
-function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
-
-end
-
-function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-
-end
-
-@inline function flux_nondiffusive!(m::KinematicModel, flux::Grad, state::Vars, aux::Vars, t::Real)
-end
-
-function gradvariables!(m::KinematicModel, transform::Vars, state::Vars, aux::Vars, t::Real)
-end
-
-function diffusive!(m::KinematicModel, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
-end
-
-@inline function flux_diffusive!(m::KinematicModel, flux::Grad, state::Vars, diffusive::Vars, hyperdiffusive::Vars, aux::Vars, t::Real)
-end
-
-@inline function flux_diffusive!(m::KinematicModel, flux::Grad, state::Vars, τ, d_h_tot)
 end
 
 @inline function wavespeed(m::KinematicModel, nM, state::Vars, aux::Vars, t::Real)
@@ -127,30 +111,83 @@ function init_state!(m::KinematicModel, state::Vars, aux::Vars, coords, t, args.
   m.init_state(m, state, aux, coords, t, args...)
 end
 
+function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
+
+  x, y, z = geom.coord
+
+  FT = eltype(aux)
+  # initial condition
+  θ_0::FT    = 289         # K
+  p_0::FT    = 101500      # Pa
+  p_1000::FT = 100000      # Pa
+  qt_0::FT   = 7.5 * 1e-3  # kg/kg
+  z_0::FT    = 0           # m
+
+  R_m, cp_m, cv_m, γ = gas_constants(PhasePartition(qt_0))
+
+  # Pressure profile assuming hydrostatic and constant θ and qt profiles.
+  # It is done this way to be consistent with Arabas paper.
+  # It's not neccesarily the best way to initialize with our model variables.
+  p = p_1000 * ((p_0 / p_1000)^(R_d / cp_d) -
+              R_d / cp_d * grav / θ_0 / R_m * (z - z_0)
+             )^(cp_d / R_d)
+
+  aux.p = p  # for prescribed pressure gradient (kinematic setup)
+
+  aux.x = x
+  aux.z = z
+
+  aux.q_tot = qt_0
+  aux.q_vap = FT(0)
+  aux.q_liq = FT(0)
+  aux.q_ice = FT(0)
+
+end
+
+function boundary_state!(m::KinematicModel, state⁺::Vars, state⁻::Vars, _...)
+
+   FT = eltype(state⁻)
+
+   state⁺.ρ = state⁻.ρ
+   state⁺.ρe = state⁻.ρe_tot
+   state⁺.ρq_tot = state⁻.ρq_tot
+
+end
+
+# ------------------------------------------------------------------ BOILER PLATE :)
+vars_gradient(m::KinematicModel, FT) = @vars()
+vars_diffusive(m::KinematicModel, FT) = @vars()
+
 function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 end
 
-boundary_state!(nf, m::KinematicModel, x...) = nothing
+@inline function flux_nondiffusive!(m::KinematicModel, flux::Grad, state::Vars, aux::Vars, t::Real)
+end
 
-# function boundary_state!(m::KinematicModel, state⁺::Vars, state⁻::Vars,
-#                          aux⁻::Vars, bctype, t, _...)
-#   FT = eltype(state⁻)
+function gradvariables!(m::KinematicModel, transform::Vars, state::Vars, aux::Vars, t::Real)
+end
 
-#   state⁺.ρ = state⁻.ρ
-#   state⁺.ρe = state⁻.ρe_tot
-#   state⁺.ρq_tot = state⁻.ρq_tot
+function diffusive!(m::KinematicModel, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
+end
 
-# end
+@inline function flux_diffusive!(
+    m::KinematicModel, flux::Grad, state::Vars, diffusive::Vars,
+    hyperdiffusive::Vars, aux::Vars, t::Real)
+end
 
-# ------------------------------------------------------------------ BOILER PLATE :)
-# function update_aux!(dg::DGModel, m::KinematicModel, Q::MPIStateArray, t::Real)
-#   nodal_update_aux!(atmos_nodal_update_aux!, dg, m, Q, t)
-#   return true
-# end
-function integral_load_aux!(m::KinematicModel, integ::Vars, state::Vars, aux::Vars) end
-function integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
-function reverse_integral_load_aux!(m::KinematicModel, integ::Vars, state::Vars, aux::Vars) end
-function reverse_integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
+@inline function flux_diffusive!(
+    m::KinematicModel, flux::Grad, state::Vars, τ, d_h_tot)
+end
+
+function update_aux!(dg::DGModel, m::KinematicModel, Q::MPIStateArray, t::Real)
+  #nodal_update_aux!(atmos_nodal_update_aux!, dg, m, Q, t)
+  return true
+end
+
+#function integral_load_aux!(m::KinematicModel, integ::Vars, state::Vars, aux::Vars) end
+#function integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
+#function reverse_integral_load_aux!(m::KinematicModel, integ::Vars, state::Vars, aux::Vars) end
+#function reverse_integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
 # ------------------------------------------------------------------
 
 function init_saturation_adjustment!(bl, state, aux, (x,y,z), t)
@@ -175,8 +212,7 @@ function init_saturation_adjustment!(bl, state, aux, (x,y,z), t)
   T::FT = θ_0 * exner_given_pressure(p, q_pt_0)
   ρ::FT = p / R_m / T
 
-  # TODO should this be more "grid aware"?
-  # the velocity is calculated as derivative of streamfunction
+  # velocity as derivative of streamfunction
   ρu::FT = bl.wmax * bl.xmax/bl.zmax * cos(π * z/bl.zmax) * cos(2*π * x/bl.xmax)
   ρw::FT = 2*bl.wmax * sin(π * z/bl.zmax) * sin(2*π * x/bl.xmax)
   u = ρu / ρ
@@ -247,8 +283,12 @@ function main()
     # Courant number
     CFL = FT(0.8)
 
-    driver_config = config_saturation_adjustment(FT, N, resolution, xmax, ymax, zmax)
-    solver_config = CLIMA.setup_solver(t0, timeend, driver_config; ode_dt=FT(0.1), init_on_cpu=true, Courant_number=CFL)
+    driver_config = config_saturation_adjustment(
+        FT, N, resolution, xmax, ymax, zmax)
+    solver_config = CLIMA.setup_solver(
+        t0, timeend, driver_config; ode_dt=FT(0.1),
+        init_on_cpu=true, Courant_number=CFL
+    )
 
     mpicomm = MPI.COMM_WORLD
 
@@ -270,18 +310,19 @@ function main()
     end
 
     # output for paraview
+    model = driver_config.bl
     step = [0]
     cbvtk = GenericCallbacks.EveryXSimulationSteps(1)  do (init=false)
       mkpath("vtk/")
       outprefix = @sprintf("vtk/new_ex_1_mpirank%04d_step%04d",
                            MPI.Comm_rank(mpicomm), step[1])
-      @debug "doing VTK output" outprefix
+      @info "doing VTK output" outprefix
       writevtk(outprefix,
                solver_config.Q,
                solver_config.dg,
-               flattenednames(vars_state(KinematicModel,FT)),
-               #solver_config.dg.auxstate,
-               #flattenednames(vars_aux(KinematicModel,FT))
+               flattenednames(vars_state(model,FT)),
+               solver_config.dg.auxstate,
+               flattenednames(vars_aux(model,FT))
       )
       step[1] += 1
       nothing
