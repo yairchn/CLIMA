@@ -55,6 +55,7 @@ function diffusive_courant(
     direction,
 )
     ν, τ = turbulence_tensors(m.turbulence, state, diffusive, aux, 0)
+    ν > eltype(state)(0) ? @show(ν, "Inside Courant Calc Function") : nothing 
     FT = eltype(state)
 
     if ν isa Real

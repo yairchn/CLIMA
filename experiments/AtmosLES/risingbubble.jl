@@ -80,12 +80,12 @@ function config_risingbubble(FT, N, resolution, xmax, ymax, zmax)
     )
 
     # Set up the model
-    C_smag = FT(0.23)
+    C_smag = FT(1)
     ref_state =
         HydrostaticState(DryAdiabaticProfile(typemin(FT), FT(300)), FT(0))
     model = AtmosModel{FT}(
         AtmosLESConfigType;
-        turbulence = SmagorinskyLilly{FT}(C_smag),
+        turbulence = SmagorinskyLilly{FT}(0.8),
         source = (Gravity(),),
         ref_state = ref_state,
         init_state = init_risingbubble!,

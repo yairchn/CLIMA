@@ -160,7 +160,7 @@ struct SmagorinskyLilly{FT} <: TurbulenceClosure
   C_smag::FT
 end
 
-vars_aux(::SmagorinskyLilly,FT) = @vars(Δ::FT)
+vars_aux(::SmagorinskyLilly,FT) = @vars(Δ::FT,ν::FT)
 vars_gradient(::SmagorinskyLilly,FT) = @vars(θ_v::FT)
 vars_diffusive(::SmagorinskyLilly,FT) = @vars(S::SHermitianCompact{3,FT,6}, N²::FT)
 
@@ -180,7 +180,6 @@ function diffusive!(::SmagorinskyLilly, orientation::Orientation,
   ∇Φ = ∇gravitational_potential(orientation, aux)
   diffusive.turbulence.N² = dot(∇transform.turbulence.θ_v, ∇Φ) / aux.moisture.θ_v
 end
-
 function turbulence_tensors(m::SmagorinskyLilly, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 
   FT = eltype(state)
@@ -192,6 +191,7 @@ function turbulence_tensors(m::SmagorinskyLilly, state::Vars, diffusive::Vars, a
   f_b² = sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
   ν = normS * f_b² * FT(m.C_smag * aux.turbulence.Δ)^2
   τ = (-2*ν) * S
+  ν > FT(0) ? @show((ν, "Inside Turbulence Model")) : nothing
   return ν, τ
 end
 
