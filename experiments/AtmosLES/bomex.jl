@@ -58,6 +58,7 @@ using LinearAlgebra
 using CLIMA
 using CLIMA.Atmos
 using CLIMA.ConfigTypes
+using CLIMA.Diagnostics
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.GenericCallbacks
 using CLIMA.ODESolvers
@@ -356,7 +357,7 @@ function config_bomex(FT, N, resolution, xmax, ymax, zmax)
 
     ics = init_bomex!     # Initial conditions
 
-    C_smag = FT(0.18)     # Smagorinsky coefficient
+    C_smag = FT(0.20)     # Smagorinsky coefficient
 
     u_star = FT(0.28)     # Friction velocity
 
@@ -456,6 +457,12 @@ function config_bomex(FT, N, resolution, xmax, ymax, zmax)
     return config
 end
 
+function config_diagnostics(driver_config)
+    interval = 10000 # in time steps
+    dgngrp = setup_atmos_default_diagnostics(interval, driver_config.name)
+    return CLIMA.setup_diagnostics([dgngrp])
+end
+
 function main()
     CLIMA.init()
 
@@ -464,8 +471,8 @@ function main()
     # DG polynomial order
     N = 4
     # Domain resolution and size
-    Δh = FT(100)
-    Δv = FT(40)
+    Δh = FT(75)
+    Δv = FT(20)
 
     resolution = (Δh, Δh, Δv)
 
@@ -478,9 +485,8 @@ function main()
 
     # For a full-run, please set the timeend to 3600*6 seconds
     # For the test we set this to == 30 minutes
-    timeend = FT(1800)
-    #timeend = FT(3600 * 6)
-    CFLmax = FT(9)
+    timeend = FT(3600 * 6)
+    CFLmax = FT(10)
 
     driver_config = config_bomex(FT, N, resolution, xmax, ymax, zmax)
     solver_config = CLIMA.setup_solver(
@@ -490,6 +496,7 @@ function main()
         init_on_cpu = true,
         Courant_number = CFLmax,
     )
+    dgn_config = config_diagnostics(driver_config)
 
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init = false)
         Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
@@ -498,6 +505,7 @@ function main()
 
     result = CLIMA.invoke!(
         solver_config;
+        diagnostics_config = dgn_config,
         user_callbacks = (cbtmarfilter,),
         check_euclidean_distance = true,
     )

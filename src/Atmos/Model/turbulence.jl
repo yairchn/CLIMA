@@ -191,7 +191,6 @@ function turbulence_tensors(m::SmagorinskyLilly, state::Vars, diffusive::Vars, a
   f_b² = sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
   ν = normS * f_b² * FT(m.C_smag * aux.turbulence.Δ)^2
   τ = (-2*ν) * S
-  ν > FT(0) ? @show((ν, "Inside Turbulence Model")) : nothing
   return ν, τ
 end
 

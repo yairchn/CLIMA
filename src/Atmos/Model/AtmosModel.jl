@@ -314,7 +314,6 @@ end
     t::Real,
 )
     ν, τ = turbulence_tensors(atmos.turbulence, state, diffusive, aux, t)
-    ν > eltype(state)(0) ? @show(ν, "Inside AtmosModel flux_diffusive! function") : nothing 
     D_t = (ν isa Real ? ν : diag(ν)) * inv_Pr_turb
     d_h_tot = -D_t .* diffusive.∇h_tot
     flux_diffusive!(atmos, flux, state, τ, d_h_tot)
