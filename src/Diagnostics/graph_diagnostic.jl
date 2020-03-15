@@ -1,6 +1,6 @@
 # graph_diagnostic.jl
 
-using DataFrames, FileIO
+using DataFrames, FileIO, LaTeXStrings
 
 include("diagnostic_vars.jl")
 
