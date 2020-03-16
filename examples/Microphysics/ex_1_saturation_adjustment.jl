@@ -72,12 +72,44 @@ import CLIMA.DGmethods: BalanceLaw,
 #}
 # ------------------------ Description ------------------------- #
 
-struct KinematicModel{FT,IS} <: BalanceLaw
-  wmax::FT
-  xmax::FT
-  zmax::FT
+struct KinematicModel{O,M,P,S,BC,IS,DC,FT} <: BalanceLaw
+  orientation::O
+  moisture::M
+  precipitation::P
+  source::S
+  boundarycondition::BC
   init_state::IS
+  data_config::DC
+  xmax::FT
+  ymax::FT
+  zmax::FT
+  wmax::FT
 end
+
+function KinematicModel{FT}(::Type{AtmosLESConfigType};
+                         orientation::O=FlatOrientation(),
+                         moisture::M=EquilMoist{FT}(),
+                         precipitation::P=NoPrecipitation(),
+                         source::S=nothing,
+                         boundarycondition::BC=NoFluxBC(),
+                         init_state::IS=nothing,
+                         data_config::DC=nothing) where{FT<:AbstractFloat,O,M,P,S,BC,IS,DC}
+
+  @assert init_state ≠ nothing
+
+  atmos = (
+        orientation,
+        moisture,
+        precipitation,
+        source,
+        boundarycondition,
+        init_state,
+        data_config,
+       )
+
+  return KinematicModel{FT,typeof.(atmos)...}(atmos...)
+end
+
 
 function vars_state(m::KinematicModel, FT)
   @vars begin
@@ -101,14 +133,48 @@ function vars_aux(m::KinematicModel, FT)
   end
 end
 
-@inline function wavespeed(m::KinematicModel, nM, state::Vars, aux::Vars, t::Real)
-  ρinv = 1/state.ρ
-  u = ρinv * state.ρu
-  return abs(dot(nM, u))
-end
-
 function init_state!(m::KinematicModel, state::Vars, aux::Vars, coords, t, args...)
   m.init_state(m, state, aux, coords, t, args...)
+end
+
+function init_kinematic_eddy!(ed, state, aux, (x,y,z), t)
+  FT = eltype(state)
+
+  # initial condition
+  θ_0::FT    = 289         # K
+  p_0::FT    = 101500      # Pa
+  p_1000::FT = 100000      # Pa
+  qt_0::FT   = 7.5 * 1e-3  # kg/kg
+  z_0::FT    = 0           # m
+  q_pt_0 = PhasePartition(qt_0)
+
+  R_m, cp_m, cv_m, γ = gas_constants(q_pt_0)
+
+  # Pressure profile assuming hydrostatic and constant θ and qt profiles.
+  # It is done this way to be consistent with Arabas paper.
+  # It's not necessarily the best way to initialize with our model variables.
+  p = p_1000 * ((p_0 / p_1000)^(R_d / cp_d) -
+              R_d / cp_d * grav / θ_0 / R_m * (z - z_0)
+             )^(cp_d / R_d)
+  T::FT = θ_0 * exner_given_pressure(p, q_pt_0)
+  ρ::FT = p / R_m / T
+
+  # velocity as derivative of streamfunction
+  ρu::FT = ed.wmax * ed.xmax/ed.zmax * cos(π * z/ed.zmax) * cos(2*π * x/ed.xmax)
+  ρw::FT = 2*ed.wmax * sin(π * z/ed.zmax) * sin(2*π * x/ed.xmax)
+  u = ρu / ρ
+  w = ρw / ρ
+
+  ρq_tot::FT = ρ * qt_0
+
+  e_int  = internal_energy(T, q_pt_0)
+  ρe_tot = ρ * (grav * z + (1//2)*(u^2 + w^2) + e_int)
+
+  state.ρ = ρ
+  state.ρu = SVector(ρu, FT(0), ρw)
+  state.ρe = ρe_tot
+  state.ρq_tot = ρq_tot
+  return nothing
 end
 
 function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
@@ -144,7 +210,7 @@ function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
 
 end
 
-function boundary_state!(m::KinematicModel, state⁺::Vars, state⁻::Vars, _...)
+function bc_kinematic_eddy!(m::KinematicModel, state⁺::Vars, state⁻::Vars, _...)
 
    FT = eltype(state⁻)
 
@@ -153,6 +219,13 @@ function boundary_state!(m::KinematicModel, state⁺::Vars, state⁻::Vars, _...
    state⁺.ρq_tot = state⁻.ρq_tot
 
 end
+
+@inline function wavespeed(m::KinematicModel, nM, state::Vars, aux::Vars, t::Real)
+  ρinv = 1/state.ρ
+  u = ρinv * state.ρu
+  return abs(dot(nM, u))
+end
+
 
 # ------------------------------------------------------------------ BOILER PLATE :)
 vars_gradient(m::KinematicModel, FT) = @vars()
@@ -190,72 +263,37 @@ end
 #function reverse_integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
 # ------------------------------------------------------------------
 
-function init_saturation_adjustment!(bl, state, aux, (x,y,z), t)
-  FT = eltype(state)
 
-  # initial condition
-  θ_0::FT    = 289         # K
-  p_0::FT    = 101500      # Pa
-  p_1000::FT = 100000      # Pa
-  qt_0::FT   = 7.5 * 1e-3  # kg/kg
-  z_0::FT    = 0           # m
-  q_pt_0 = PhasePartition(qt_0)
-
-  R_m, cp_m, cv_m, γ = gas_constants(q_pt_0)
-
-  # Pressure profile assuming hydrostatic and constant θ and qt profiles.
-  # It is done this way to be consistent with Arabas paper.
-  # It's not necessarily the best way to initialize with our model variables.
-  p = p_1000 * ((p_0 / p_1000)^(R_d / cp_d) -
-              R_d / cp_d * grav / θ_0 / R_m * (z - z_0)
-             )^(cp_d / R_d)
-  T::FT = θ_0 * exner_given_pressure(p, q_pt_0)
-  ρ::FT = p / R_m / T
-
-  # velocity as derivative of streamfunction
-  ρu::FT = bl.wmax * bl.xmax/bl.zmax * cos(π * z/bl.zmax) * cos(2*π * x/bl.xmax)
-  ρw::FT = 2*bl.wmax * sin(π * z/bl.zmax) * sin(2*π * x/bl.xmax)
-  u = ρu / ρ
-  w = ρw / ρ
-
-  ρq_tot::FT = ρ * qt_0
-
-  e_int  = internal_energy(T, q_pt_0)
-  ρe_tot = ρ * (grav * z + (1//2)*(u^2 + w^2) + e_int)
-
-  state.ρ = ρ
-  state.ρu = SVector(ρu, FT(0), ρw)
-  state.ρe = ρe_tot
-  state.ρq_tot = ρq_tot
-  return nothing
-end
-
-function config_saturation_adjustment(FT, N, resolution, xmax, ymax, zmax)
-
-  # Boundary conditions
-  bc = NoFluxBC()
+function config_kinematic_eddy(FT, N, resolution, xmax, ymax, zmax, wmax)
 
   # Choose explicit solver
   ode_solver = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
 
-  wmax = FT(.6)
-  IS = typeof(init_saturation_adjustment!)
+  IS = typeof(init_kinematic_eddy!)
+  BC = typeof(bc_kinematic_eddy!)
+
   # Set up the model
-  model = KinematicModel{FT,IS}(FT(wmax), # m/s
-                                FT(xmax), # m
-                                FT(zmax), # m
-                                init_saturation_adjustment!
-                                )
+  model = KinematicModel{BC,IS,FT}(
+      bc_kinematic_eddy!,
+      init_kinematic_eddy!,
+      FT(xmax),
+      FT(ymax),
+      FT(zmax),
+      FT(wmax)
+  )
 
-        # (Δx, Δy, Δz)::NTuple{3,FT},
-        # xmax::Int, ymax::Int, zmax::Int,
+  config = CLIMA.AtmosLESConfiguration(
+      "KinematicModel",
+      N,
+      resolution,
+      xmax,
+      ymax,
+      zmax,
+      wmax,
+      solver_type = ode_solver,
+      model = model
+  )
 
-  # Problem configuration
-  config = CLIMA.AtmosLESConfiguration("KinematicModel",
-                                       N, resolution, xmax, ymax, zmax,
-                                       init_saturation_adjustment!,
-                                       solver_type=ode_solver,
-                                       model=model)
   return config
 end
 
@@ -275,6 +313,8 @@ function main()
     xmax = 2500
     ymax = 10
     zmax = 2500
+    # Eddy max velocity
+    wmax = FT(0.6)
 
     # Simulation time
     t0 = FT(0)
@@ -283,8 +323,8 @@ function main()
     # Courant number
     CFL = FT(0.8)
 
-    driver_config = config_saturation_adjustment(
-        FT, N, resolution, xmax, ymax, zmax)
+    driver_config = config_kinematic_eddy(
+        FT, N, resolution, xmax, ymax, zmax, wmax)
     solver_config = CLIMA.setup_solver(
         t0, timeend, driver_config; ode_dt=FT(0.1),
         init_on_cpu=true, Courant_number=CFL
