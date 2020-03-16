@@ -72,7 +72,20 @@ import CLIMA.DGmethods: BalanceLaw,
 #}
 # ------------------------ Description ------------------------- #
 
-struct KinematicModel{O,M,P,S,BC,IS,DC,FT} <: BalanceLaw
+Base.@kwdef struct KinematicBC{M, E, Q}
+    momentum::M = Impenetrable(FreeSlip())
+    energy::E = Insulating()
+    moisture::Q = Impermeable()
+end
+
+struct KinematicModelConfig{FT}
+  xmax::FT
+  ymax::FT
+  zmax::FT
+  wmax::FT
+end
+
+struct KinematicModel{FT,O,M,P,S,BC,IS,DC} <: BalanceLaw
   orientation::O
   moisture::M
   precipitation::P
@@ -80,10 +93,6 @@ struct KinematicModel{O,M,P,S,BC,IS,DC,FT} <: BalanceLaw
   boundarycondition::BC
   init_state::IS
   data_config::DC
-  xmax::FT
-  ymax::FT
-  zmax::FT
-  wmax::FT
 end
 
 function KinematicModel{FT}(::Type{AtmosLESConfigType};
@@ -158,10 +167,11 @@ function init_kinematic_eddy!(ed, state, aux, (x,y,z), t)
              )^(cp_d / R_d)
   T::FT = θ_0 * exner_given_pressure(p, q_pt_0)
   ρ::FT = p / R_m / T
+  dc = ed.data_config
 
   # velocity as derivative of streamfunction
-  ρu::FT = ed.wmax * ed.xmax/ed.zmax * cos(π * z/ed.zmax) * cos(2*π * x/ed.xmax)
-  ρw::FT = 2*ed.wmax * sin(π * z/ed.zmax) * sin(2*π * x/ed.xmax)
+  ρu::FT = dc.wmax * dc.xmax/dc.zmax * cos(π * z/dc.zmax) * cos(2*π * x/dc.xmax)
+  ρw::FT = 2*dc.wmax * sin(π * z/dc.zmax) * sin(2*π * x/dc.xmax)
   u = ρu / ρ
   w = ρw / ρ
 
@@ -210,6 +220,52 @@ function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
 
 end
 
+function boundary_state!(nf, m::KinematicModel, args...)
+    bc_kin_boundary_state!(nf, m.boundarycondition, m, args...)
+end
+@generated function bc_kin_boundary_state!(
+    nf,
+    tup::Tuple,
+    m,
+    state⁺,
+    aux⁺,
+    n,
+    state⁻,
+    aux⁻,
+    bctype,
+    t,
+    args...,
+)
+    N = fieldcount(tup)
+    return quote
+        Base.Cartesian.@nif(
+            $(N + 1),
+            i -> bctype == i, # conditionexpr
+            i -> bc_kin_boundary_state!(
+                nf,
+                tup[i],
+                m,
+                state⁺,
+                aux⁺,
+                n,
+                state⁻,
+                aux⁻,
+                bctype,
+                t,
+                args...,
+            ), # expr
+            i -> error("Invalid boundary tag")
+        ) # elseexpr
+        return nothing
+    end
+end
+
+function bc_kin_boundary_state!(nf, bc::KinematicBC, m, args...)
+    # bc_kin_momentum_boundary_state!(nf, bc.momentum, m, args...)
+    # bc_kin_energy_boundary_state!(nf, bc.energy, m, args...)
+    # bc_kin_moisture_boundary_state!(nf, bc.moisture, m, args...)
+end
+
 function bc_kinematic_eddy!(m::KinematicModel, state⁺::Vars, state⁻::Vars, _...)
 
    FT = eltype(state⁻)
@@ -253,7 +309,6 @@ end
 end
 
 function update_aux!(dg::DGModel, m::KinematicModel, Q::MPIStateArray, t::Real)
-  #nodal_update_aux!(atmos_nodal_update_aux!, dg, m, Q, t)
   return true
 end
 
@@ -272,24 +327,28 @@ function config_kinematic_eddy(FT, N, resolution, xmax, ymax, zmax, wmax)
   IS = typeof(init_kinematic_eddy!)
   BC = typeof(bc_kinematic_eddy!)
 
-  # Set up the model
-  model = KinematicModel{BC,IS,FT}(
-      bc_kinematic_eddy!,
-      init_kinematic_eddy!,
+  kmc = KinematicModelConfig(
       FT(xmax),
       FT(ymax),
       FT(zmax),
       FT(wmax)
+)
+
+  # Set up the model
+  model = KinematicModel{FT}(AtmosLESConfigType;
+      boundarycondition = KinematicBC(),
+      init_state = init_kinematic_eddy!,
+      data_config = kmc
   )
 
   config = CLIMA.AtmosLESConfiguration(
       "KinematicModel",
       N,
       resolution,
-      xmax,
-      ymax,
-      zmax,
-      wmax,
+      FT(xmax),
+      FT(ymax),
+      FT(zmax),
+      init_kinematic_eddy!;
       solver_type = ode_solver,
       model = model
   )
