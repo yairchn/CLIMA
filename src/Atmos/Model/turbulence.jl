@@ -20,7 +20,7 @@ function diffusive!(::TurbulenceClosure, ::Orientation, diffusive, ∇transform,
 end
 
 """
-    ν, τ = turbulence_tensors(::TurbulenceClosure, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+    ν, τ = turbulence_tensors(am::AtmosModel, m::TurbulenceClosure, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 
 Compute the kinematic viscosity tensor (`ν`) and SGS momentum flux tensor (`τ`).
 """
@@ -103,7 +103,7 @@ function diffusive!(::ConstantViscosityWithDivergence, ::Orientation,
   diffusive.turbulence.S = symmetrize(∇transform.u)
 end
 
-function turbulence_tensors(m::ConstantViscosityWithDivergence,
+function turbulence_tensors(am::AtmosModel, m::ConstantViscosityWithDivergence,
     state::Vars, diffusive::Vars, aux::Vars, t::Real)
 
   S = diffusive.turbulence.S
@@ -181,16 +181,26 @@ function diffusive!(::SmagorinskyLilly, orientation::Orientation,
   diffusive.turbulence.N² = dot(∇transform.turbulence.θ_v, ∇Φ) / aux.moisture.θ_v
 end
 
-function turbulence_tensors(m::SmagorinskyLilly, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+function turbulence_tensors(am::AtmosModel, m::SmagorinskyLilly, state::Vars, diffusive::Vars, aux::Vars, t::Real)
 
   FT = eltype(state)
   S = diffusive.turbulence.S
+  
+  # Vertical unity vector
+  
+  k̂ = vertical_unit_vector(am.orientation,aux)
+  # Timescale (strain-rate magnitude)
   normS = strain_rate_magnitude(S)
-
-  # squared buoyancy correction
+  
+  # Squared buoyancy correction
+  
   Richardson = diffusive.turbulence.N² / (normS^2 + eps(normS))
-  f_b² = sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
-  ν = normS * f_b² * FT(m.C_smag * aux.turbulence.Δ)^2
+
+  f_b² = 1 - sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
+  # Determine the vertical component correction
+  f_bk = (1 .- f_b² * k̂)
+  ν = normS * FT(m.C_smag * aux.turbulence.Δ)^2
+  ν = SDiagonal(ν .* f_bk)
   τ = (-2*ν) * S
   return ν, τ
 end
@@ -246,21 +256,21 @@ function diffusive!(::Vreman, orientation::Orientation,
   diffusive.turbulence.N² = dot(∇transform.turbulence.θ_v, ∇Φ) / aux.moisture.θ_v
 end
 
-function turbulence_tensors(m::Vreman, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+function turbulence_tensors(am::AtmosModel, m::Vreman, state::Vars, diffusive::Vars, aux::Vars, t::Real)
   FT = eltype(state)
   α = diffusive.turbulence.∇u
   S = symmetrize(α)
 
   normS = strain_rate_magnitude(S)
   Richardson = diffusive.turbulence.N² / (normS^2 + eps(normS))
-  f_b² = sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
-
+  f_b² = 1 - sqrt(clamp(1 - Richardson*inv_Pr_turb, 0, 1))
+  # Determine the vertical component correction
+  f_bk = (1 .- f_b² * k̂)
   β = f_b² * (aux.turbulence.Δ)^2 * (α' * α)
   Bβ = principal_invariants(β)[2]
-
-  ν = max(0, m.C_smag^2 * FT(2.5) * sqrt(abs(Bβ/(norm2(α)+eps(FT)))))
+  ν = f_bk * max(0, m.C_smag^2 * FT(2.5) * sqrt(abs(Bβ/(norm2(α)+eps(FT)))))
+  ν = SDiagonal(ν .* f_bk)
   τ = (-2*ν) * S
-
   return ν, τ
 end
 
@@ -320,7 +330,7 @@ function diffusive!(::AnisoMinDiss, ::Orientation,
   diffusive.turbulence.∇u = ∇transform.u
 end
 
-function turbulence_tensors(m::AnisoMinDiss, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+function turbulence_tensors(am::AtmosModel, m::AnisoMinDiss, state::Vars, diffusive::Vars, aux::Vars, t::Real)
   FT = eltype(state)
   α = diffusive.turbulence.∇u
   S = symmetrize(α)
