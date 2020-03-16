@@ -263,7 +263,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     radiation = DYCOMSRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1)
 
     # Sources
-    f_coriolis = FT(1.03e-4)
+    f_coriolis = FT(0.762e-4)
     u_geostrophic = FT(7.0)
     v_geostrophic = FT(-5.5)
     w_ref = FT(0)
@@ -297,7 +297,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
         AtmosLESConfigType;
         ref_state = ref_state,
         turbulence = SmagorinskyLilly{FT}(C_smag),
-        moisture = EquilMoist{FT}(; maxiter = 5),
+        moisture = EquilMoist{FT}(maxiter = 1, tolerance=FT(50)),
         radiation = radiation,
         source = source,
         boundarycondition = (
@@ -322,7 +322,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
             linear_model = AtmosAcousticGravityLinearModel,
             slow_method = LSRK144NiegemannDiehlBusch,
             fast_method = LSRK144NiegemannDiehlBusch,
-            timestep_ratio = 20,
+            timestep_ratio = 10,
         )
     
     config = CLIMA.AtmosLESConfiguration(
@@ -360,7 +360,7 @@ function main()
 
     xmax = 1000
     ymax = 1000
-    zmax = 2000
+    zmax = 2500
 
     t0 = FT(0)
     timeend = FT(14400)
