@@ -55,7 +55,7 @@ output_vars = [
 
 
 # Allow user to call the plot function with a String argument for the filename
-function run_plot_routine(filename::String)
+function run_plot_routine(filename::String; debug::Bool=false)
     # Load data from JLD2 file
     data = load(filename)
     
@@ -125,101 +125,108 @@ function run_plot_routine(filename::String)
     plotsdir = "./plots-bomex/"*dirname*timestring
     mkpath(plotsdir) 
 
-    p1 = Axis([
-               Plots.Linear(df.u,df.z, legendentry=L"$\langle u \rangle$", markSize=0.4, style = "solid"), 
-               Plots.Linear(df.v,df.z, legendentry=L"$\langle v \rangle$", markSize=0.4, style = "solid"), 
-               Plots.Linear(df.w,df.z, legendentry=L"$\langle w \rangle$", markSize=0.4, style = "solid"),
-    ], ylabel=L"$z$", style="smooth")
-    p1.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("Velocity").pdf", p1)
 
-    p2 = Axis([
-            Plots.Linear(df.thd,df.z, legendentry=L"$\langle \theta_{dry} \rangle$", markSize=0.4, style="solid"),
-            Plots.Linear(df.thl,df.z, legendentry=L"$\langle \theta_{liq} \rangle$", markSize=0.4, style="solid"),
-            Plots.Linear(df.thv,df.z, legendentry=L"$\langle \theta_{vap} \rangle$", markSize=0.4, style="solid"),
-    ], ylabel=L"$z$", style="smooth")
-    p2.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("PotTemp").pdf", p2)
-    
-    p3 = Axis([
-               Plots.Linear(df.e_tot, df.z, legendentry=L"$\langle e_{tot} \rangle$", markSize=0.4, style="solid"),
-               Plots.Linear(df.e_int, df.z, legendentry=L"$\langle e_{int} \rangle$", markSize=0.4, style="dashed"),
-               Plots.Linear(df.h_t, df.z, legendentry=L"$\langle h_{tot} \rangle$", markSize=0.4, style="solid"),
-               Plots.Linear(df.h_m, df.z, legendentry=L"$\langle h_{moist} \rangle$", markSize=0.4, style="dashed"),
-              ], ylabel=L"$z$", style="smooth")
-    p3.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("EnergyEnthalpy").pdf", p3)
-    
-    p4 = Axis([
-               Plots.Linear(df.uvariance, df.z,legendentry=L"$\langle u^{\prime} u^{\prime} \rangle$", markSize=0.4),
-               Plots.Linear(df.vvariance, df.z,legendentry=L"$\langle v^{\prime} v^{\prime} \rangle$", markSize=0.4),
-               Plots.Linear(df.wvariance, df.z,legendentry=L"$\langle w^{\prime} w^{\prime} \rangle$", markSize=0.4),
-              ], ylabel=L"$z$", style="smooth")
-    p4.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("VelVariance").pdf", p4)
-    
-    p5 = Axis([
-               Plots.Linear(df.vert_eddy_thd_flux, df.z,legendentry=L"$\langle w^{\prime} \theta_{dry}^{\prime} \rangle$", markSize=0.4),
-               Plots.Linear(df.vert_eddy_thl_flux, df.z,legendentry=L"$\langle w^{\prime} \theta_{liq}^{\prime} \rangle$", markSize=0.4),
-               Plots.Linear(df.vert_eddy_thv_flux, df.z,legendentry=L"$\langle w^{\prime} \theta_{vap}^{\prime} \rangle$", markSize=0.4),
-              ], ylabel=L"$z$", style="smooth")
-    p5.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("PotTempFluxes").pdf", p5)
+    if !debug 
 
-    p6 = Axis([
-               Plots.Linear(df.wskew, df.z, legendentry=L"$\langle w^{\prime} w^{\prime} w^{\prime} \rangle$", markSize=0.4),
-              ], ylabel=L"$z$", style="smooth")
-    p6.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("VertVelSkewness").pdf", p6)
-    
-    p7 = Axis([
-               Plots.Linear(df.q_liq, df.z, legendentry=L"$\langle q_{liq} \rangle$", markSize=0.4),
-              ], ylabel=L"$z$", style="smooth")
-    p7.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("MoistureLiquid").pdf", p7)
-    
-    p8 = Axis([
-               Plots.Linear(df.q_tot, df.z, legendentry=L"$\langle q_{tot} \rangle$", markSize=0.4),
-              ],ylabel=L"$z$", style="smooth")
-    p8.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("MoistureTotal").pdf", p8)
-   
-    p9 = Axis([
-               Plots.Linear(df.vert_eddy_mass_flux, df.z, legendentry=L"$\langle w^{\prime} ρ^{\prime} \rangle$", markSize=0.4),
-               Plots.Linear(df.vert_eddy_qt_flux, df.z, legendentry=L"$\langle w^{\prime} q_{tot}^{\prime} \rangle$", markSize=0.4),
-               Plots.Linear(df.vert_eddy_ql_flux, df.z, legendentry=L"$\langle w^{\prime} q_{liq}^{\prime} \rangle$", markSize=0.4),
-              ], ylabel=L"$z$", style="smooth")
-    p9.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("MoistureFluxes").pdf", p9)
-    
-    p10 = Axis([
-               Plots.Linear(df.vert_eddy_u_flux,df.z, legendentry=L"$\langle w^{\prime} u^{\prime} \rangle$", markSize=0.4),
-               Plots.Linear(df.vert_eddy_v_flux,df.z, legendentry=L"$\langle w^{\prime} v^{\prime} \rangle$", markSize=0.4),
-              ], ylabel=L"$z$", style="smooth")
-    p10.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("TurbulentFlux").pdf", p10)
-    
-    p11 = Axis([
-                Plots.Linear((df.uvariance + df.vvariance + df.wvariance)/ 2, df.z, 
-                             legendentry=L"$\langle tke \rangle$", markSize=0.4),
-               ], ylabel=L"$z$", style="smooth")
-    p11.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("TurbulentKineticEnergy").pdf", p11)
-    
-    p12 = Axis([
-                Plots.Linear(df.qt_sgs,df.z,  
-                             legendentry=L"$\langle SGS(q_{tot}) \rangle$", markSize=0.4),
-               ], ylabel=L"$z$", style="smooth")
-    p12.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("SGSMoisture").pdf", p12)
+        p1 = Axis([
+                   Plots.Linear(df.u,df.z, legendentry=L"$\langle u \rangle$", markSize=0.4, style = "solid"), 
+                   Plots.Linear(df.v,df.z, legendentry=L"$\langle v \rangle$", markSize=0.4, style = "solid"), 
+                   Plots.Linear(df.w,df.z, legendentry=L"$\langle w \rangle$", markSize=0.4, style = "solid"),
+                  ], xlabel = L"$\langle u_{i} \rangle$", ylabel=L"$z$", style="smooth")
+        p1.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("Velocity").pdf", p1)
 
-    p13 = Axis([
-                Plots.Linear(df.ht_sgs, df.z, 
-                             legendentry=L"$\langle SGS(h_{tot}) \rangle$", markSize=0.4),
-               ], ylabel=L"$z$", style="smooth")
-    p13.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
-    PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("SGSEnthalpy").pdf", p13)
+        p2 = Axis([
+                Plots.Linear(df.thd,df.z, legendentry=L"$\langle \theta_{dry} \rangle$", markSize=0.4, style="solid"),
+                Plots.Linear(df.thl,df.z, legendentry=L"$\langle \theta_{liq} \rangle$", markSize=0.4, style="solid"),
+                Plots.Linear(df.thv,df.z, legendentry=L"$\langle \theta_{vap} \rangle$", markSize=0.4, style="solid"),
+               ], xlabel = L"$\langle θ \rangle$", ylabel=L"$z$", style="smooth")
+        p2.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("PotTemp").pdf", p2)
+        
+        p3 = Axis([
+                   Plots.Linear(df.e_tot, df.z, legendentry=L"$\langle e_{tot} \rangle$", markSize=0.4, style="solid"),
+                   Plots.Linear(df.e_int, df.z, legendentry=L"$\langle e_{int} \rangle$", markSize=0.4, style="dashed"),
+                   Plots.Linear(df.h_t, df.z, legendentry=L"$\langle h_{tot} \rangle$", markSize=0.4, style="solid"),
+                   Plots.Linear(df.h_m, df.z, legendentry=L"$\langle h_{moist} \rangle$", markSize=0.4, style="dashed"),
+                  ],xlabel=L"$\langle e \rangle ,\langle h \rangle$", ylabel=L"$z$", style="smooth")
+        p3.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("EnergyEnthalpy").pdf", p3)
+        
+        p4 = Axis([
+                   Plots.Linear(df.uvariance, df.z,legendentry=L"$\langle u^{\prime} u^{\prime} \rangle$", markSize=0.4),
+                   Plots.Linear(df.vvariance, df.z,legendentry=L"$\langle v^{\prime} v^{\prime} \rangle$", markSize=0.4),
+                   Plots.Linear(df.wvariance, df.z,legendentry=L"$\langle w^{\prime} w^{\prime} \rangle$", markSize=0.4),
+                  ], xlabel=L"$\langle u^{\prime 2}  \rangle$", ylabel=L"$z$", style="smooth")
+        p4.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("VelVariance").pdf", p4)
+        
+        p5 = Axis([
+                   Plots.Linear(df.vert_eddy_thd_flux, df.z,legendentry=L"$\langle w^{\prime} \theta_{dry}^{\prime} \rangle$", markSize=0.4),
+                   Plots.Linear(df.vert_eddy_thl_flux, df.z,legendentry=L"$\langle w^{\prime} \theta_{liq}^{\prime} \rangle$", markSize=0.4),
+                   Plots.Linear(df.vert_eddy_thv_flux, df.z,legendentry=L"$\langle w^{\prime} \theta_{vap}^{\prime} \rangle$", markSize=0.4),
+                  ],xlabel=L"$\langle w^{\prime} \theta^{\prime} \rangle$", ylabel=L"$z$", style="smooth")
+        p5.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("PotTempFluxes").pdf", p5)
 
+        p6 = Axis([
+                   Plots.Linear(df.wskew, df.z, legendentry=L"$\langle w^{\prime} w^{\prime} w^{\prime} \rangle$", markSize=0.4),
+                  ], xlabel=L"$\langle w^{\prime} \rangle$", ylabel=L"$z$", style="smooth")
+        p6.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("VertVelSkewness").pdf", p6)
+        
+        p7 = Axis([
+                   Plots.Linear(df.q_liq, df.z, legendentry=L"$\langle q_{liq} \rangle$", markSize=0.4),
+                  ], xlabel=L"$\langle q_{liq} \rangle$", ylabel=L"$z$", style="smooth")
+        p7.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("MoistureLiquid").pdf", p7)
+        
+        p8 = Axis([
+                   Plots.Linear(df.q_tot, df.z, legendentry=L"$\langle q_{tot} \rangle$", markSize=0.4),
+                  ], xlabel = L"$\langle q_{tot} \rangle$",ylabel=L"$z$", style="smooth")
+        p8.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("MoistureTotal").pdf", p8)
+       
+        p9 = Axis([
+                   Plots.Linear(df.vert_eddy_mass_flux, df.z, legendentry=L"$\langle w^{\prime} \rho^{\prime} \rangle$", markSize=0.4),
+                   Plots.Linear(df.vert_eddy_qt_flux, df.z, legendentry=L"$\langle w^{\prime} q_{tot}^{\prime} \rangle$", markSize=0.4),
+                   Plots.Linear(df.vert_eddy_ql_flux, df.z, legendentry=L"$\langle w^{\prime} q_{liq}^{\prime} \rangle$", markSize=0.4),
+                  ], xlabel=L"$\langle w^{\prime}\chi^{\prime} \rangle$", ylabel=L"$z$", style="smooth")
+        p9.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("MoistureFluxes").pdf", p9)
+        
+        p10 = Axis([
+                   Plots.Linear(df.vert_eddy_u_flux,df.z, legendentry=L"$\langle w^{\prime} u^{\prime} \rangle$", markSize=0.4),
+                   Plots.Linear(df.vert_eddy_v_flux,df.z, legendentry=L"$\langle w^{\prime} v^{\prime} \rangle$", markSize=0.4),
+                  ], xlabel=L"$\langle w^{\prime} u_{j}^{\prime} \rangle$", ylabel=L"$z$", style="smooth")
+        p10.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("TurbulentFlux").pdf", p10)
+        
+        p11 = Axis([
+                    Plots.Linear((df.uvariance + df.vvariance + df.wvariance)/ 2, df.z, 
+                                 legendentry=L"$\langle tke \rangle$", markSize=0.4),
+                   ], xlabel = L"$\langle \frac{u_{i}^{\prime} u_{i}^{\prime}}{2} \rangle$", ylabel=L"$z$", style="smooth")
+        p11.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("TurbulentKineticEnergy").pdf", p11)
+        
+        p12 = Axis([
+                    Plots.Linear(df.qt_sgs,df.z,  
+                                 legendentry=L"$\langle SGS(q_{tot}) \rangle$", markSize=0.4),
+                   ], xlabel=L"$\langle D \nabla q_{tot} \rangle$", ylabel=L"$z$", style="smooth")
+        p12.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("SGSMoisture").pdf", p12)
+
+        p13 = Axis([
+                    Plots.Linear(df.ht_sgs, df.z, 
+                                 legendentry=L"$\langle SGS(h_{tot}) \rangle$", markSize=0.4),
+                   ], xlabel = L"$\langle D \nabla h_{tot} \rangle$", ylabel=L"$z$", style="smooth")
+        p13.legendStyle = "{at={(1.00,1.00)},anchor=north west}"
+        PGFPlots.save(plotsdir*"/plot-"*timestring*"-$("SGSEnthalpy").pdf", p13)
+    else
+
+      @show("Debug mode...")
+      return df
+    end
 end
   # use graphing framework of choice to plot data in `df`
 
