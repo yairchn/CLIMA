@@ -62,11 +62,11 @@ A `BalanceLaw` for atmosphere modeling.
 
 # Usage
 
-    AtmosModel(orientation, ref_state, turbulence, moisture, radiation, source,
+    AtmosModel(orientation, ref_state, turbulence, moisture, radiation, source, tracers,
                boundarycondition, init_state)
 
 """
-struct AtmosModel{FT, PS, O, RS, T, M, P, R, S, BC, IS, DC} <: BalanceLaw
+struct AtmosModel{FT, PS, O, RS, T, M, P, R, S, TR, BC, IS, DC} <: BalanceLaw
     param_set::PS
     orientation::O
     ref_state::RS
@@ -75,6 +75,7 @@ struct AtmosModel{FT, PS, O, RS, T, M, P, R, S, BC, IS, DC} <: BalanceLaw
     precipitation::P
     radiation::R
     source::S
+    tracers::TR
     # TODO: Probably want to have different bc for state and diffusion...
     boundarycondition::BC
     init_state::IS
@@ -93,12 +94,13 @@ function AtmosModel{FT}(
     precipitation::P = NoPrecipitation(),
     radiation::R = NoRadiation(),
     source::S = (Gravity(), Coriolis(), GeostrophicForcing{FT}(7.62e-5, 0, 0)),
+    tracers::TR = NoTracers(),
     # TODO: Probably want to have different bc for state and diffusion...
     boundarycondition::BC = AtmosBC(),
     init_state::IS = nothing,
     data_config::DC = nothing,
     param_set::PS = nothing,
-) where {FT <: AbstractFloat, O, RS, T, M, P, R, S, BC, IS, DC, PS}
+) where {FT <: AbstractFloat, O, RS, T, M, P, R, S, TR, BC, IS, DC, PS}
     @assert param_set ≠ nothing
     @assert init_state ≠ nothing
 
@@ -111,6 +113,7 @@ function AtmosModel{FT}(
         precipitation,
         radiation,
         source,
+        tracers,
         boundarycondition,
         init_state,
         data_config,
@@ -130,11 +133,12 @@ function AtmosModel{FT}(
     precipitation::P = NoPrecipitation(),
     radiation::R = NoRadiation(),
     source::S = (Gravity(), Coriolis()),
+    tracers::TR = NoTracers(),
     boundarycondition::BC = AtmosBC(),
     init_state::IS = nothing,
     data_config::DC = nothing,
     param_set::PS = nothing,
-) where {FT <: AbstractFloat, O, RS, T, M, P, R, S, BC, IS, DC, PS}
+) where {FT <: AbstractFloat, O, RS, T, M, P, R, S, TR, BC, IS, DC, PS}
     @assert param_set ≠ nothing
     @assert init_state ≠ nothing
     atmos = (
@@ -146,6 +150,7 @@ function AtmosModel{FT}(
         precipitation,
         radiation,
         source,
+        tracers,
         boundarycondition,
         init_state,
         data_config,
@@ -163,6 +168,7 @@ function vars_state(m::AtmosModel, FT)
         turbulence::vars_state(m.turbulence, FT)
         moisture::vars_state(m.moisture, FT)
         radiation::vars_state(m.radiation, FT)
+        tracers::vars_state(m.tracers, FT)
     end
 end
 function vars_gradient(m::AtmosModel, FT)
@@ -171,6 +177,7 @@ function vars_gradient(m::AtmosModel, FT)
         h_tot::FT
         turbulence::vars_gradient(m.turbulence, FT)
         moisture::vars_gradient(m.moisture, FT)
+        tracers::vars_gradient(m.tracers, FT)
     end
 end
 function vars_diffusive(m::AtmosModel, FT)
@@ -178,6 +185,7 @@ function vars_diffusive(m::AtmosModel, FT)
         ∇h_tot::SVector{3, FT}
         turbulence::vars_diffusive(m.turbulence, FT)
         moisture::vars_diffusive(m.moisture, FT)
+        tracers::vars_diffusive(m.tracers, FT)
     end
 end
 
@@ -191,6 +199,7 @@ function vars_aux(m::AtmosModel, FT)
         ref_state::vars_aux(m.ref_state, FT)
         turbulence::vars_aux(m.turbulence, FT)
         moisture::vars_aux(m.moisture, FT)
+        tracers::vars_aux(m.tracers, FT)
         radiation::vars_aux(m.radiation, FT)
     end
 end
@@ -212,6 +221,7 @@ include("moisture.jl")
 include("precipitation.jl")
 include("radiation.jl")
 include("source.jl")
+include("tracers.jl")
 include("boundaryconditions.jl")
 include("linear.jl")
 include("remainder.jl")
@@ -262,6 +272,7 @@ Where
     flux.ρe += u * p
     flux_radiation!(m.radiation, m, flux, state, aux, t)
     flux_moisture!(m.moisture, m, flux, state, aux, t)
+    flux_tracers!(m.tracers, m, flux, state, aux, t)
 end
 
 function gradvariables!(
@@ -277,6 +288,7 @@ function gradvariables!(
 
     gradvariables!(atmos.moisture, transform, state, aux, t)
     gradvariables!(atmos.turbulence, transform, state, aux, t)
+    gradvariables!(atmos.tracers, transform, state, aux, t)
 end
 
 function diffusive!(
@@ -301,6 +313,7 @@ function diffusive!(
     )
     # diffusivity of moisture components
     diffusive!(atmos.moisture, diffusive, ∇transform, state, aux, t)
+    diffusive!(atmos.tracers, diffusive, ∇transform, state, aux, t)
 end
 
 @inline function flux_diffusive!(
@@ -317,6 +330,7 @@ end
     d_h_tot = -D_t .* diffusive.∇h_tot
     flux_diffusive!(atmos, flux, state, τ, d_h_tot)
     flux_diffusive!(atmos.moisture, flux, state, diffusive, aux, t, D_t)
+    flux_diffusive!(atmos.tracers, flux, state, diffusive, aux, t, D_t)
 end
 
 #TODO: Consider whether to not pass ρ and ρu (not state), foc BCs reasons
