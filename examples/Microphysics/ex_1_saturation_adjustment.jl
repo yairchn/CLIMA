@@ -83,6 +83,11 @@ struct KinematicModelConfig{FT}
   ymax::FT
   zmax::FT
   wmax::FT
+  θ_0::FT
+  p_0::FT
+  p_1000::FT
+  qt_0::FT
+  z_0::FT
 end
 
 struct KinematicModel{FT,O,M,P,S,BC,IS,DC} <: BalanceLaw
@@ -154,25 +159,17 @@ function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
 
     FT = eltype(aux)
     x, y, z = geom.coord
+    dc = m.data_config
 
-    # TODO- move to eddy config
-    θ_0::FT    = 289         # K
-    p_0::FT    = 101500      # Pa
-    p_1000::FT = 100000      # Pa
-    qt_0::FT   = 7.5 * 1e-3  # kg/kg
-    z_0::FT    = 0           # m
-    #-----------------------------
-
-    R_m, cp_m, cv_m, γ = gas_constants(PhasePartition(qt_0))
+    # TODO - should R_d and cp_d here be R_m and cp_m?
+    R_m, cp_m, cv_m, γ = gas_constants(PhasePartition(dc.qt_0))
 
     # Pressure profile assuming hydrostatic and constant θ and qt profiles.
     # It is done this way to be consistent with Arabas paper.
     # It's not neccesarily the best way to initialize with our model variables.
-    # TODO - should R_d and cp_d here be R_m and cp_m?
-    p = p_1000 * ((p_0 / p_1000)^(R_d / cp_d) -
-                R_d / cp_d * grav / θ_0 / R_m * (z - z_0)
+    p = dc.p_1000 * ((dc.p_0 / dc.p_1000)^(R_d / cp_d) -
+                R_d / cp_d * grav / dc.θ_0 / R_m * (z - dc.z_0)
                )^(cp_d / R_d)
-
     aux.p = p
     aux.x = x
     aux.y = y
@@ -192,27 +189,19 @@ end
 
 function init_kinematic_eddy!(eddy_model, state, aux, (x,y,z), t)
   FT = eltype(state)
-
-  # TODO- move to eddy config
-  θ_0::FT    = 289         # K
-  p_0::FT    = 101500      # Pa
-  p_1000::FT = 100000      # Pa
-  qt_0::FT   = 7.5 * 1e-3  # kg/kg
-  z_0::FT    = 0           # m
-  # --------------------------
+  dc = eddy_model.data_config
 
   # density
-  q_pt_0 = PhasePartition(qt_0)
+  q_pt_0 = PhasePartition(dc.qt_0)
   R_m, cp_m, cv_m, γ = gas_constants(q_pt_0)
-  T::FT = θ_0 * (aux.p / p_1000)^(R_m / cp_m)
+  T::FT = dc.θ_0 * (aux.p / dc.p_1000)^(R_m / cp_m)
   ρ::FT = aux.p / R_m / T
-  dc = eddy_model.data_config
   state.ρ = ρ
 
   # water
-  state.ρq_tot = ρ * qt_0
+  state.ρq_tot = ρ * dc.qt_0
 
-  # velocity as derivative of streamfunction
+  # velocity (derivative of streamfunction)
   ρu::FT = dc.wmax * dc.xmax/dc.zmax * cos(π * z/dc.zmax) * cos(2*π*x/dc.xmax)
   ρw::FT = 2*dc.wmax * sin(π * z/dc.zmax) * sin(2*π * x/dc.xmax)
   state.ρu = SVector(ρu, FT(0), ρw)
@@ -225,9 +214,6 @@ function init_kinematic_eddy!(eddy_model, state, aux, (x,y,z), t)
   e_int::FT = internal_energy(T, q_pt_0)
   e_tot::FT = e_kin + e_pot + e_int
   state.ρe = ρ * e_tot
-
-  ts = PhaseEquil(e_int, state.ρ, qt_0)
-  pp = PhasePartition(ts)
 
   return nothing
 end
@@ -353,8 +339,7 @@ end
 # ------------------------------------------------------------------
 
 
-function config_kinematic_eddy(FT, N, resolution, xmax, ymax, zmax, wmax)
-
+function config_kinematic_eddy(FT, N, resolution, xmax, ymax, zmax, wmax, θ_0, p_0, p_1000, qt_0, z_0)
   # Choose explicit solver
   ode_solver = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
 
@@ -362,7 +347,12 @@ function config_kinematic_eddy(FT, N, resolution, xmax, ymax, zmax, wmax)
       FT(xmax),
       FT(ymax),
       FT(zmax),
-      FT(wmax)
+      FT(wmax),
+      FT(θ_0),
+      FT(p_0),
+      FT(p_1000),
+      FT(qt_0),
+      FT(z_0)
   )
 
   # Set up the model
@@ -403,8 +393,13 @@ function main()
     xmax = 1500
     ymax = 10
     zmax = 1500
-    # Eddy max velocity
-    wmax = FT(0.6)
+    # initial configuration
+    wmax = FT(0.6)  # max velocity of the eddy  [m/s]
+    θ_0 = FT(289) # initial theta value (constant in the domain) [K]
+    p_0 = FT(101500) # surface pressure [Pa]
+    p_1000 = FT(100000) # reference pressure in theta definition [Pa]
+    qt_0 = FT(7.5 * 1e-3) # initial total water specific humidity (constant in the domain) [kg/kg]
+    z_0 = FT(0) # surface height
 
     # Simulation time
     t0 = FT(0)
@@ -414,7 +409,7 @@ function main()
     CFL = FT(0.8)
 
     driver_config = config_kinematic_eddy(
-        FT, N, resolution, xmax, ymax, zmax, wmax)
+        FT, N, resolution, xmax, ymax, zmax, wmax, θ_0, p_0, p_1000, qt_0, z_0)
     solver_config = CLIMA.setup_solver(
         t0, timeend, driver_config; ode_dt=FT(0.1),
         init_on_cpu=true, Courant_number=CFL
