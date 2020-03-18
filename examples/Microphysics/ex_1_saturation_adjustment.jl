@@ -119,7 +119,6 @@ function KinematicModel{FT}(::Type{AtmosLESConfigType};
   return KinematicModel{FT,typeof.(atmos)...}(atmos...)
 end
 
-
 function vars_state(m::KinematicModel, FT)
   @vars begin
     ρ::FT
@@ -131,92 +130,146 @@ end
 
 function vars_aux(m::KinematicModel, FT)
   @vars begin
+    # defined in init_aux
+    p::FT
+    x::FT
+    y::FT
+    z::FT
+    # defined in update_aux
+    u::FT
+    w::FT
     q_tot::FT
     q_vap::FT
     q_liq::FT
     q_ice::FT
     T::FT
-    p::FT
-    x::FT
-    z::FT
+    e_tot::FT
+    e_kin::FT
+    e_pot::FT
+    e_int::FT
   end
-end
-
-function init_state!(m::KinematicModel, state::Vars, aux::Vars, coords, t, args...)
-  m.init_state(m, state, aux, coords, t, args...)
-end
-
-function init_kinematic_eddy!(ed, state, aux, (x,y,z), t)
-  FT = eltype(state)
-
-  # initial condition
-  θ_0::FT    = 289         # K
-  p_0::FT    = 101500      # Pa
-  p_1000::FT = 100000      # Pa
-  qt_0::FT   = 7.5 * 1e-3  # kg/kg
-  z_0::FT    = 0           # m
-  q_pt_0 = PhasePartition(qt_0)
-
-  R_m, cp_m, cv_m, γ = gas_constants(q_pt_0)
-
-  # Pressure profile assuming hydrostatic and constant θ and qt profiles.
-  # It is done this way to be consistent with Arabas paper.
-  # It's not necessarily the best way to initialize with our model variables.
-  p = p_1000 * ((p_0 / p_1000)^(R_d / cp_d) -
-              R_d / cp_d * grav / θ_0 / R_m * (z - z_0)
-             )^(cp_d / R_d)
-  T::FT = θ_0 * exner_given_pressure(p, q_pt_0)
-  ρ::FT = p / R_m / T
-  dc = ed.data_config
-
-  # velocity as derivative of streamfunction
-  ρu::FT = dc.wmax * dc.xmax/dc.zmax * cos(π * z/dc.zmax) * cos(2*π * x/dc.xmax)
-  ρw::FT = 2*dc.wmax * sin(π * z/dc.zmax) * sin(2*π * x/dc.xmax)
-  u = ρu / ρ
-  w = ρw / ρ
-
-  ρq_tot::FT = ρ * qt_0
-
-  e_int  = internal_energy(T, q_pt_0)
-  ρe_tot = ρ * (grav * z + (1//2)*(u^2 + w^2) + e_int)
-
-  state.ρ = ρ
-  state.ρu = SVector(ρu, FT(0), ρw)
-  state.ρe = ρe_tot
-  state.ρq_tot = ρq_tot
-  return nothing
 end
 
 function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
 
-  x, y, z = geom.coord
+    FT = eltype(aux)
+    x, y, z = geom.coord
 
-  FT = eltype(aux)
-  # initial condition
+    # TODO- move to eddy config
+    θ_0::FT    = 289         # K
+    p_0::FT    = 101500      # Pa
+    p_1000::FT = 100000      # Pa
+    qt_0::FT   = 7.5 * 1e-3  # kg/kg
+    z_0::FT    = 0           # m
+    #-----------------------------
+
+    R_m, cp_m, cv_m, γ = gas_constants(PhasePartition(qt_0))
+
+    # Pressure profile assuming hydrostatic and constant θ and qt profiles.
+    # It is done this way to be consistent with Arabas paper.
+    # It's not neccesarily the best way to initialize with our model variables.
+    # TODO - should R_d and cp_d here be R_m and cp_m?
+    p = p_1000 * ((p_0 / p_1000)^(R_d / cp_d) -
+                R_d / cp_d * grav / θ_0 / R_m * (z - z_0)
+               )^(cp_d / R_d)
+
+    aux.p = p
+    aux.x = x
+    aux.y = y
+    aux.z = z
+end
+
+function init_state!(
+    m::KinematicModel,
+    state::Vars,
+    aux::Vars,
+    coords,
+    t,
+    args...
+)
+    m.init_state(m, state, aux, coords, t, args...)
+end
+
+function init_kinematic_eddy!(eddy_model, state, aux, (x,y,z), t)
+  FT = eltype(state)
+
+  # TODO- move to eddy config
   θ_0::FT    = 289         # K
   p_0::FT    = 101500      # Pa
   p_1000::FT = 100000      # Pa
   qt_0::FT   = 7.5 * 1e-3  # kg/kg
   z_0::FT    = 0           # m
+  # --------------------------
 
-  R_m, cp_m, cv_m, γ = gas_constants(PhasePartition(qt_0))
+  # density
+  q_pt_0 = PhasePartition(qt_0)
+  R_m, cp_m, cv_m, γ = gas_constants(q_pt_0)
+  T::FT = θ_0 * (aux.p / p_1000)^(R_m / cp_m)
+  ρ::FT = aux.p / R_m / T
+  dc = eddy_model.data_config
+  state.ρ = ρ
 
-  # Pressure profile assuming hydrostatic and constant θ and qt profiles.
-  # It is done this way to be consistent with Arabas paper.
-  # It's not neccesarily the best way to initialize with our model variables.
-  p = p_1000 * ((p_0 / p_1000)^(R_d / cp_d) -
-              R_d / cp_d * grav / θ_0 / R_m * (z - z_0)
-             )^(cp_d / R_d)
+  # water
+  state.ρq_tot = ρ * qt_0
 
-  aux.p = p  # for prescribed pressure gradient (kinematic setup)
+  # velocity as derivative of streamfunction
+  ρu::FT = dc.wmax * dc.xmax/dc.zmax * cos(π * z/dc.zmax) * cos(2*π*x/dc.xmax)
+  ρw::FT = 2*dc.wmax * sin(π * z/dc.zmax) * sin(2*π * x/dc.xmax)
+  state.ρu = SVector(ρu, FT(0), ρw)
+  u::FT = ρu / ρ
+  w::FT = ρw / ρ
 
-  aux.x = x
-  aux.z = z
+  # energy
+  e_kin::FT = 1//2 * (u^2 + w^2)
+  e_pot::FT = grav * z
+  e_int::FT = internal_energy(T, q_pt_0)
+  e_tot::FT = e_kin + e_pot + e_int
+  state.ρe = ρ * e_tot
 
-  aux.q_tot = qt_0
-  aux.q_vap = FT(0)
-  aux.q_liq = FT(0)
-  aux.q_ice = FT(0)
+  ts = PhaseEquil(e_int, state.ρ, qt_0)
+  pp = PhasePartition(ts)
+
+  return nothing
+end
+
+function update_aux!(
+    dg::DGModel,
+    m::KinematicModel,
+    Q::MPIStateArray,
+    t::Real
+)
+  nodal_update_aux!(kinematic_model_nodal_update_aux!, dg, m, Q, t)
+
+  return true
+end
+
+function kinematic_model_nodal_update_aux!(
+    m::KinematicModel,
+    state::Vars,
+    aux::Vars,
+    t::Real
+)
+    FT = eltype(state)
+
+    aux.u = state.ρu[1] / state.ρ
+    aux.w = state.ρu[3] / state.ρ
+
+    aux.q_tot = state.ρq_tot / state.ρ
+
+    aux.e_tot = state.ρe / state.ρ
+    aux.e_kin = 1//2 * (aux.u^2 + aux.w^2)
+    aux.e_pot = grav * aux.z
+    aux.e_int = aux.e_tot - aux.e_kin - aux.e_pot
+
+    # saturation adjustment happens here
+    ts = PhaseEquil(aux.e_int, state.ρ, aux.q_tot)
+    pp = PhasePartition(ts)
+
+    aux.T = ts.T
+
+    aux.q_vap = aux.q_tot - pp.liq - pp.ice
+    aux.q_liq = pp.liq
+    aux.q_ice = pp.ice
 
 end
 
@@ -266,16 +319,6 @@ function bc_kin_boundary_state!(nf, bc::KinematicBC, m, args...)
     # bc_kin_moisture_boundary_state!(nf, bc.moisture, m, args...)
 end
 
-function bc_kinematic_eddy!(m::KinematicModel, state⁺::Vars, state⁻::Vars, _...)
-
-   FT = eltype(state⁻)
-
-   state⁺.ρ = state⁻.ρ
-   state⁺.ρe = state⁻.ρe_tot
-   state⁺.ρq_tot = state⁻.ρq_tot
-
-end
-
 @inline function wavespeed(m::KinematicModel, nM, state::Vars, aux::Vars, t::Real)
   ρinv = 1/state.ρ
   u = ρinv * state.ρu
@@ -307,15 +350,6 @@ end
 @inline function flux_diffusive!(
     m::KinematicModel, flux::Grad, state::Vars, τ, d_h_tot)
 end
-
-function update_aux!(dg::DGModel, m::KinematicModel, Q::MPIStateArray, t::Real)
-  return true
-end
-
-#function integral_load_aux!(m::KinematicModel, integ::Vars, state::Vars, aux::Vars) end
-#function integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
-#function reverse_integral_load_aux!(m::KinematicModel, integ::Vars, state::Vars, aux::Vars) end
-#function reverse_integral_set_aux!(m::KinematicModel, aux::Vars, integ::Vars) end
 # ------------------------------------------------------------------
 
 
@@ -324,15 +358,12 @@ function config_kinematic_eddy(FT, N, resolution, xmax, ymax, zmax, wmax)
   # Choose explicit solver
   ode_solver = CLIMA.ExplicitSolverType(solver_method=LSRK144NiegemannDiehlBusch)
 
-  IS = typeof(init_kinematic_eddy!)
-  BC = typeof(bc_kinematic_eddy!)
-
   kmc = KinematicModelConfig(
       FT(xmax),
       FT(ymax),
       FT(zmax),
       FT(wmax)
-)
+  )
 
   # Set up the model
   model = KinematicModel{FT}(AtmosLESConfigType;
@@ -369,9 +400,9 @@ function main()
     Δz = FT(20)
     resolution = (Δx, Δy, Δz)
     # Domain extents
-    xmax = 2500
+    xmax = 1500
     ymax = 10
-    zmax = 2500
+    zmax = 1500
     # Eddy max velocity
     wmax = FT(0.6)
 
@@ -432,7 +463,7 @@ function main()
                           user_callbacks=(cbtmarfilter, cbinfo, cbvtk),
                           check_euclidean_distance=true)
 
-    @test isapprox(result,FT(1); atol=1.5e-3)
+    @test isapprox(result, FT(1); atol=1.5e-3)
 end
 
 main()
