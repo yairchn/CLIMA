@@ -157,6 +157,45 @@ function setup_solver(
         fast_dt = ode_dt / ode_solver_type.timestep_ratio
         fast_solver = ode_solver_type.fast_method(fast_dg, Q; dt = fast_dt)
         solver = ode_solver_type.solver_method((slow_solver, fast_solver))
+    elseif isa(ode_solver_type, MultirateGARKSolverType)
+        outer_model = RemainderModel(bl, (linmodel,))
+        outer_dg = DGModel(
+            slow_model,
+            grid,
+            numfluxnondiff,
+            numfluxdiff,
+            gradnumflux,
+            auxstate = dg.auxstate,
+        )
+        vertical_outer_dg = DGModel(
+            linmodel,
+            grid,
+            numfluxnondiff,
+            numfluxdiff,
+            gradnumflux,
+            auxstate = dg.auxstate,
+            direction = VerticalDirection(),
+        )
+        outer_solver = ode_solver_type.slow_method(
+            outer_dg,
+            vertical_outer_dg,
+            ode_solver_type.linear_solver(),
+            Q;
+            dt = ode_dt,
+            t0 = t0,
+        )
+        fast_dt = ode_dt / ode_solver_type.timestep_ratio
+        fast_dg = DGModel(
+            linmodel,
+            grid,
+            numfluxnondiff,
+            numfluxdiff,
+            gradnumflux,
+            auxstate = dg.auxstate,
+            direction = HorizontalDirection(),
+        )
+        fast_solver = ode_solver_type.fast_method(fast_dg, Q; dt = fast_dt)
+        solver = ode_solver_type.solver_method((outer_solver, fast_solver))
     else # solver_type === IMEXSolverType
         vdg = DGModel(
             linmodel,

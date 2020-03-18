@@ -57,6 +57,32 @@ struct MultirateSolverType <: AbstractSolverType
     end
 end
 
+struct MultirateGARKSolverType <: AbstractSolverType
+    linear_model::Type
+    linear_solver::Type
+    solver_method::Type
+    slow_method::Function
+    fast_method::Function
+    timestep_ratio::Int
+    function MultirateGARKSolverType(;
+        linear_model = AtmosAcousticGravityLinearModel,
+        linear_solver = ManyColumnLU,
+        solver_method = MultirateGeneralizedAdditiveRungeKutta,
+        slow_method = ARK2GiraldoKellyConstantinescu,
+        fast_method = LSRK54CarpenterKennedy,
+        timestep_ratio = 100,
+    )
+        return new(
+            linear_model,
+            linear_solver,
+            solver_method,
+            slow_method,
+            fast_method,
+            timestep_ratio,
+        )
+    end
+end
+
 DefaultSolverType = IMEXSolverType
 
 abstract type ConfigSpecificInfo end
