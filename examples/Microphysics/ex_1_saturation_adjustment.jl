@@ -25,32 +25,24 @@ using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
 using CLIMA.VTK
 
-using CLIMA.Mesh.Grids: VerticalDirection,
-                        HorizontalDirection,
-                        min_node_distance
-
 import CLIMA.DGmethods: BalanceLaw,
+                        DGModel,
+                        LocalGeometry,
+                        vars_state,
+                        vars_aux,
                         vars_gradient,
                         vars_diffusive,
+                        init_state!,
+                        init_aux!,
+                        update_aux!,
+                        nodal_update_aux!,
                         flux_nondiffusive!,
                         flux_diffusive!,
+                        gradvariables!,
+                        diffusive!,
                         source!,
                         wavespeed,
-                        vars_aux,
-                        vars_state,
-                        boundary_state!,
-                        update_aux!,
-                        update_aux_diffusive!,
-                        gradvariables!,
-                        init_aux!,
-                        init_state!,
-                        LocalGeometry,
-                        DGModel,
-                        nodal_update_aux!,
-                        diffusive!,
-                        create_state,
-                        calculate_dt,
-                        reverse_integral_set_aux!
+                        boundary_state!
 
 # ------------------------ Description ------------------------- #
 # The test is based on a modelling set-up designed for the
