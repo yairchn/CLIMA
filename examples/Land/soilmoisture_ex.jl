@@ -65,13 +65,36 @@ const minute = 60
 const hour = 60*minute
 const day = 24*hour
 
+# TODO: Add similar capability to CLIMA, also, do this more efficiently
+function get_vars_from_stack(grid::DiscontinuousSpectralElementGrid{T,dim,N},
+                             Q::MPIStateArray, # dg.auxstate or state.data
+                             bl::BalanceLaw, # SoilModelMoisture
+                             vars_fun::F) where {T,dim,N,F<:Function}
+    D = Dict()
+    FT = eltype(Q)
+    vf = vars_fun(bl,FT)
+    nz = size(Q, 3)
+    R = (1:(N+1)^2:(N+1)^3)
+    for v in flattenednames(vf)
+        D[v] = reshape(FT[getproperty(Vars{vf}(Q[i, :, e]), Symbol(v)) for i in R, e in 1:nz],:)
+    end
+    return D
+end
+
+# TODO: Add similar capability to CLIMA, also, do this more efficiently
+function get_grid_from_stack(grid, N)
+    return reshape(grid.vgeo[(1:(N+1)^2:(N+1)^3),CLIMA.Mesh.Grids.vgeoid.x3id,:],:)*100
+end
+
 # Create plot state function
-function plotstate(grid, Q, aux, t)
+function plotstate(m, grid, Q, aux, t)
     # TODO:
     # this currently uses some internals: provide a better way to do this
-    gridg = reshape(grid.vgeo[(1:(N+1)^2:(N+1)^3),CLIMA.Mesh.Grids.vgeoid.x3id,:],:)*100
-    Tg = reshape(aux.data[(1:(N+1)^2:(N+1)^3),2,:],:)
-    return plot(Tg, gridg, ylabel="depth (cm)", xlabel="Vol. H20 content (m3/m3)", yticks=-100:20:0, xlimits=(0,1), legend=false)
+    gridg = get_grid_from_stack(grid, N)
+
+    vars = get_vars_from_stack(grid, Q, m, vars_state)
+    # vars = get_vars_from_stack(grid, aux, m, vars_aux) # or use this for aux
+    return plot(vars["θ"], gridg, ylabel="depth (cm)", xlabel="Vol. H20 content (m3/m3)", yticks=-100:20:0, xlimits=(0,1), legend=false)
 end
 
 # state variable
@@ -79,7 +102,7 @@ Q = init_ode_state(dg, Float64(0))
 
 # initialize ODE solver
 lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
-plt = plotstate(grid, Q, dg.auxstate, 0)
+plt = plotstate(m, grid, Q, dg.auxstate, 0)
 savefig(joinpath(output_dir,"initial_state.png"))
 
 solve!(Q, lsrk; timeend=dt)
@@ -88,7 +111,7 @@ solve!(Q, lsrk; timeend=dt)
 plots = Any[]
 for i = 1:8
     t = solve!(Q, lsrk; timeend=i*hour)
-    push!(plots, plotstate(grid, Q, dg.auxstate, t))
+    push!(plots, plotstate(m, grid, Q, dg.auxstate, t))
 end
 plot(plots...)
 savefig(joinpath(output_dir,"state_over_time.png"))
