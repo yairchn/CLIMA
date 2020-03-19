@@ -297,7 +297,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
         AtmosLESConfigType;
         ref_state = ref_state,
         turbulence = SmagorinskyLilly{FT}(C_smag),
-        moisture = EquilMoist{FT}(; maxiter = 5),
+        moisture = EquilMoist{FT}(maxiter=1, tolerance=FT(50)),
         radiation = radiation,
         source = source,
         boundarycondition = (
@@ -357,11 +357,12 @@ function main()
     zmax = 2500
 
     t0 = FT(0)
-    timeend = FT(100)
-
+    timeend = FT(14400)
+    CFL = FT(1.8)
+    
     driver_config = config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     solver_config =
-        CLIMA.setup_solver(t0, timeend, driver_config, init_on_cpu = true)
+        CLIMA.setup_solver(t0, timeend, driver_config, Courant_number=CFL, init_on_cpu = true)
     dgn_config = config_diagnostics(driver_config)
 
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init = false)

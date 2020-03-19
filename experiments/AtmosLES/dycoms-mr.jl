@@ -190,7 +190,7 @@ function init_dycoms!(bl, state, aux, (x, y, z), t)
     z = altitude(bl.orientation, aux)
 
     # These constants are those used by Stevens et al. (2005)
-    qref = FT(8.1e-3)
+    qref = FT(8.0e-3)
     q_pt_sfc = PhasePartition(qref)
     Rm_sfc = FT(gas_constant_air(q_pt_sfc))
     T_sfc = FT(290.4)
@@ -216,7 +216,7 @@ function init_dycoms!(bl, state, aux, (x, y, z), t)
 
     # Perturb initial state to break symmetry and trigger turbulent convection
     r1 = FT(rand(Uniform(-0.002, 0.002)))
-    if z <= 200.0
+    if z <= 300.0
         θ_liq += r1 * θ_liq
     end
 
@@ -263,7 +263,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     radiation = DYCOMSRadiation{FT}(κ, α_z, z_i, ρ_i, D_subsidence, F_0, F_1)
 
     # Sources
-    f_coriolis = FT(0.762e-4)
+    f_coriolis = FT(1.0e-4)
     u_geostrophic = FT(7.0)
     v_geostrophic = FT(-5.5)
     w_ref = FT(0)
@@ -271,7 +271,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     # Sponge
     c_sponge = 1
     # Rayleigh damping
-    zsponge = FT(900.0)
+    zsponge = FT(880.0)
     rayleigh_sponge =
         RayleighSponge{FT}(zmax, zsponge, c_sponge, u_relaxation, 4)
     # Geostrophic forcing
@@ -297,7 +297,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
         AtmosLESConfigType;
         ref_state = ref_state,
         turbulence = SmagorinskyLilly{FT}(C_smag),
-        moisture = EquilMoist{FT}(maxiter = 1, tolerance=FT(50)),
+        moisture = EquilMoist{FT}(maxiter=1, tolerance=FT(50)),
         radiation = radiation,
         source = source,
         boundarycondition = (
@@ -317,13 +317,13 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     )
 
     ode_solver =
-        #CLIMA.ExplicitSolverType(solver_method = LSRK144NiegemannDiehlBusch)
-        CLIMA.MultirateSolverType(
+        CLIMA.ExplicitSolverType(solver_method = LSRK144NiegemannDiehlBusch)
+        #=CLIMA.MultirateSolverType(
             linear_model = AtmosAcousticGravityLinearModel,
             slow_method = LSRK144NiegemannDiehlBusch,
             fast_method = LSRK144NiegemannDiehlBusch,
-            timestep_ratio = 10,
-        )
+            timestep_ratio = 20,
+        )=#
     
     config = CLIMA.AtmosLESConfiguration(
         "DYCOMS",
@@ -364,14 +364,15 @@ function main()
 
     t0 = FT(0)
     timeend = FT(14400)
-    Courant = FT(15)
+    #Courant = FT(15)
+    Courant = FT(1.8)
     
     driver_config = config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     solver_config =
         CLIMA.setup_solver(t0, timeend, driver_config, init_on_cpu = true, Courant_number=Courant)
     dgn_config = config_diagnostics(driver_config)
 
-    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(100) do (init = false)
+    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(50) do (init = false)
         Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
         nothing
     end
