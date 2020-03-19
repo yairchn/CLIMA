@@ -47,16 +47,16 @@ import CLIMA.DGmethods: BalanceLaw,
 
 # Introduce needed variables into SoilModel struct
 Base.@kwdef struct SoilModel{Fρc, Fκ, FiT, Fst} <: BalanceLaw
-  
+
   # Define heat capacity. This is an input to the model now.
   ρc::Fρc       = (state, aux, t) -> 2.49e6   # [ Sand: ρc = 2.49e6 J m-3 K-1 ; Clay: ρc = 2.61e6 J m-3 K-1 ]
-  # Replace this with a function that calculates heat capacity (based on liquid+ice)    
+  # Replace this with a function that calculates heat capacity (based on liquid+ice)
   # OR Replace this with tabulated values of heat capacity (based on liquid+ice)
- 
+
   # Define kappa (thermal conductivity). This is an input to the model now.
   κ::Fκ         = (state, aux, t) -> 2.42     # [ Sand: λ = 2.42 W m-1 K-1 ; Clay: λ = 1.17 W m-1 K-1 ]
-    
-  # Define initial and boundary condition parameters 
+
+  # Define initial and boundary condition parameters
   initialT::FiT = (aux, t) -> 273.15 + 2.0 # Initial Temperature. This is an input to the model now.
   surfaceT::Fst = (state, aux, t) -> (273.15 + 2.0) # Surface boundary condition. This is an input to the model now.
 end
@@ -83,7 +83,7 @@ function update_aux!(dg::DGModel, m::SoilModel, Q::MPIStateArray, t::Real)
   return true
 end
 # Update all auxiliary nodes
-function soil_nodal_update_aux!(m::SoilModel, state::Vars, aux::Vars, t::Real)        
+function soil_nodal_update_aux!(m::SoilModel, state::Vars, aux::Vars, t::Real)
   aux.T = state.ρcT / m.ρc(state, aux, t) # TODO: figure out why can't use aux.T here
 end
 
@@ -101,7 +101,7 @@ end
 function flux_nondiffusive!(m::SoilModel, flux::Grad, state::Vars, aux::Vars, t::Real)
 end
 # Calculate thermal flux (diffusive (?))
-function flux_diffusive!(m::SoilModel, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)     
+function flux_diffusive!(m::SoilModel, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
    flux.ρcT -= m.κ(state, aux, t) * diffusive.∇T
    if aux.z == 0
     #@show   aux.T flux.ρcT
@@ -110,7 +110,7 @@ end
 
 # ---------------- 4c) Extra Sources
 
-# Introduce sources of energy (e.g. Metabolic heat from microbes) 
+# Introduce sources of energy (e.g. Metabolic heat from microbes)
 function source!(m::SoilModel, state::Vars, _...)
 end
 

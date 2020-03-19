@@ -25,7 +25,7 @@ Computes diffusive flux `F` in:
 where
  - `ρ` is the volumetric water content of soil (m³/m³), this is state var.
  - `k` is the hydraulic conductivity (m/s)
- - `h` is the hydraulic head or water potential (m), it is a function of ρ 
+ - `h` is the hydraulic head or water potential (m), it is a function of ρ
  - `z` is the depth (m)
  - `p` is matric potential (m), p=-(ρ/v)^(-M) with Brooks and Corey Formulation
  - `v` is porosity, typical value :
@@ -42,9 +42,9 @@ we write `Y = ρ` and `F(Y, t) =-k ∇h`.
 """
 
 # Introduce needed variables into SoilModel struct
-Base.@kwdef struct SoilModelMoisture{Fκ, Fiρ, Fsρ} <: BalanceLaw 
+Base.@kwdef struct SoilModelMoisture{Fκ, Fiρ, Fsρ} <: BalanceLaw
   # Define kappa (hydraulic conductivity)
-  κ::Fκ         = (state, aux, t) -> (0.001/(60*60*24)) # [m/s] typical value taken from Land Surface Model CLiMA, table 2.2, =0.1cm/day  
+  κ::Fκ         = (state, aux, t) -> (0.001/(60*60*24)) # [m/s] typical value taken from Land Surface Model CLiMA, table 2.2, =0.1cm/day
   # Define initial and boundary condition parameters
   initialρ::Fiρ = (state, aux, t) -> 0.1 # [m3/m3] constant water content in soil, from Bonan, Ch.8, fig 8.8 as in Haverkamp et al. 1977, p.287
   surfaceρ::Fsρ = (state, aux, t) -> 0.6 #267 # [m3/m3] constant flux at surface, from Bonan, Ch.8, fig 8.8 as in Haverkamp et al. 1977, p.287
@@ -65,7 +65,7 @@ function update_aux!(dg::DGModel, m::SoilModelMoisture, Q::MPIStateArray, t::Rea
   return true
 end
 # Update all auxiliary nodes
-function soil_nodal_update_aux!(m::SoilModelMoisture, state::Vars, aux::Vars, t::Real)     
+function soil_nodal_update_aux!(m::SoilModelMoisture, state::Vars, aux::Vars, t::Real)
   aux.h = aux.z+state.ρ #^(-1/0.378))*(-0.3020)
 end
 
@@ -84,14 +84,14 @@ function flux_nondiffusive!(m::SoilModelMoisture, flux::Grad, state::Vars, aux::
 end
 
 # Calculate water flux (diffusive)
-function flux_diffusive!(m::SoilModelMoisture, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)     
+function flux_diffusive!(m::SoilModelMoisture, flux::Grad, state::Vars, diffusive::Vars, aux::Vars, t::Real)
    flux.ρ -= m.κ(state, aux, t) * diffusive.∇h
    if aux.z == 0
     #@show   aux.T flux.ρcT
     end
 end
 
-# Introduce sources of energy (e.g. Metabolic heat from microbes) 
+# Introduce sources of energy (e.g. Metabolic heat from microbes)
 function source!(m::SoilModelMoisture, state::Vars, _...)
 end
 
@@ -118,7 +118,7 @@ function boundary_state!(nf, m::SoilModelMoisture, state⁺::Vars, aux⁺::Vars,
   end
 end
 
-# Boundary condition function 
+# Boundary condition function
 function boundary_state!(nf, m::SoilModelMoisture, state⁺::Vars, diff⁺::Vars,
                          aux⁺::Vars, nM, state⁻::Vars, diff⁻::Vars, aux⁻::Vars,
                          bctype, t, _...)

@@ -25,18 +25,18 @@ CLIMA.init()
 include("SoilModelMoisture.jl")
 
 # Set up domain
-# NOTE: this is using 5 vertical elements, each with a 5th degree polynomial, 
+# NOTE: this is using 5 vertical elements, each with a 5th degree polynomial,
 # giving an approximate resolution of 5cm
 const velems = 0.0:-0.2:-1 # Elements at: [0.0 -0.2 -0.4 -0.6 -0.8 -1.0] (m)
 const N = 5 # Order of polynomial function between each element
 
 # Set domain using Stached Brick Topology
-topl = StackedBrickTopology(MPI.COMM_WORLD, (0.0:1,0.0:1,velems); 
+topl = StackedBrickTopology(MPI.COMM_WORLD, (0.0:1,0.0:1,velems);
     periodicity = (true,true,false),
     boundary=((0,0),(0,0),(1,2)))
 grid = DiscontinuousSpectralElementGrid(topl, FloatType = Float64, DeviceArray = Array, polynomialorder = N)
- 
-# Load Soil Model in 'm' 
+
+# Load Soil Model in 'm'
 m = SoilModelMoisture(
     κ  = (state, aux, t) -> 0.001 / (60*60*24),
     initialρ = (state, aux, t) -> 0.1, # [m3/m3] constant water content in soil, from Bonan, Ch.8, fig 8.8 as in Haverkamp et al. 1977, p.287
@@ -44,14 +44,14 @@ m = SoilModelMoisture(
 )
 
 # Set up DG scheme
-dg = DGModel( # 
+dg = DGModel( #
   m, # "PDE part"
   grid,
   CentralNumericalFluxNonDiffusive(), # penalty terms for discretizations
   CentralNumericalFluxDiffusive(),
   CentralNumericalFluxGradient())
 
-# Minimum spatial and temporal steps 
+# Minimum spatial and temporal steps
 Δ = min_node_distance(grid)
 CFL_bound = (Δ^2 / (2 * 2.42/2.49e6))
 dt = CFL_bound*0.5 # TODO: provide a "default" timestep based on  Δx,Δy,Δz
@@ -115,8 +115,8 @@ end
 
 
 
-contour(hours, Zprofile.*100, Tprofile, 
-    levels=0:1, xticks=0:4:t_plot, xlimits=(0,t_plot), 
+contour(hours, Zprofile.*100, Tprofile,
+    levels=0:1, xticks=0:4:t_plot, xlimits=(0,t_plot),
     xlabel="Time of day (hours)", ylabel="Soil depth (cm)", title="Volumetric water content (m3/m3)")
 
 x = a ? b : c
