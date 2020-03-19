@@ -39,8 +39,8 @@ grid = DiscontinuousSpectralElementGrid(topl, FloatType = Float64, DeviceArray =
 # Load Soil Model in 'm'
 m = SoilModelMoisture(
     κ  = (state, aux, t) -> 0.001 / (60*60*24),
-    initialρ = (state, aux, t) -> 0.1, # [m3/m3] constant water content in soil, from Bonan, Ch.8, fig 8.8 as in Haverkamp et al. 1977, p.287
-    surfaceρ = (state, aux, t) -> 0.6 #267 # [m3/m3] constant flux at surface, from Bonan, Ch.8, fig 8.8 as in Haverkamp et al. 1977, p.287
+    initialθ = (state, aux, t) -> 0.1, # [m3/m3] constant water content in soil, from Bonan, Ch.8, fig 8.8 as in Haverkamp et al. 1977, p.287
+    surfaceθ = (state, aux, t) -> 0.6 #267 # [m3/m3] constant flux at surface, from Bonan, Ch.8, fig 8.8 as in Haverkamp et al. 1977, p.287
 )
 
 # Set up DG scheme
@@ -69,6 +69,7 @@ function plotstate(grid, Q, aux)
     gridg = reshape(grid.vgeo[(1:(N+1)^2:(N+1)^3),CLIMA.Mesh.Grids.vgeoid.x3id,:],:)*100
     Tg = reshape(aux.data[(1:(N+1)^2:(N+1)^3),2,:],:)
     plot(Tg, gridg, ylabel="depth (cm)", xlabel="Vol. H20 content (m3/m3)", yticks=-100:20:0, xlimits=(0,1), legend=false)
+    # return gridg, Tg
 end
 
 # state variable
@@ -77,6 +78,7 @@ Q = init_ode_state(dg, Float64(0))
 # initialize ODE solver
 lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
 plotstate(grid, Q, dg.auxstate)
+# gridg, Tg = plotstate(grid, Q, dg.auxstate)
 
 solve!(Q, lsrk; timeend=dt)
 
