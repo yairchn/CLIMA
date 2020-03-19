@@ -1,11 +1,9 @@
 using Dates
-using Distributions
 using DocStringExtensions
 using LinearAlgebra
 using Logging
 using MPI
 using Printf
-using Random
 using StaticArrays
 using Test
 
@@ -38,11 +36,9 @@ import CLIMA.DGmethods: BalanceLaw,
                         nodal_update_aux!,
                         flux_nondiffusive!,
                         flux_diffusive!,
-                        gradvariables!,
-                        diffusive!,
-                        source!,
                         wavespeed,
-                        boundary_state!
+                        boundary_state!,
+                        source!
 
 # ------------------------ Description ------------------------- #
 # The test is based on a modelling set-up designed for the
@@ -147,6 +143,10 @@ function vars_aux(m::KinematicModel, FT)
   end
 end
 
+vars_gradient(m::KinematicModel, FT) = @vars()
+
+vars_diffusive(m::KinematicModel, FT) = @vars()
+
 function init_aux!(m::KinematicModel, aux::Vars, geom::LocalGeometry)
 
     FT = eltype(aux)
@@ -190,7 +190,7 @@ function init_kinematic_eddy!(eddy_model, state, aux, (x,y,z), t)
   ρ::FT = aux.p / R_m / T
   state.ρ = ρ
 
-  # water
+  # moisture
   state.ρq_tot = ρ * dc.qt_0
 
   # velocity (derivative of streamfunction)
@@ -303,21 +303,23 @@ end
   return abs(dot(nM, u))
 end
 
-
-# ------------------------------------------------------------------ BOILER PLATE :)
-vars_gradient(m::KinematicModel, FT) = @vars()
-vars_diffusive(m::KinematicModel, FT) = @vars()
-
-function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
-end
-
 @inline function flux_nondiffusive!(m::KinematicModel, flux::Grad, state::Vars, aux::Vars, t::Real)
-end
 
-function gradvariables!(m::KinematicModel, transform::Vars, state::Vars, aux::Vars, t::Real)
-end
+    FT = eltype(state)
 
-function diffusive!(m::KinematicModel, diffusive::Vars, ∇transform::Grad, state::Vars, aux::Vars, t::Real)
+    # advect moisture ...
+    flux.ρq_tot = SVector(
+        state.ρu[1] * aux.q_tot,
+        FT(0),
+        state.ρu[3] * aux.q_tot
+    )
+    # ... energy ...
+    flux.ρe = SVector(
+        aux.u * (state.ρe + aux.p),
+        FT(0),
+        aux.w * (state.ρe + aux.p)
+    )
+    # ... and don't advect momentum (kinematic setup)
 end
 
 @inline function flux_diffusive!(
@@ -328,8 +330,9 @@ end
 @inline function flux_diffusive!(
     m::KinematicModel, flux::Grad, state::Vars, τ, d_h_tot)
 end
-# ------------------------------------------------------------------
 
+function source!(m::KinematicModel, source::Vars, state::Vars, diffusive::Vars, aux::Vars, t::Real)
+end
 
 function config_kinematic_eddy(FT, N, resolution, xmax, ymax, zmax, wmax, θ_0, p_0, p_1000, qt_0, z_0)
   # Choose explicit solver
@@ -387,23 +390,23 @@ function main()
     zmax = 1500
     # initial configuration
     wmax = FT(0.6)  # max velocity of the eddy  [m/s]
-    θ_0 = FT(289) # initial theta value (constant in the domain) [K]
+    θ_0 = FT(289) # initial theta value (const) [K]
     p_0 = FT(101500) # surface pressure [Pa]
     p_1000 = FT(100000) # reference pressure in theta definition [Pa]
-    qt_0 = FT(7.5 * 1e-3) # initial total water specific humidity (constant in the domain) [kg/kg]
+    qt_0 = FT(7.5*1e-3) # initial total water specific humidity (const) [kg/kg]
     z_0 = FT(0) # surface height
 
     # Simulation time
     t0 = FT(0)
     # timeend = FT(30 * 60)
-    timeend = FT(1)
+    timeend = FT(60*30)
     # Courant number
     CFL = FT(0.8)
 
     driver_config = config_kinematic_eddy(
         FT, N, resolution, xmax, ymax, zmax, wmax, θ_0, p_0, p_1000, qt_0, z_0)
     solver_config = CLIMA.setup_solver(
-        t0, timeend, driver_config; ode_dt=FT(0.1),
+        t0, timeend, driver_config; ode_dt=FT(1),
         init_on_cpu=true, Courant_number=CFL
     )
 
@@ -415,7 +418,7 @@ function main()
     end
 
     starttime = Ref(now())
-    cbinfo = GenericCallbacks.EveryXWallTimeSeconds(10, mpicomm) do (s=false)
+    cbinfo = GenericCallbacks.EveryXWallTimeSeconds(60, mpicomm) do (s=false)
       if s
         starttime[] = now()
       else
@@ -429,7 +432,7 @@ function main()
     # output for paraview
     model = driver_config.bl
     step = [0]
-    cbvtk = GenericCallbacks.EveryXSimulationSteps(1)  do (init=false)
+    cbvtk = GenericCallbacks.EveryXSimulationSteps(60)  do (init=false)
       mkpath("vtk/")
       outprefix = @sprintf("vtk/new_ex_1_mpirank%04d_step%04d",
                            MPI.Comm_rank(mpicomm), step[1])
