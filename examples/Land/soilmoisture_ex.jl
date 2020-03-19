@@ -22,7 +22,7 @@ gr()
 CLIMA.init()
 
 # Add soil moisture model
-include("SoilModelMoisture.jl")
+include("soilmodelmoisture.jl")
 
 # Set up domain
 # NOTE: this is using 5 vertical elements, each with a 5th degree polynomial,
