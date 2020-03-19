@@ -13,10 +13,13 @@ using LinearAlgebra
 using CLIMA.GenericCallbacks: EveryXWallTimeSeconds, EveryXSimulationSteps
 using CLIMA.ODESolvers
 ENV["GKS_ENCODING"] = "utf-8"
+
+ENV["CLIMA_GPU"] = "false"
 using Plots
 gr()
 
-
+output_dir = joinpath(dirname(dirname(pathof(CLIMA))), "output", "land")
+mkpath(output_dir)
 
 # Initialize CliMA
 CLIMA.init()
@@ -63,13 +66,12 @@ const hour = 60*minute
 const day = 24*hour
 
 # Create plot state function
-function plotstate(grid, Q, aux)
+function plotstate(grid, Q, aux, t)
     # TODO:
     # this currently uses some internals: provide a better way to do this
     gridg = reshape(grid.vgeo[(1:(N+1)^2:(N+1)^3),CLIMA.Mesh.Grids.vgeoid.x3id,:],:)*100
     Tg = reshape(aux.data[(1:(N+1)^2:(N+1)^3),2,:],:)
-    plot(Tg, gridg, ylabel="depth (cm)", xlabel="Vol. H20 content (m3/m3)", yticks=-100:20:0, xlimits=(0,1), legend=false)
-    # return gridg, Tg
+    return plot(Tg, gridg, ylabel="depth (cm)", xlabel="Vol. H20 content (m3/m3)", yticks=-100:20:0, xlimits=(0,1), legend=false)
 end
 
 # state variable
@@ -77,8 +79,8 @@ Q = init_ode_state(dg, Float64(0))
 
 # initialize ODE solver
 lsrk = LSRK54CarpenterKennedy(dg, Q; dt = dt, t0 = 0)
-plotstate(grid, Q, dg.auxstate)
-# gridg, Tg = plotstate(grid, Q, dg.auxstate)
+plt = plotstate(grid, Q, dg.auxstate, 0)
+savefig(joinpath(output_dir,"initial_state.png"))
 
 solve!(Q, lsrk; timeend=dt)
 
@@ -86,9 +88,10 @@ solve!(Q, lsrk; timeend=dt)
 plots = Any[]
 for i = 1:8
     t = solve!(Q, lsrk; timeend=i*hour)
-    push!(plots, plotstate(grid, Q, dg.auxstate))
+    push!(plots, plotstate(grid, Q, dg.auxstate, t))
 end
 plot(plots...)
+savefig(joinpath(output_dir,"state_over_time.png"))
 
 # a function for performing interpolation on the DG grid
 # TODO: use CLIMA interpolation once available
@@ -114,17 +117,8 @@ for (i,h) in enumerate(hours)
     Tprofile[:,i] = (interpolate(grid, dg.auxstate, Zprofile))
 end
 
-
-
-
 contour(hours, Zprofile.*100, Tprofile,
     levels=0:1, xticks=0:4:t_plot, xlimits=(0,t_plot),
     xlabel="Time of day (hours)", ylabel="Soil depth (cm)", title="Volumetric water content (m3/m3)")
 
-x = a ? b : c
-
-if a
-    x = b
-else
-    x = c
-end
+savefig(joinpath(output_dir, "contour.png"))
