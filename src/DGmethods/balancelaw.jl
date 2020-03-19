@@ -100,7 +100,8 @@ function create_state(bl::BalanceLaw, grid, commtag)
     weights = view(h_vgeo, :, grid.Mid, :)
     weights = reshape(weights, size(weights, 1), 1, size(weights, 2))
 
-    state = MPIStateArray{FT}(
+    V = vars_state(bl, FT)
+    state = MPIStateArray{FT, V}(
         topology.mpicomm,
         DA,
         Np,
@@ -130,7 +131,8 @@ function create_auxstate(bl, grid, commtag = 222)
     weights = view(h_vgeo, :, grid.Mid, :)
     weights = reshape(weights, size(weights, 1), 1, size(weights, 2))
 
-    auxstate = MPIStateArray{FT}(
+    V = vars_aux(bl, FT)
+    auxstate = MPIStateArray{FT, V}(
         topology.mpicomm,
         DA,
         Np,
@@ -181,7 +183,8 @@ function create_diffstate(bl, grid, commtag = 111)
     weights = reshape(weights, size(weights, 1), 1, size(weights, 2))
 
     # TODO: Clean up this MPIStateArray interface...
-    diffstate = MPIStateArray{FT}(
+    V = vars_diffusive(bl, FT)
+    diffstate = MPIStateArray{FT, V}(
         topology.mpicomm,
         DA,
         Np,
@@ -214,7 +217,8 @@ function create_hyperdiffstate(bl, grid, commtag = 333)
 
     ngradlapstate = num_gradient_laplacian(bl, FT)
     # TODO: Clean up this MPIStateArray interface...
-    Qhypervisc_grad = MPIStateArray{FT}(
+    V = vars_gradient_laplacian(bl, FT)
+    Qhypervisc_grad = MPIStateArray{FT, V}(
         topology.mpicomm,
         DA,
         Np,
@@ -231,7 +235,8 @@ function create_hyperdiffstate(bl, grid, commtag = 333)
         commtag = commtag,
     )
 
-    Qhypervisc_div = MPIStateArray{FT}(
+    V = vars_hyperdiffusive(bl, FT)
+    Qhypervisc_div = MPIStateArray{FT, V}(
         topology.mpicomm,
         DA,
         Np,
