@@ -75,6 +75,19 @@ struct BoxElementTopology{dim, T} <: AbstractTopology{dim}
     sendfaces::BitArray{2}
 
     """
+    Array of real elements that do not have a ghost element as a neighbor.
+    """
+    interiorelems::Array{Int64, 1}
+
+    """
+    Array of real elements that have at least on ghost element as a neighbor.
+
+    Note that this is different from `sendelems` because `sendelems` duplicates
+    elements that need to be sent to multiple neighboring processes.
+    """
+    exteriorelems::Array{Int64, 1}
+
+    """
     Element to vertex coordinates; `elemtocoord[d,i,e]` is the `d`th coordinate
     of corner `i` of element `e`
 
