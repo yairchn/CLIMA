@@ -93,7 +93,7 @@ function KinematicModel{FT}(::Type{AtmosLESConfigType};
                          orientation::O=FlatOrientation(),
                          moisture::M=EquilMoist{FT}(),
                          precipitation::P=NoPrecipitation(),
-                         source::S=(rain_source!,),
+                         source::S=nothing,
                          boundarycondition::BC=NoFluxBC(),
                          init_state::IS=nothing,
                          data_config::DC=nothing) where{FT<:AbstractFloat,O,M,P,S,BC,IS,DC}
@@ -324,8 +324,8 @@ end
     aux::Vars,
     t::Real
 )
-
     FT = eltype(state)
+    rain_w = FT(0) #terminal_velocity(state.ρq_rai / state.ρ, state.ρ)
 
     # advect moisture ...
     flux.ρq_tot = SVector(
@@ -346,7 +346,7 @@ end
     flux.ρq_tot = SVector(
         state.ρu[1] * aux.q_rai,
         FT(0),
-        (state.ρu[3] - aux.rain_w) * aux.q_rai
+        (state.ρu[3] - rain_w) * aux.q_rai
     )
     # ... energy ...
     flux.ρe = SVector(
@@ -385,18 +385,8 @@ function source!(
     aux::Vars,
     t::Real
 )
-end
-
-function rain_source!(
-    m::KinematicModel,
-    source::Vars,
-    state::Vars,
-    diffusive::Vars,
-    aux::Vars,
-    t::Real
-)
     # TODO - ensure positive definite
-    @info @sprintf("""AQQ from source""")
+    FT = eltype(state)
 
     e_tot = state.ρe / state.ρ
     q_tot = state.ρq_tot / state.ρ
@@ -410,7 +400,7 @@ function rain_source!(
     q = PhasePartition(q_tot, q_liq, q_ice)
     T = air_temperature(e_int, q)
     # equilibrium state at current T
-    q_eq = PhasePartition_equil(T, ρ, q_tot)
+    q_eq = PhasePartition_equil(T, state.ρ, q_tot)
 
     # cloud water and ice condensation/evaporation
     source.ρq_liq += state.ρ * conv_q_vap_to_q_liq(q_eq, q)
@@ -419,18 +409,16 @@ function rain_source!(
     # tendencies from rain
     if (q_tot >= FT(0) && q_liq >= FT(0) && q_rai >= FT(0))
 
-        src_q_rai_acnv = conv_q_liq_to_q_rai_acnv(q_liq)
-        src_q_rai_accr = conv_q_liq_to_q_rai_accr(q_liq, q_rai, state.ρ)
-        src_q_rai_evap = conv_q_rai_to_q_vap(q_rai, q, T, aux.p, state.ρ)
+        src_q_rai_acnv = min(conv_q_liq_to_q_rai_acnv(q_liq), q_liq/FT(0.5))
+        src_q_rai_accr = FT(0) #conv_q_liq_to_q_rai_accr(q_liq, q_rai, state.ρ)
+        src_q_rai_evap = FT(0) #conv_q_rai_to_q_vap(q_rai, q, T, aux.p, state.ρ)
 
         src_q_rai_tot = src_q_rai_acnv + src_q_rai_accr + src_q_rai_evap
 
         source.ρq_liq -= state.ρ * (src_q_rai_acnv + src_q_rai_accr)
         source.ρq_rai += state.ρ * src_q_rai_tot
         source.ρq_tot -= state.ρ * src_q_rai_tot
-        source.ρe_tot -=
-            state.ρ *
-            src_q_rai_tot *
+        source.ρe     -= state.ρ * src_q_rai_tot *
             (FT(e_int_v0) - (FT(cv_v) - FT(cv_d)) * (T - FT(T_0)))
     end
 end
@@ -500,21 +488,21 @@ function main()
     # Simulation time
     t0 = FT(0)
     # timeend = FT(30 * 60)
-    timeend = FT(60*30)
+    timeend = FT(60*10)
     # Courant number
     CFL = FT(0.8)
 
     driver_config = config_kinematic_eddy(
         FT, N, resolution, xmax, ymax, zmax, wmax, θ_0, p_0, p_1000, qt_0, z_0)
     solver_config = CLIMA.setup_solver(
-        t0, timeend, driver_config; ode_dt=FT(1),
+        t0, timeend, driver_config; ode_dt=FT(0.5),
         init_on_cpu=true, Courant_number=CFL
     )
 
     mpicomm = MPI.COMM_WORLD
 
     cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init=false)
-        Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
+        Filters.apply!(solver_config.Q, (4,5,6,7), solver_config.dg.grid, TMARFilter())
         nothing
     end
 
@@ -533,7 +521,7 @@ function main()
     # output for paraview
     model = driver_config.bl
     step = [0]
-    cbvtk = GenericCallbacks.EveryXSimulationSteps(60)  do (init=false)
+    cbvtk = GenericCallbacks.EveryXSimulationSteps(120)  do (init=false)
       mkpath("vtk/")
       outprefix = @sprintf("vtk/new_ex_2_mpirank%04d_step%04d",
                            MPI.Comm_rank(mpicomm), step[1])
