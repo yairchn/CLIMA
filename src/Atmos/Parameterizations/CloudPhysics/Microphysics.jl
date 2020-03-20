@@ -21,6 +21,7 @@ export terminal_velocity
 
 # rates of conversion between microphysics categories
 export conv_q_vap_to_q_liq
+export conv_q_vap_to_q_ice
 export conv_q_liq_to_q_rai_acnv
 export conv_q_liq_to_q_rai_accr
 export conv_q_rai_to_q_vap
@@ -52,16 +53,19 @@ Marshall Palmer 1948 distribution of rain drops.
 """
 function terminal_velocity(q_rai::FT, ρ::FT) where {FT <: Real}
 
-    v_c = terminal_velocity_single_drop_coeff(ρ)
+    rain_w = FT(0)
 
-    # gamma(9/2)
-    gamma_9_2 = FT(11.631728396567448)
+    if q_rai > FT(0)
+        v_c = terminal_velocity_single_drop_coeff(ρ)
+        # gamma(9/2)
+        gamma_9_2 = FT(11.631728396567448)
 
-    lambda::FT = (FT(8) * π * ρ_cloud_liq * MP_n_0 / ρ / q_rai)^FT(1 / 4)
+        lambda::FT = (FT(8) * π * ρ_cloud_liq * MP_n_0 / ρ / q_rai)^FT(1 / 4)
+        rain_w = gamma_9_2 * v_c / FT(6) * sqrt(grav / lambda)
+    end
 
-    return gamma_9_2 * v_c / FT(6) * sqrt(grav / lambda)
+    return rain_w
 end
-
 
 """
     conv_q_vap_to_q_liq(q_sat, q)
@@ -79,15 +83,27 @@ function conv_q_vap_to_q_liq(
     q::PhasePartition{FT},
 ) where {FT <: Real}
 
-    if q_sat.ice != FT(0)
-        error("1-moment bulk microphysics is not defined for snow/ice")
-        #This should be the q_ice tendency due to sublimation/resublimation.
-        #src_q_ice = (q_sat.ice - q.ice) / τ_subl_resubl
-    end
-
     return (q_sat.liq - q.liq) / τ_cond_evap
 end
 
+"""
+    conv_q_vap_to_q_ice(q_sat, q)
+
+where:
+- `q_sat` - PhasePartition at equilibrium
+- `q`     - current PhasePartition
+
+Returns the q_ice tendency due to condensation/evaporation.
+The tendency is obtained assuming a relaxation to equilibrium with
+constant timescale.
+"""
+function conv_q_vap_to_q_ice(
+    q_sat::PhasePartition{FT},
+    q::PhasePartition{FT},
+) where {FT <: Real}
+
+    return (q_sat.ice - q.ice) / τ_sub_resub
+end
 
 """
     conv_q_liq_to_q_rai_acnv(q_liq)
