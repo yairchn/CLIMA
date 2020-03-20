@@ -271,9 +271,9 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
     # Sponge
     c_sponge = 1
     # Rayleigh damping
-    zsponge = FT(880.0)
+    zsponge = FT(900.0)
     rayleigh_sponge =
-        RayleighSponge{FT}(zmax, zsponge, c_sponge, u_relaxation, 4)
+        RayleighSponge{FT}(zmax, zsponge, c_sponge, u_relaxation, 2)
     # Geostrophic forcing
     geostrophic_forcing =
         GeostrophicForcing{FT}(f_coriolis, u_geostrophic, v_geostrophic)
@@ -297,7 +297,7 @@ function config_dycoms(FT, N, resolution, xmax, ymax, zmax)
         AtmosLESConfigType;
         ref_state = ref_state,
         turbulence = SmagorinskyLilly{FT}(C_smag),
-        moisture = EquilMoist{FT}(maxiter=1, tolerance=FT(50)),
+        moisture = EquilMoist{FT}(maxiter=1, tolerance=FT(100)),
         radiation = radiation,
         source = source,
         boundarycondition = (
@@ -372,7 +372,7 @@ function main()
         CLIMA.setup_solver(t0, timeend, driver_config, init_on_cpu = true, Courant_number=Courant)
     dgn_config = config_diagnostics(driver_config)
 
-    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(50) do (init = false)
+    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(10) do (init = false)
         Filters.apply!(solver_config.Q, 6, solver_config.dg.grid, TMARFilter())
         nothing
     end
