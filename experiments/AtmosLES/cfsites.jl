@@ -198,7 +198,7 @@ function config_diagnostics(driver_config)
     return CLIMA.setup_diagnostics([dgngrp])
 end
 
-function main()a
+function main()
 
     CLIMA.init()
 
