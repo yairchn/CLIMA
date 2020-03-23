@@ -1,29 +1,39 @@
+# General Julia modules
 using ArgParse
+using Dierckx
 using Distributions
+using DocStringExtensions
+using LinearAlgebra
+using NCDatasets
+using Printf
 using Random
 using StaticArrays
 using Test
-using Printf
-using NCDatasets
-using Dierckx
-using LinearAlgebra
-using DocStringExtensions
 
+# CLIMA Modules
 using CLIMA
 using CLIMA.Atmos
 using CLIMA.ConfigTypes
 using CLIMA.GenericCallbacks
 using CLIMA.DGmethods.NumericalFluxes
 using CLIMA.Diagnostics
+using CLIMA.GenericCallbacks
 using CLIMA.Mesh.Filters
+using CLIMA.Mesh.Geometry
 using CLIMA.MoistThermodynamics
 using CLIMA.ODESolvers
 using CLIMA.PlanetParameters
 using CLIMA.VariableTemplates
 
+# Free parameters
 using CLIMA.Parameters
 const clima_dir = dirname(pathof(CLIMA))
 include(joinpath(clima_dir, "..", "Parameters", "Parameters.jl"))
+
+# Physics specific imports 
+import CLIMA.DGmethods: vars_state, vars_aux
+import CLIMA.Atmos: source!, atmos_source!, altitude
+import CLIMA.Atmos: flux_diffusive!, thermo_state
 
 """
 CMIP6 Test Dataset - cfsites
@@ -40,10 +50,7 @@ DOI = {10.5194/gmd-10-359-2017}
 }
 """
 
-const seed = MersenneTwister(0)
-
 struct GCMRelaxation{FT} <: Source
-    "Relaxation timescale `[s]`"
     τ_relax::FT
 end
 function atmos_source!(
@@ -55,13 +62,6 @@ function atmos_source!(
     aux::Vars,
     t::Real,
 )
-
-    #= 
-    source.ρu -= (state.ρu - aux.ref_state.ρu) / s.τ_relax
-    source.ρe -= (state.ρe - aux.ref_state.ρe) / s.τ_relax
-    source.moisture.ρq_tot -=
-        (state.moisture.ρq_tot - aux.ref_state.ρq_tot) / s.τ_relax
-    =#
     return nothing
 end
 
@@ -180,6 +180,7 @@ function get_gcm_info(groupid)
 end
 
 # Initialise the CFSite experiment :D! 
+const seed = MersenneTwister(0)
 function init_cfsites!(bl, state, aux, (x, y, z), t, splines)
     FT = eltype(state)
     (spl_temp, spl_pfull, spl_ucomp, spl_vcomp, spl_sphum) = splines
