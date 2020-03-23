@@ -327,16 +327,16 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
         ),
     )
 
-    wait(MultiEvent(
+    wait(MultiEvent((
         event,
-        sent_Q,
+        send_Q,
         send_Qvisc,
         send_aux_1,
-        send_aux1,
+        send_aux_2,
         send_Qhypervisc_grad_1,
         send_Qhypervisc_grad_2,
         send_Qhypervisc_div,
-    ))
+    )))
 end
 
 function init_ode_state(dg::DGModel, args...; init_on_cpu = false)
