@@ -125,6 +125,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
             dependencies = (event,),
         )
 
+        wait(MultiEvent((recv_Q, recv_aux_1)))
+
         event = faceviscterms!(device, workgroups_surface)(
             bl,
             Val(dim),
@@ -144,7 +146,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
             hypervisc_indexmap,
             topology.realelems;
             ndrange = ndrange_surface,
-            dependencies = (event, recv_Q, recv_aux_1),
+            dependencies = (event,),
         )
 
         if communicate
@@ -195,6 +197,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
             dependencies = (event,),
         )
 
+        wait(recv_Qhypervisc_grad_1)
+
         event = facedivgrad!(device, workgroups_surface)(
             bl,
             Val(dim),
@@ -210,7 +214,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
             grid.elemtobndy,
             topology.realelems;
             ndrange = ndrange_surface,
-            dependencies = (event, recv_Qhypervisc_grad_1),
+            dependencies = (event,),
         )
 
         if communicate
@@ -243,6 +247,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
             dependencies = (event,),
         )
 
+        wait(recv_Qhypervisc_div)
+
         event = facehyperviscterms!(device, workgroups_surface)(
             bl,
             Val(dim),
@@ -261,7 +267,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
             topology.realelems,
             t;
             ndrange = ndrange_surface,
-            dependencies = (event, recv_Qhypervisc_div),
+            dependencies = (event,),
         )
 
         if communicate
@@ -298,6 +304,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
         dependencies = (event,),
     )
 
+    wait(MultiEvent((recv_Q, recv_Qvisc, recv_aux_1, recv_Qhypervisc_grad_1)))
+
     event = facerhs!(device, workgroups_surface)(
         bl,
         Val(dim),
@@ -318,13 +326,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
         grid.elemtobndy,
         topology.realelems;
         ndrange = ndrange_surface,
-        dependencies = (
-            event,
-            recv_Q,
-            recv_Qvisc,
-            recv_aux_1,
-            recv_Qhypervisc_grad_1,
-        ),
+        dependencies = (event,),
     )
 
     wait(MultiEvent((
