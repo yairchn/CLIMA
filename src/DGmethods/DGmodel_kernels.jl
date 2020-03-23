@@ -1107,6 +1107,9 @@ end
             coords,
             args...,
         )
+        @unroll for s in 1:nauxstate
+            auxstate[n, s, e] = l_aux[s]
+        end
         @unroll for s in 1:nstate
             state[n, s, e] = l_state[s]
         end

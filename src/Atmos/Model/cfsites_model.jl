@@ -120,5 +120,4 @@ function atmos_init_aux!(
     aux.ref_state.ρu = ρ * SVector(u, v, 0)
     aux.ref_state.ρe = ρ * (e_kin + e_pot + e_int)
     aux.ref_state.ρq_tot = ρ * q_tot
-
 end

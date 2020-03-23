@@ -59,7 +59,7 @@ function atmos_source!(
         (state.moisture.ρq_tot - aux.ref_state.ρq_tot) / s.τ_relax
     source.ρu -= (state.ρu - aux.ref_state.ρu) / s.τ_relax
 end
-# ------------------------ End Boundary Condition --------------------- # 
+
 # We first specify the NetCDF file from which we wish to read our 
 # GCM values.
 const data = Dataset("./datasets/HadGEM2-A_amip.2004-2008.07.nc", "r");
@@ -164,7 +164,7 @@ function config_cfsites(FT, N, resolution, xmax, ymax, zmax)
         AtmosLESConfigType;
         ref_state = GCMForcedState(),
         turbulence = SmagorinskyLilly{FT}(0.23),
-        source = (Gravity(),),
+        source = (Gravity(), GCMRelaxation()),
         moisture = EquilMoist{FT}(; maxiter = 5, tolerance = FT(0.1)),
         init_state = init_cfsites!,
         param_set = ParameterSet{FT}(),
@@ -225,7 +225,7 @@ function main()
 
     # Execute the get_gcm_info function
     (z, ta, hus, ua, va, pfull) = get_gcm_info(groupid)
-    
+
     # Drop dimensions for compatibility with Dierckx
     z = dropdims(z; dims = 2)
     ta = dropdims(ta; dims = 2)
@@ -233,7 +233,7 @@ function main()
     ua = dropdims(ua; dims = 2)
     va = dropdims(va; dims = 2)
     pfull = dropdims(pfull; dims = 2)
-    
+
     # Create spline objects and pass them into a named tuple
     splines = (
         spl_temp = Spline1D(z, ta),
