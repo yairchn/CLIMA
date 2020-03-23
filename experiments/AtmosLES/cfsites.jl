@@ -51,13 +51,63 @@ function atmos_source!(
     atmos::AtmosModel,
     source::Vars,
     state::Vars,
+    diffusive::Vars,
     aux::Vars,
     t::Real,
 )
+
+    #= 
+    source.ρu -= (state.ρu - aux.ref_state.ρu) / s.τ_relax
     source.ρe -= (state.ρe - aux.ref_state.ρe) / s.τ_relax
     source.moisture.ρq_tot -=
         (state.moisture.ρq_tot - aux.ref_state.ρq_tot) / s.τ_relax
-    source.ρu -= (state.ρu - aux.ref_state.ρu) / s.τ_relax
+    =#
+    return nothing
+end
+
+"""
+    GCMForcedState <: ReferenceState
+A reference state prescribed by time-averaged data from GCM (various) forcing information
+"""
+struct GCMForcedState <: ReferenceState end
+vars_aux(m::GCMForcedState, FT) =
+    @vars(ρ::FT, p::FT, T::FT, ρu::SVector{3, FT}, ρe::FT, ρq_tot::FT)
+# Idea is to pass additional args and store them in here for access through the source function 
+function atmos_init_aux!(
+    m::GCMForcedState,
+    atmos::AtmosModel,
+    aux::Vars,
+    geom::LocalGeometry,
+    splines,
+)
+    FT = eltype(aux)
+
+    (x, y, z) = aux.coord
+
+    (spl_temp, spl_pfull, spl_ucomp, spl_vcomp, spl_sphum) = splines
+
+    T = FT(spl_temp(z))
+    q_tot = FT(spl_sphum(z))
+    u = FT(spl_ucomp(z))
+    v = FT(spl_vcomp(z))
+    p = FT(spl_pfull(z))
+
+    aux.ref_state.T = T
+    aux.ref_state.p = p
+
+    q_pt = PhasePartition(q_tot)
+
+    ρ = air_density(T, p, q_pt)
+
+    e_kin = (u^2 + v^2) / 2
+    e_pot = gravitational_potential(atmos.orientation, aux)
+    e_int = internal_energy(T, q_pt)
+
+    # Assignment of state variables
+    aux.ref_state.ρ = ρ
+    aux.ref_state.ρu = ρ * SVector(u, v, 0)
+    aux.ref_state.ρe = ρ * (e_kin + e_pot + e_int)
+    aux.ref_state.ρq_tot = ρ * q_tot
 end
 
 # We first specify the NetCDF file from which we wish to read our 
@@ -98,12 +148,11 @@ function get_gcm_info(groupid)
 
      """)
 
-
     @printf("\n")
     @printf("Had_GCM_LES = %s\n", groupid)
     @printf("--------------------------------------------------\n")
-    filename = "/home/asridhar/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
-    #filename = "/Users/asridhar/research/codes/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
+    #filename = "/home/asridhar/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
+    filename = "/Users/asridhar/research/codes/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
     req_varnames = ("zg", "ta", "hus", "ua", "va", "pfull")
     # Load NETCDF dataset (HadGEM information)
     # Load the NCDataset (currently we assume all time-stamps are 
@@ -164,7 +213,7 @@ function config_cfsites(FT, N, resolution, xmax, ymax, zmax)
         AtmosLESConfigType;
         ref_state = GCMForcedState(),
         turbulence = SmagorinskyLilly{FT}(0.23),
-        source = (Gravity(), GCMRelaxation()),
+        source = (Gravity(), GCMRelaxation{FT}(3600)),
         moisture = EquilMoist{FT}(; maxiter = 5, tolerance = FT(0.1)),
         init_state = init_cfsites!,
         param_set = ParameterSet{FT}(),

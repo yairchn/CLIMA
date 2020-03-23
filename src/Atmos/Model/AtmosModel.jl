@@ -215,7 +215,6 @@ include("source.jl")
 include("boundaryconditions.jl")
 include("linear.jl")
 include("remainder.jl")
-include("cfsites_model.jl")
 include("courant.jl")
 
 """
