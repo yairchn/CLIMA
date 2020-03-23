@@ -102,7 +102,8 @@ function get_gcm_info(groupid)
     @printf("\n")
     @printf("CFSite experiment site ID = %s\n", groupid)
     @printf("--------------------------------------------------\n")
-    filename = "/Users/asridhar/research/codes/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
+    filename = "/home/asridhar/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
+    #filename = "/Users/asridhar/research/codes/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
     req_varnames = ("zg", "ta", "hus", "ua", "va", "pfull")
     # Load NETCDF dataset (HadGEM information)
     # Load the NCDataset (currently we assume all time-stamps are 
@@ -115,7 +116,9 @@ function get_gcm_info(groupid)
     for (varname, var) in data.group[groupid]
         for reqvar in req_varnames
             if reqvar == varname
+                # Get average over time dimension
                 var = mean(var, dims = 2)
+                # Assign the variable values to the appropriate converted string
                 str2var(varname, var)
             end
         end
@@ -146,7 +149,7 @@ function init_cfsites!(bl, state, aux, (x, y, z), t, splines)
     state.ρ = ρ
     state.ρu = ρ * SVector(u, v, 0)
     state.ρe = ρ * (e_kin + e_pot + e_int)
-    if z <= FT(600)
+    if z <= FT(200)
         state.ρe += rand(seed) * FT(1 / 100) * (state.ρe)
     end
     state.moisture.ρq_tot = ρ * q_tot
@@ -222,14 +225,16 @@ function main()
 
     # Execute the get_gcm_info function
     (z, ta, hus, ua, va, pfull) = get_gcm_info(groupid)
-    # Dropdims for compatibility with the interpolation module
+    
+    # Drop dimensions for compatibility with Dierckx
     z = dropdims(z; dims = 2)
     ta = dropdims(ta; dims = 2)
     hus = dropdims(hus; dims = 2)
     ua = dropdims(ua; dims = 2)
     va = dropdims(va; dims = 2)
     pfull = dropdims(pfull; dims = 2)
-
+    
+    # Create spline objects and pass them into a named tuple
     splines = (
         spl_temp = Spline1D(z, ta),
         spl_pfull = Spline1D(z, pfull),
@@ -238,7 +243,9 @@ function main()
         spl_sphum = Spline1D(z, hus),
     )
 
+    # Set up driver configuration
     driver_config = config_cfsites(FT, N, resolution, xmax, ymax, zmax)
+    # Set up solver configuration
     solver_config = CLIMA.setup_solver(
         t0,
         timeend,
@@ -247,6 +254,7 @@ function main()
         init_on_cpu = true,
         Courant_number = CFL,
     )
+    # Set up diagnostic configuration
     dgn_config = config_diagnostics(driver_config)
 
     # User defined filter (TMAR positivity preserving filter)
