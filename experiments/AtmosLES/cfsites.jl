@@ -100,7 +100,7 @@ function get_gcm_info(groupid)
 
 
     @printf("\n")
-    @printf("CFSite experiment site ID = %s\n", groupid)
+    @printf("Had_GCM_LES = %s\n", groupid)
     @printf("--------------------------------------------------\n")
     filename = "/home/asridhar/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
     #filename = "/Users/asridhar/research/codes/CLIMA/datasets/HadGEM2-A_amip.2004-2008.07.nc"
