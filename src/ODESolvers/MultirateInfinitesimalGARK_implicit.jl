@@ -71,10 +71,10 @@ mutable struct MRIGARKImplicit{T, RT, AT, LT, Nstages, NΓ, FS, Nstages_sq} <:
         # v(0) = y_n;  v' = g(v) + f(y_n),  θ ∈ [0, H]; Y^slow_2 = v(H),
         # y_{n+1} = Y^slow_2 - 1/2 g(y_n) + 1/2 f(y_{n+1}) (Implicit term);
         #
-        # where 1/2 is the term in the Γ0 matrix (implicit part, 2,2 entry)
-        # TODO: Is this right?
+        # where 1/2 is the term in the Γ0 matrix (implicit part, 2,3 entry)
+        # TODO: Need to make this more general
         Γ0, = Γs
-        α = dt * Γ0[2, 2]
+        α = dt * Γ0[2, 3]
         # Here we are passing NaN for the time since prefactorization assumes the
         # operator is time independent.  If that is not the case the NaN will
         # surface.
@@ -113,10 +113,10 @@ function MRIGARKIRK21aSandu(slowrhs!, slowrhs_linear!, linearsolver, fastsolver,
     T = eltype(Q)
     RT = real(T)
     #! format: off
-    Γ0 = [ 1 // 1   0 // 1
-          -1 // 2   1 // 2
-           0 // 1   0 // 1]
-    γ̂0 = [-1 // 2   1 // 2]
+    Γ0 = [ 1 // 1  0 // 1  0 // 1
+          -1 // 2  0 // 1  1 // 2
+           0 // 1  0 // 1  0 // 1 ]
+    γ̂0 = [-1 // 2  0 // 1  1 // 2 ]
     #! format: on
     MRIGARKImplicit(slowrhs!, slowrhs_linear!, linearsolver, fastsolver, (Γ0,), (γ̂0,), Q, dt, t0)
 end
@@ -128,7 +128,7 @@ function updatedt!(mrigark::MRIGARKImplicit, dt)
     @assert isadjustable(mrigark)
     mrigark.dt = dt
     Γ0 = mrigark.Γs[1]
-    α = dt * Γ0[2, 2]
+    α = dt * Γ0[2, 3]
     mrigark.implicitoperator! = EulerOperator(mrigark.slowrhs_linear!, -α)
 end
 updatetime!(mrigark::MRIGARKImplicit, time) = (mrigark.t = time)
