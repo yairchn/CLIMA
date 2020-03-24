@@ -517,6 +517,19 @@ and the second indicates when the sends are finished.
 function ghost_exchange!(Q::MPIStateArray; dependencies = nothing)
     progress = () -> __yield(Q.mpicomm)
     event = Event(__Irecv!, Q; dependencies = dependencies, progress = progress)
+    event = fillsendbuf!(
+        get_stage(Q.send_buffer),
+        Q.data,
+        Q.vmapsend;
+        dependencies = event,
+        progress = progress,
+    )
+    event = prepare_transfer!(
+        Q.send_buffer;
+        dependencies = event,
+        progress = progress,
+    )
+    event = Event(__Isend!, Q; dependencies = event, progress = progress)
     event =
         Event(__testall!, Q.recvreq; dependencies = event, progress = progress)
     event =
@@ -529,21 +542,8 @@ function ghost_exchange!(Q::MPIStateArray; dependencies = nothing)
         progress = progress,
     )
 
-    event = fillsendbuf!(
-        get_stage(Q.send_buffer),
-        Q.data,
-        Q.vmapsend;
-        dependencies = dependencies,
-        progress = progress,
-    )
-    event = prepare_transfer!(
-        Q.send_buffer;
-        dependencies = event,
-        progress = progress,
-    )
-    event = Event(__Isend!, Q; dependencies = event, progress = progress)
     send_event =
-        Event(__testall!, Q.sendreq; dependencies = event, progress = progress)
+        Event(__testall!, Q.sendreq; dependencies = event, progress = dependencies)
 
     return recv_event, send_event
 end

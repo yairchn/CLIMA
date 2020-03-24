@@ -150,6 +150,22 @@ function main()
         ArrayType(weights),
     )
 
+    C = MPIStateArray{Int64}(
+        comm,
+        ArrayType,
+        9,
+        2,
+        numelem,
+        realelems,
+        ghostelems,
+        ArrayType(vmaprecv),
+        ArrayType(vmapsend),
+        nabrtorank,
+        nabrtovmaprecv,
+        nabrtovmapsend,
+        ArrayType(weights),
+    )
+
     Q = Array(A.data)
     Q .= -1
     shift = 100
@@ -159,22 +175,27 @@ function main()
         reshape((crank * 1000) .+ shift .+ (1:(9 * numreal)), 9, numreal)
     copyto!(A.data, Q)
     copyto!(B.data, Q)
+    copyto!(C.data, Q)
 
     MPIStateArrays.start_ghost_exchange!(A)
     MPIStateArrays.finish_ghost_exchange!(A)
 
     device = typeof(B.data) <: Array ? CPU() : CUDA()
     event = Event(device)
-    recv_event, send_event =
+    recv_event_B, send_event_B =
         MPIStateArrays.ghost_exchange!(B; dependencies = nothing)
-    wait(recv_event)
+    recv_event_C, send_event_C =
+        MPIStateArrays.ghost_exchange!(C; dependencies = nothing)
+
+    wait(MultiEvent((recv_event_B, recv_event_C)))
 
     Q = Array(A.data)
     @test all(expectedghostdata .== Q[:, 1, :][:][vmaprecv])
     @test all(shift .+ expectedghostdata .== Q[:, 2, :][:][vmaprecv])
     @test A.data == B.data
+    @test A.data == C.data
 
-    wait(send_event)
+    wait(MultiEvent((send_event_B, send_event_C)))
 end
 
 main()
