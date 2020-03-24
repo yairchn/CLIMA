@@ -126,10 +126,10 @@ end
 # }}}
 
 include("MRIGARK_explicit.jl")
-include("MultirateInfinitesimalGARK_implicit.jl")
 include("LowStorageRungeKuttaMethod.jl")
 include("StrongStabilityPreservingRungeKuttaMethod.jl")
 include("AdditiveRungeKuttaMethod.jl")
+include("MultirateInfinitesimalGARK_implicit.jl")
 include("MultirateInfinitesimalStepMethod.jl")
 include("MultirateRungeKuttaMethod.jl")
 
