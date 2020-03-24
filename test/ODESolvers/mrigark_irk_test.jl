@@ -91,7 +91,7 @@ end
                     Q = exactsolution(0)
                     slow_dt = ω * fast_dt
                     fast_solver = fast_method(rhs_fast!, Q; dt = fast_dt)
-                    solver = slow_method(rhs_slow!,
+                    solver = slow_method(rhs_slow!, rhs_zero!,
                                          DivideLinearSolver(),
                                          fast_solver, Q; dt = slow_dt)
                     solve!(Q, solver; timeend = finaltime)
