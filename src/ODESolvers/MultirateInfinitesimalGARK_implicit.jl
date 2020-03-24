@@ -12,6 +12,8 @@ mutable struct MRIGARKImplicit{T, RT, AT, LT, Nstages, NΓ, FS, Nstages_sq} <:
     t::RT
     "rhs function"
     slowrhs!
+    "rhs linear operator"
+    slowrhs_linear!
     "implicit operator, pre-factorized"
     implicitoperator!
     "linear solver"
@@ -31,6 +33,7 @@ mutable struct MRIGARKImplicit{T, RT, AT, LT, Nstages, NΓ, FS, Nstages_sq} <:
 
     function MRIGARKImplicit(
         slowrhs!,
+        slowrhs_linear!,
         linearsolver::AbstractLinearSolver,
         fastsolver,
         Γs,
@@ -76,7 +79,7 @@ mutable struct MRIGARKImplicit{T, RT, AT, LT, Nstages, NΓ, FS, Nstages_sq} <:
         # operator is time independent.  If that is not the case the NaN will
         # surface.
         implicitoperator! = prefactorize(
-            EulerOperator(slowrhs!, α),
+            EulerOperator(slowrhs_linear!, -α),
             linearsolver,
             Q,
             nothing,
@@ -88,6 +91,7 @@ mutable struct MRIGARKImplicit{T, RT, AT, LT, Nstages, NΓ, FS, Nstages_sq} <:
             RT(dt),
             RT(t0),
             slowrhs!,
+            slowrhs_linear!,
             implicitoperator!,
             linearsolver,
             Rstages,
@@ -105,7 +109,7 @@ end
 
 The 2rd order, 2 stage implicit scheme from Sandu (2019).
 """
-function MRIGARKIRK21aSandu(slowrhs!, linearsolver, fastsolver, Q; dt, t0 = 0)
+function MRIGARKIRK21aSandu(slowrhs!, slowrhs_linear!, linearsolver, fastsolver, Q; dt, t0 = 0)
     T = eltype(Q)
     RT = real(T)
     #! format: off
@@ -114,8 +118,20 @@ function MRIGARKIRK21aSandu(slowrhs!, linearsolver, fastsolver, Q; dt, t0 = 0)
            0 // 1   0 // 1]
     γ̂0 = [-1 // 2   1 // 2]
     #! format: on
-    MRIGARKImplicit(slowrhs!, linearsolver, fastsolver, (Γ0,), (γ̂0,), Q, dt, t0)
+    MRIGARKImplicit(slowrhs!, slowrhs_linear!, linearsolver, fastsolver, (Γ0,), (γ̂0,), Q, dt, t0)
 end
+
+# this will only work for iterative solves
+# direct solvers use prefactorization
+isadjustable(mrigark::MRIGARKImplicit) = mrigark.implicitoperator! isa EulerOperator
+function updatedt!(mrigark::MRIGARKImplicit, dt)
+    @assert isadjustable(mrigark)
+    mrigark.dt = dt
+    Γ0 = mrigark.Γs[1]
+    α = dt * Γ0[2, 2]
+    mrigark.implicitoperator! = EulerOperator(mrigark.slowrhs_linear!, -α)
+end
+updatetime!(mrigark::MRIGARKImplicit, time) = (mrigark.t = time)
 
 function dostep!(
     Q,
@@ -159,12 +175,10 @@ function dostep!(
     groupsize = 256
 
     slowrhs! = mrigark.slowrhs!
+    slowrhs_linear! = mrigark.slowrhs_linear!
     Γs = mrigark.Γs
     NΓ = length(Γs)
-
-    rv_Q = realview(Q)
-    rv_Rstages = realview.(Rs)
-    rv_Qhat = realview(Qhat)
+    γs = ntuple(k -> ntuple(j -> Γs[k][s, j], s), NΓ)
 
     ts = time
     for s in 1:div(Nstages, 2)
@@ -172,20 +186,21 @@ function dostep!(
         dts = Δc[2s-1] * dt
         stagetime = ts + dts
 
+        # initialize stage
         slowrhs!(Rs[2s-1], Q, param, ts, increment = false)
+        # FIXME: Do we need to call something like `mri_update_rate!`
+        # like in MRIGARK_explicit.jl?
 
         # fast solver
-        γs = ntuple(k -> ntuple(j -> Γs[k][2s-1, j], 2s-1), NΓ)
-        mriparam = MRIParam(param, γs, realview.(Rs[1:2s-1]), ts, dts)
-        solve!(Q, mrigark.fastsolver, mriparam; timeend = stagetime)
+        solve!(Q, mrigark.fastsolver, param; timeend = stagetime)
 
+        # slow solver
         Γ0, = Γs
         α = dt * Γ0[2s, s+1]
         linearoperator! = function (LQ, Q)
-            slowrhs!(LQ, Q, p, stagetime; increment = false)
+            slowrhs_linear!(LQ, Q, p, stagetime; increment = false)
             @. LQ = Q - α * LQ
         end
-        # slow stage continue
         # Qhat = Q - ∑_k Γ_{sk} Rs[k]
         mri_create_Qhat!(Qhat, Q, γs, Rs)
         # (Q - α * LQ) = Qhat
