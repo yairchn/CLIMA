@@ -42,6 +42,7 @@ function DGModel(
 end
 
 function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
+    @info "RHS Start" exception = (ErrorException(""), backtrace())
 
     bl = dg.balancelaw
     device = typeof(Q.data) <: Array ? CPU() : CUDA()
@@ -94,6 +95,9 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
         hypervisc_indexmap = nothing
     end
 
+    @info "RHS Before initial exchange " exception =
+        (ErrorException(""), backtrace())
+
     ########################
     # Gradient Computation #
     ########################
@@ -104,6 +108,9 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
                 MPIStateArrays.ghost_exchange!(auxstate, dependencies = event)
         end
     end
+
+    @info "RHS After initial exchange " exception =
+        (ErrorException(""), backtrace())
 
     if nviscstate > 0 || nhyperviscstate > 0
 
@@ -284,6 +291,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
     ###################
     # RHS Computation #
     ###################
+    @info "RHS Before vrhs " exception = (ErrorException(""), backtrace())
     event = volumerhs!(device, workgroups_volume)(
         bl,
         Val(dim),
@@ -304,8 +312,11 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
         dependencies = (event,),
     )
 
+    @info "RHS After vrhs " exception = (ErrorException(""), backtrace())
+
     wait(MultiEvent((recv_Q, recv_Qvisc, recv_aux_1, recv_Qhypervisc_grad_1)))
 
+    @info "RHS Before frhs " exception = (ErrorException(""), backtrace())
     event = facerhs!(device, workgroups_surface)(
         bl,
         Val(dim),
@@ -328,6 +339,7 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
         ndrange = ndrange_surface,
         dependencies = (event,),
     )
+    @info "RHS After frhs " exception = (ErrorException(""), backtrace())
 
     wait(MultiEvent((
         event,
@@ -339,6 +351,8 @@ function (dg::DGModel)(dQdt, Q, ::Nothing, t; increment = false)
         send_Qhypervisc_grad_2,
         send_Qhypervisc_div,
     )))
+
+    @info "RHS End" exception = (ErrorException(""), backtrace())
 end
 
 function init_ode_state(dg::DGModel, args...; init_on_cpu = false)

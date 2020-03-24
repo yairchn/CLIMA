@@ -201,12 +201,12 @@ function init(; disable_gpu = false)
     end
 
     # set up logging
-    loglevel = Settings.log_level == "DEBUG" ? Logging.Debug :
-        Settings.log_level == "WARN" ? Logging.Warn :
-        Settings.log_level == "ERROR" ? Logging.Error : Logging.Info
-    # TODO: write a better MPI logging back-end and also integrate Dlog for large scale
-    logger_stream = MPI.Comm_rank(MPI.COMM_WORLD) == 0 ? stderr : devnull
-    global_logger(ConsoleLogger(logger_stream, loglevel))
+    # loglevel = Settings.log_level == "DEBUG" ? Logging.Debug :
+    #     Settings.log_level == "WARN" ? Logging.Warn :
+    #     Settings.log_level == "ERROR" ? Logging.Error : Logging.Info
+    # # TODO: write a better MPI logging back-end and also integrate Dlog for large scale
+    # logger_stream = MPI.Comm_rank(MPI.COMM_WORLD) == 0 ? stderr : devnull
+    # global_logger(ConsoleLogger(logger_stream, loglevel))
 
     return nothing
 end
