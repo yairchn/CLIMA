@@ -62,11 +62,11 @@ import CLIMA.DGmethods:
 #}
 # ------------------------ Description ------------------------- #
 
-Base.@kwdef struct KinematicBC{M, E, Q}
-    momentum::M = Impenetrable(FreeSlip())
-    energy::E = Insulating()
-    moisture::Q = Impermeable()
-end
+#Base.@kwdef struct KinematicBC{FT}
+#    #momentum::M = Impenetrable(FreeSlip())
+#    #energy::E = Insulating()
+#    #moisture::Q = Impermeable()
+#end
 
 struct KinematicModelConfig{FT}
     xmax::FT
@@ -96,7 +96,7 @@ function KinematicModel{FT}(
     moisture::M = EquilMoist{FT}(),
     precipitation::P = NoPrecipitation(),
     source::S = nothing,
-    boundarycondition::BC = NoFluxBC(),
+    boundarycondition::BC = nothing, #NoFluxBC(),
     init_state::IS = nothing,
     data_config::DC = nothing,
 ) where {FT <: AbstractFloat, O, M, P, S, BC, IS, DC}
@@ -263,13 +263,9 @@ function kinematic_model_nodal_update_aux!(
 
 end
 
-function boundary_state!(nf, m::KinematicModel, args...)
-    bc_kin_boundary_state!(nf, m.boundarycondition, m, args...)
-end
-@generated function bc_kin_boundary_state!(
-    nf,
-    tup::Tuple,
-    m,
+function boundary_state!(
+    ::Rusanov,
+    m::KinematicModel,
     state⁺,
     aux⁺,
     n,
@@ -279,34 +275,30 @@ end
     t,
     args...,
 )
-    N = fieldcount(tup)
-    return quote
-        Base.Cartesian.@nif(
-            $(N + 1),
-            i -> bctype == i, # conditionexpr
-            i -> bc_kin_boundary_state!(
-                nf,
-                tup[i],
-                m,
-                state⁺,
-                aux⁺,
-                n,
-                state⁻,
-                aux⁻,
-                bctype,
-                t,
-                args...,
-            ), # expr
-            i -> error("Invalid boundary tag")
-        ) # elseexpr
-        return nothing
-    end
+    state⁺.ρ = state⁻.ρ
+    state⁺.ρe = state⁻.ρe
+
+    state⁺.ρu = state⁻.ρu
+
+    state⁺.ρq_tot = state⁻.ρq_tot
+    state⁺.ρq_liq = state⁻.ρq_liq
+    state⁺.ρq_ice = state⁻.ρq_ice
+
+    state⁺.ρq_rai = -zero(eltype(state⁺))
 end
 
-function bc_kin_boundary_state!(nf, bc::KinematicBC, m, args...)
-    # bc_kin_momentum_boundary_state!(nf, bc.momentum, m, args...)
-    # bc_kin_energy_boundary_state!(nf, bc.energy, m, args...)
-    # bc_kin_moisture_boundary_state!(nf, bc.moisture, m, args...)
+function boundary_state!(
+    ::CentralNumericalFluxDiffusive,
+    m::KinematicModel,
+    state⁺,
+    aux⁺,
+    n,
+    state⁻,
+    aux⁻,
+    bctype,
+    t,
+    args...,
+)
 end
 
 @inline function wavespeed(
@@ -467,7 +459,7 @@ function config_kinematic_eddy(
     # Set up the model
     model = KinematicModel{FT}(
         AtmosLESConfigType;
-        boundarycondition = KinematicBC(),
+        boundarycondition = nothing,#KinematicBC(),
         init_state = init_kinematic_eddy!,
         data_config = kmc,
     )
