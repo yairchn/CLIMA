@@ -384,7 +384,7 @@ function init_cfsites!(bl, state, aux, (x, y, z), t, spl)
     tnhusha = FT(spl.spl_tnhusha(z))
     tnhusva = FT(spl.spl_tnhusva(z))
     wap = FT(spl.spl_wap(z))
-    ρ_gcm = 1 / FT(spl.spl_wap(alpha))
+    ρ_gcm = 1 / FT(spl.spl_alpha(z))
 
     # Compute field properties based on interpolated data
     ρ = air_density(ta, P, PhasePartition(q_tot))
@@ -406,7 +406,7 @@ function init_cfsites!(bl, state, aux, (x, y, z), t, spl)
     aux.ref_state.ρ = ρ_gcm
     aux.ref_state.p = P
     aux.ref_state.ta = ta
-    aux.ref_state.ρe = ρ * (e_kin + e_pot + e_int)
+    aux.ref_state.ρe = ρ_gcm * (e_kin + e_pot + e_int)
     aux.ref_state.ρq_tot = ρ * q_tot
     aux.ref_state.tntha = tntha
     aux.ref_state.tntva = tntva
