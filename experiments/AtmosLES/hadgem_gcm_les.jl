@@ -123,17 +123,18 @@ function atmos_source!(
     ∂qt∂z = dot(diffusive.moisture.∇q_tot_gcm, k̂)
     ∂T∂z = dot(diffusive.moisture.∇T_gcm, k̂)
     ρw_adv = -aux.ref_state.wap / grav
+
     # Establish vertical orientation
     # Establish thermodynamic state
     TS = thermo_state(atmos, state, aux)
     cvm = cv_m(TS)
     # Compute tendency terms
-    source.ρe += cvm * state.ρ * aux.ref_state.tntha
-    source.ρe += cvm * state.ρ * aux.ref_state.tntva
-    source.ρe += cvm * state.ρ * aux.ref_state.tntr 
+    source.ρe += cvm * aux.ref_state.ρ_gcm * aux.ref_state.tntha
+    source.ρe += cvm * aux.ref_state.ρ_gcm * aux.ref_state.tntva
+    source.ρe += cvm * aux.ref_state.ρ_gcm * aux.ref_state.tntr
     source.ρe += _e_int_v0 * ∂qt∂z * ρw_adv
-    source.ρe += _e_int_v0 * tnhusha * state.ρ
-    source.ρe += _e_int_v0 * tnhusva * state.ρ
+    source.ρe += _e_int_v0 * tnhusha * aux.ref_state.ρ_gcm
+    source.ρe += _e_int_v0 * tnhusva * aux.ref_state.ρ_gcm
     source.ρe += cvm * ∂T∂z * ρw_adv
     # GPU-friendly return nothing
     return nothing
@@ -171,8 +172,8 @@ function atmos_source!(
     TS = thermo_state(atmos, state, aux)
     cvm = cv_m(TS)
     # Compute tendency terms
-    source.moisture.ρq_tot += aux.ref_state.tnhusha * state.ρ
-    source.moisture.ρq_tot += aux.ref_state.tnhusva * state.ρ
+    source.moisture.ρq_tot += aux.ref_state.tnhusha * aux.ref_state.ρ_gcm
+    source.moisture.ρq_tot += aux.ref_state.tnhusva * aux.ref_state.ρ_gcm
     source.moisture.ρq_tot += ∂qt∂z * ρw_adv
     # GPU-friendly return nothing
     return nothing
@@ -200,7 +201,7 @@ function atmos_source!(
     # Establish vertical orientation
     k̂ = vertical_unit_vector(atmos.orientation, aux)
     # Establish subsidence velocity
-    w_s = -aux.ref_state.wap / state.ρ / grav
+    w_s = -aux.ref_state.wap / aux.ref_state.ρ_gcm / grav
     # Compute tendency terms
     source.ρe -= state.ρ * w_s * dot(k̂, diffusive.∇h_tot)
     source.moisture.ρq_tot -= state.ρ * w_s * dot(k̂, diffusive.moisture.∇q_tot)
@@ -317,6 +318,7 @@ function get_gcm_info(groupid)
         "wap",
         "hfls",
         "hfss",
+        "alpha",
     )
     # Load NETCDF dataset (HadGEM information)
     # Load the NCDataset (currently we assume all time-stamps are 
@@ -359,6 +361,7 @@ function get_gcm_info(groupid)
         hfls,
         hfss,
         ta[1],
+        alpha,
     )
 
 end
@@ -381,6 +384,7 @@ function init_cfsites!(bl, state, aux, (x, y, z), t, spl)
     tnhusha = FT(spl.spl_tnhusha(z))
     tnhusva = FT(spl.spl_tnhusva(z))
     wap = FT(spl.spl_wap(z))
+    ρ_gcm = 1 / FT(spl.spl_wap(alpha))
 
     # Compute field properties based on interpolated data
     ρ = air_density(ta, P, PhasePartition(q_tot))
@@ -399,7 +403,7 @@ function init_cfsites!(bl, state, aux, (x, y, z), t, spl)
     end
 
     # Assign and store the ref variable for sources
-    aux.ref_state.ρ = ρ
+    aux.ref_state.ρ = ρ_gcm
     aux.ref_state.p = P
     aux.ref_state.ta = ta
     aux.ref_state.ρe = ρ * (e_kin + e_pot + e_int)
@@ -516,6 +520,7 @@ function main()
         hfls,
         hfss,
         T_sfc,
+        alpha,
     ) = get_gcm_info(groupid)
 
     # Drop dimensions for compatibility with Dierckx
@@ -533,6 +538,7 @@ function main()
         spl_tnhusha = Spline1D(z, view(tnhusha, :, 1)),
         spl_tnhusva = Spline1D(z, view(tnhusva, :, 1)),
         spl_wap = Spline1D(z, view(wap, :, 1)),
+        spl_alpha = Spline1D(z, view(alpha, :, 1)),
     )
 
     # Set up driver configuration
