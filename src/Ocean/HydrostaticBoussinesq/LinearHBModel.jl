@@ -13,19 +13,19 @@ write out the equations here
 
 """
 struct LinearHBModel{M} <: BalanceLaw
-  ocean::M
-  function LinearHBModel(ocean::M) where {M}
-    return new{M}(ocean)
-  end
+    ocean::M
+    function LinearHBModel(ocean::M) where {M}
+        return new{M}(ocean)
+    end
 end
 
 """
     Copy over state, aux, and diff variables from HBModel
 """
-vars_state(lm::LinearHBModel, FT) = vars_state(lm.ocean,FT)
-vars_gradient(lm::LinearHBModel, FT) = vars_gradient(lm.ocean,FT)
-vars_diffusive(lm::LinearHBModel, FT) = vars_diffusive(lm.ocean,FT)
-vars_aux(lm::LinearHBModel, FT) = vars_aux(lm.ocean,FT)
+vars_state(lm::LinearHBModel, FT) = vars_state(lm.ocean, FT)
+vars_gradient(lm::LinearHBModel, FT) = vars_gradient(lm.ocean, FT)
+vars_diffusive(lm::LinearHBModel, FT) = vars_diffusive(lm.ocean, FT)
+vars_aux(lm::LinearHBModel, FT) = vars_aux(lm.ocean, FT)
 vars_integrals(lm::LinearHBModel, FT) = @vars()
 
 """
@@ -55,10 +55,10 @@ this computation is done pointwise at each nodal point
 - `t`: time, not used
 """
 @inline function gradvariables!(m::LinearHBModel, G::Vars, Q::Vars, A, t)
-  G.u = Q.u
-  G.θ = Q.θ
+    G.u = Q.u
+    G.θ = Q.θ
 
-  return nothing
+    return nothing
 end
 
 """
@@ -75,15 +75,21 @@ this computation is done pointwise at each nodal point
 - `A`: array of aux variables
 - `t`: time, not used
 """
-@inline function diffusive!(lm::LinearHBModel, D::Vars, G::Grad, Q::Vars,
-                            A::Vars, t)
-  ν = viscosity_tensor(lm.ocean)
-  D.ν∇u = ν * G.u
+@inline function diffusive!(
+    lm::LinearHBModel,
+    D::Vars,
+    G::Grad,
+    Q::Vars,
+    A::Vars,
+    t,
+)
+    ν = viscosity_tensor(lm.ocean)
+    D.ν∇u = ν * G.u
 
-  κ = diffusivity_tensor(lm.ocean, G.θ[3])
-  D.κ∇θ = κ * G.θ
+    κ = diffusivity_tensor(lm.ocean, G.θ[3])
+    D.κ∇θ = κ * G.θ
 
-  return nothing
+    return nothing
 end
 
 """
@@ -104,12 +110,19 @@ this computation is done pointwise at each nodal point
 ∂ᵗu = -∇∘(ν∇u)
 ∂ᵗθ = -∇∘(κ∇θ)
 """
-@inline function flux_diffusive!(lm::LinearHBModel, F::Grad, Q::Vars, D::Vars,
-                                 HD::Vars, A::Vars, t::Real)
-  F.u -= D.ν∇u
-  F.θ -= D.κ∇θ
+@inline function flux_diffusive!(
+    lm::LinearHBModel,
+    F::Grad,
+    Q::Vars,
+    D::Vars,
+    HD::Vars,
+    A::Vars,
+    t::Real,
+)
+    F.u -= D.ν∇u
+    F.θ -= D.κ∇θ
 
-  return nothing
+    return nothing
 end
 
 """
@@ -118,8 +131,8 @@ end
 calculates the wavespeed for rusanov flux
 """
 function wavespeed(lm::LinearHBModel, n⁻, _...)
-  C = abs(SVector(lm.ocean.cʰ, lm.ocean.cʰ, lm.ocean.cᶻ)' * n⁻)
-  return C
+    C = abs(SVector(lm.ocean.cʰ, lm.ocean.cʰ, lm.ocean.cᶻ)' * n⁻)
+    return C
 end
 
 """
@@ -128,9 +141,30 @@ end
 applies boundary conditions for the hyperbolic fluxes
 dispatches to a function in OceanBoundaryConditions.jl based on bytype defined by a problem such as SimpleBoxProblem.jl
 """
-@inline function boundary_state!(nf, lm::LinearHBModel, Q⁺::Vars, A⁺::Vars,
-                                 n⁻, Q⁻::Vars, A⁻::Vars, bctype, t, _...)
-  return ocean_boundary_state!(lm.ocean, lm.ocean.problem, bctype, nf, Q⁺, A⁺, n⁻, Q⁻, A⁻, t)
+@inline function boundary_state!(
+    nf,
+    lm::LinearHBModel,
+    Q⁺::Vars,
+    A⁺::Vars,
+    n⁻,
+    Q⁻::Vars,
+    A⁻::Vars,
+    bctype,
+    t,
+    _...,
+)
+    return ocean_boundary_state!(
+        lm.ocean,
+        lm.ocean.problem,
+        bctype,
+        nf,
+        Q⁺,
+        A⁺,
+        n⁻,
+        Q⁻,
+        A⁻,
+        t,
+    )
 end
 
 """
@@ -139,7 +173,32 @@ end
 applies boundary conditions for the parabolic fluxes
 dispatches to a function in OceanBoundaryConditions.jl based on bytype defined by a problem such as SimpleBoxProblem.jl
 """
-@inline function boundary_state!(nf, lm::LinearHBModel, Q⁺::Vars, D⁺::Vars, A⁺::Vars,
-                                 n⁻, Q⁻::Vars, D⁻::Vars, A⁻::Vars, bctype, t, _...)
-  return ocean_boundary_state!(lm.ocean, lm.ocean.problem, bctype, nf, Q⁺, D⁺, A⁺, n⁻, Q⁻, D⁻, A⁻, t)
+@inline function boundary_state!(
+    nf,
+    lm::LinearHBModel,
+    Q⁺::Vars,
+    D⁺::Vars,
+    A⁺::Vars,
+    n⁻,
+    Q⁻::Vars,
+    D⁻::Vars,
+    A⁻::Vars,
+    bctype,
+    t,
+    _...,
+)
+    return ocean_boundary_state!(
+        lm.ocean,
+        lm.ocean.problem,
+        bctype,
+        nf,
+        Q⁺,
+        D⁺,
+        A⁺,
+        n⁻,
+        Q⁻,
+        D⁻,
+        A⁻,
+        t,
+    )
 end

@@ -7,7 +7,7 @@ A clear and concise description of the code with usage.
 I have
 
 - [ ] Written and run all necessary tests with CLIMA by including `tests/runtests.jl`
-- [ ] Followed all necessary [style guidelines](https://climate-machine.github.io/CLIMA/latest/CodingConventions.html) and run `julia .dev/format.jl`
+- [ ] Followed all necessary [style guidelines](https://climate-machine.github.io/CLIMA/latest/CodingConventions.html) and run `julia .dev/climaformat.jl .`
 
 <!--- Please leave the following section --->
 
