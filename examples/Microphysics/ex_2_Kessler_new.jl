@@ -93,10 +93,10 @@ end
 function KinematicModel{FT}(
     ::Type{AtmosLESConfigType};
     orientation::O = FlatOrientation(),
-    moisture::M = EquilMoist{FT}(),
-    precipitation::P = NoPrecipitation(),
+    moisture::M = nothing, #EquilMoist{FT}(),
+    precipitation::P = nothing, #NoPrecipitation(),
     source::S = nothing,
-    boundarycondition::BC = nothing, #NoFluxBC(),
+    boundarycondition::BC = nothing,
     init_state::IS = nothing,
     data_config::DC = nothing,
 ) where {FT <: AbstractFloat, O, M, P, S, BC, IS, DC}
@@ -321,7 +321,7 @@ end
     t::Real,
 )
     FT = eltype(state)
-    rain_w = terminal_velocity(state.ρq_rai / state.ρ, state.ρ)
+    rain_w = FT(4) #terminal_velocity(state.ρq_rai / state.ρ, state.ρ)
 
     # advect moisture ...
     flux.ρq_tot = SVector(
@@ -507,6 +507,9 @@ function main()
     t_end = FT(10 * 60)
     dt = FT(1)
     #CFL = FT(1.75)
+    filter_freq = 1
+    info_freq = 60
+    output_freq = 10
 
     driver_config = config_kinematic_eddy(
         FT,
@@ -539,7 +542,7 @@ function main()
     ρq_rai_ind = varsindex(vars_state(driver_config.bl, FT), :ρq_rai)
 
     # filetr out negative values
-    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(1) do (init = false)
+    cbtmarfilter = GenericCallbacks.EveryXSimulationSteps(filter_freq) do (init = false)
         Filters.apply!(
             solver_config.Q,
             (ρq_liq_ind[1], ρq_ice_ind[1], ρq_rai_ind[1]),
@@ -550,7 +553,7 @@ function main()
     end
 
     # print on screen
-    cbinfo = GenericCallbacks.EveryXSimulationSteps(60) do (init = false)
+    cbinfo = GenericCallbacks.EveryXSimulationSteps(info_freq) do (init = false)
         energy = norm(solver_config.Q)
         @info @sprintf("""Update norm(Q) = %.16e""", energy)
     end
@@ -558,7 +561,7 @@ function main()
     # output for paraview
     model = driver_config.bl
     step = [0]
-    cbvtk = GenericCallbacks.EveryXSimulationSteps(10) do (init = false)
+    cbvtk = GenericCallbacks.EveryXSimulationSteps(output_freq) do (init = false)
         mkpath("vtk/")
         outprefix = @sprintf(
             "vtk/new_ex_2_mpirank%04d_step%04d",
