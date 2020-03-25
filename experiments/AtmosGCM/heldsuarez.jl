@@ -22,33 +22,30 @@ const clima_dir = dirname(pathof(CLIMA))
 include(joinpath(clima_dir, "..", "Parameters", "Parameters.jl"))
 using CLIMA.Parameters.Planet
 
+
 struct HeldSuarezDataConfig{FT}
-    p_sfc::FT
-    T_init::FT
-    domain_height::FT
+    T_ref::FT
 end
 
 function init_heldsuarez!(bl, state, aux, coords, t)
     FT = eltype(state)
 
     # Parameters need to set initial state
-    T_init = bl.data_config.T_init
-    p_sfc = bl.data_config.p_sfc
-    scale_height = R_d(bl.param_set) * T_init / grav(bl.param_set)
+    T_ref = bl.data_config.T_ref
+    temp_profile = IsothermalProfile(T_ref)
 
     # Calculate the initial state variables
-    z = altitude(bl.orientation, aux)
-    p = p_sfc * exp(-z / scale_height)
-    thermo_state = PhaseDry_given_pT(p, T_init, bl.param_set)
+    T, p = temp_profile(bl.orientation, aux)
+    thermo_state = PhaseDry_given_pT(p, T, bl.param_set)
     ρ = air_density(thermo_state)
     e_int = internal_energy(thermo_state)
     e_pot = gravitational_potential(bl.orientation, aux)
 
     # Set initial state with random perturbation
-    rnd = FT(1.0 + rand(Uniform(-1e-6, 1e-6)))
-    state.ρ = rnd * ρ
+    rnd = FT(1.0 + rand(Uniform(-1e-3, 1e-3)))
+    state.ρ = ρ
     state.ρu = SVector{3, FT}(0, 0, 0)
-    state.ρe = state.ρ * (e_int + e_pot)
+    state.ρe = rnd * state.ρ * (e_int + e_pot)
 
     nothing
 end
@@ -56,26 +53,19 @@ end
 function config_heldsuarez(FT, poly_order, resolution)
     exp_name = "HeldSuarez"
 
-    param_set = ParameterSet{FT}()
-
     # Parameters
-    p_sfc::FT = MSLP(param_set)
-    T_init::FT = 255
-    T_ref::FT = 300
+    T_ref::FT = 255
     Rh_ref::FT = 0
     domain_height::FT = 30e3
     turb_visc::FT = 0 # no visc. here
 
     # Set up a reference state for linearization
-    Γ = FT(0.7 * grav(param_set) / cp_d(param_set)) # lapse rate
-    T_sfc = FT(300.0)
-    T_min = FT(200.0)
-    temp_profile_ref = LinearTemperatureProfile(T_min, T_sfc, Γ)
+    temp_profile_ref = IsothermalProfile(T_ref)
     ref_state = HydrostaticState(temp_profile_ref, Rh_ref)
 
     # Rayleigh sponge to dampen flow at the top of the domain
     z_sponge = FT(15e3) # height at which sponge begins
-    α_relax = FT(1 / 60 / 60) # sponge relaxation rate in (1/seconds)
+    α_relax = FT(1 / 60 / 15) # sponge relaxation rate in (1/seconds)
     u_relax = SVector(FT(0), FT(0), FT(0)) # relaxation velocity
     exp_sponge = 2 # sponge exponent for squared-sinusoid profile
     sponge = RayleighSponge{FT}(
@@ -94,8 +84,8 @@ function config_heldsuarez(FT, poly_order, resolution)
         moisture = DryModel(),
         source = (Gravity(), Coriolis(), held_suarez_forcing!, sponge),
         init_state = init_heldsuarez!,
-        data_config = HeldSuarezDataConfig(p_sfc, T_init, domain_height),
-        param_set = param_set,
+        data_config = HeldSuarezDataConfig(T_ref),
+        param_set = ParameterSet{FT}(),
     )
 
     config = CLIMA.AtmosGCMConfiguration(
@@ -114,7 +104,7 @@ function held_suarez_forcing!(bl, source, state, diffusive, aux, t::Real)
     FT = eltype(state)
 
     # Parameters
-    T_init = bl.data_config.T_init
+    T_ref = bl.data_config.T_ref
 
     # Extract the state
     ρ = state.ρ
@@ -142,7 +132,7 @@ function held_suarez_forcing!(bl, source, state, diffusive, aux, t::Real)
     λ = longitude(bl.orientation, aux)
     φ = latitude(bl.orientation, aux)
     z = altitude(bl.orientation, aux)
-    scale_height = _R_d * T_init / _grav
+    scale_height = _R_d * T_ref / _grav
     σ = exp(-z / scale_height)
 
     # TODO: use
@@ -163,7 +153,7 @@ function held_suarez_forcing!(bl, source, state, diffusive, aux, t::Real)
 end
 
 function config_diagnostics(FT, driver_config)
-    interval = 100 # in time steps
+    interval = 1000 # in time steps
 
     param_set = ParameterSet{FT}()
     _planet_radius = planet_radius(param_set)
@@ -191,9 +181,9 @@ function main()
     # Driver configuration parameters
     FT = Float32                        # floating type precision
     poly_order = 5                      # discontinuous Galerkin polynomial order
-    n_horz = 15                         # horizontal element number
-    n_vert = 8                          # vertical element number
-    days = 1                            # experiment day number
+    n_horz = 5                          # horizontal element number
+    n_vert = 5                          # vertical element number
+    days = 365                          # experiment day number
     timestart = FT(0)                   # start time (seconds)
     timeend = FT(days * 24 * 60 * 60)   # end time (seconds)
 
@@ -212,7 +202,7 @@ function main()
         timeend,
         driver_config,
         ode_solver_type = ode_solver_type,
-        Courant_number = 0.05,
+        Courant_number = 0.15,
         init_on_cpu = true,
         CFL_direction = HorizontalDirection(),
     )
@@ -222,7 +212,7 @@ function main()
 
     # Set up user-defined callbacks
     # TODO: This callback needs to live somewhere else
-    filterorder = 14
+    filterorder = 10
     filter = ExponentialFilter(solver_config.dg.grid, 0, filterorder)
     cbfilter = GenericCallbacks.EveryXSimulationSteps(1) do
         Filters.apply!(
